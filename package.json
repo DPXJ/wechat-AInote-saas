@@ -1,21 +1,35 @@
 {
-  "name": "appseed",
+  "name": "signal-deck",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@notionhq/client": "^5.12.0",
+    "ali-oss": "^6.23.0",
+    "better-sqlite3": "^12.6.2",
+    "clsx": "^2.1.1",
+    "mammoth": "^1.11.0",
     "next": "16.1.6",
+    "nodemailer": "^8.0.2",
+    "openai": "^6.27.0",
+    "pdf-parse": "^2.4.5",
+    "proxy-agent": "^5.0.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/ali-oss": "^6.23.3",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
+    "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
