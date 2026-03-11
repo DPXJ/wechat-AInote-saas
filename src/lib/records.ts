@@ -153,7 +153,8 @@ export async function createKnowledgeRecord(
     "未命名资料";
   const sourceLabel = input.sourceLabel?.trim() || "手动收件箱";
   const contextNote = input.contextNote?.trim() || "";
-  const recordType = inferRecordType(uploads.map((item) => item.mimeType));
+  const recordType =
+    input.recordTypeHint || inferRecordType(uploads.map((item) => item.mimeType));
   const analysis: AnalysisOutput = await analyzeRecord({
     title,
     sourceLabel,

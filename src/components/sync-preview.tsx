@@ -15,7 +15,7 @@ function buildNotionPreview(record: KnowledgeRecord) {
       `关键词：${record.keywords.join(" / ") || "无"}`,
       `行动项：${record.actionItems.join("；") || "无"}`,
     ],
-    body: buildRecordBody(record, 1900),
+    body: buildRecordBody(record, 1600),
   };
 }
 
@@ -33,7 +33,7 @@ function buildTickTickPreview(record: KnowledgeRecord) {
       `行动项：${record.actionItems.join("；") || "请人工确认"}`,
       "",
       "原始上下文：",
-      buildRecordBody(record, 2500),
+      buildRecordBody(record, 2200),
     ].join("\n"),
   };
 }
@@ -49,38 +49,21 @@ export function SyncPreview({
   const tickTickPreview = buildTickTickPreview(record);
 
   return (
-    <section className="rounded-[28px] border border-stone-200 bg-stone-50/90 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs tracking-[0.24em] text-stone-500">同步预览</p>
-          <h3 className="mt-2 font-serif text-2xl text-stone-950">发出去之前先看看</h3>
-        </div>
-        <span className="rounded-full bg-white px-3 py-1 text-xs text-stone-600">
-          {record.title}
-        </span>
-      </div>
-
-      <div
-        className={[
-          "mt-5 grid gap-4",
-          compact ? "lg:grid-cols-1" : "lg:grid-cols-2",
-        ].join(" ")}
-      >
-        <PreviewBlock
-          title="Notion 页面"
-          header={notionPreview.title}
-          meta={notionPreview.highlights}
-          body={notionPreview.body}
-          compact={compact}
-        />
-        <PreviewBlock
-          title="滴答任务邮件"
-          header={tickTickPreview.subject}
-          meta={["会以邮件正文形式发送到滴答清单收件邮箱。"]}
-          body={tickTickPreview.body}
-          compact={compact}
-        />
-      </div>
+    <section className="grid gap-4 lg:grid-cols-2">
+      <PreviewBlock
+        title="Notion 预览"
+        header={notionPreview.title}
+        meta={notionPreview.highlights}
+        body={notionPreview.body}
+        compact={compact}
+      />
+      <PreviewBlock
+        title="滴答清单预览"
+        header={tickTickPreview.subject}
+        meta={["会以邮件正文方式发送到滴答清单收件邮箱。"]}
+        body={tickTickPreview.body}
+        compact={compact}
+      />
     </section>
   );
 }
@@ -99,18 +82,18 @@ function PreviewBlock({
   compact: boolean;
 }) {
   return (
-    <div className="rounded-[20px] border border-stone-200 bg-white p-4">
-      <p className="text-xs tracking-[0.24em] text-stone-500">{title}</p>
-      <p className="mt-2 text-sm font-medium text-stone-900">{header}</p>
-      <div className="mt-3 space-y-1 text-xs leading-6 text-stone-500">
+    <div className="rounded-[18px] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4">
+      <p className="text-sm font-medium text-[var(--foreground)]">{title}</p>
+      <p className="mt-3 text-sm text-[var(--muted-strong)]">{header}</p>
+      <div className="mt-3 space-y-1 text-xs leading-6 text-[var(--muted)]">
         {meta.map((item) => (
           <p key={item}>{item}</p>
         ))}
       </div>
       <pre
         className={[
-          "mt-4 overflow-hidden whitespace-pre-wrap rounded-2xl bg-stone-50 px-3 py-3 text-xs leading-6 text-stone-700",
-          compact ? "max-h-44" : "max-h-64",
+          "mt-4 overflow-hidden whitespace-pre-wrap rounded-[16px] bg-[var(--surface)] px-3 py-3 text-xs leading-6 text-[var(--muted-strong)]",
+          compact ? "max-h-40" : "max-h-56",
         ].join(" ")}
       >
         {body || "暂无正文内容。"}

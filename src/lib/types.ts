@@ -57,6 +57,7 @@ export interface RecordInput {
   sourceLabel?: string;
   contextNote?: string;
   contentText?: string;
+  recordTypeHint?: RecordType;
 }
 
 export interface StoredUpload {

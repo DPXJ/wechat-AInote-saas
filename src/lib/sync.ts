@@ -113,7 +113,7 @@ function explainIntegrationError(error: unknown) {
   }
 
   if (/fetch failed/i.test(message)) {
-    return "连接外部服务时发生网络错误，请确认当前网络可访问目标服务。";
+    return "连接外部服务时发生网络错误，请确认当前网络可以访问目标服务。";
   }
 
   if (/Invalid login|auth|535/i.test(message)) {
@@ -215,7 +215,7 @@ export async function testNotionConnection() {
       ok: true,
       pageId,
       object: page.object,
-      message: "Notion 已连通。",
+      message: "Notion 已连接成功。",
     };
   } catch (error) {
     throw new Error(explainIntegrationError(error));
@@ -232,7 +232,7 @@ export async function testSmtpConnection() {
 
     return {
       ok: true,
-      message: "SMTP 已连通。",
+      message: "SMTP 已连接成功。",
     };
   } catch (error) {
     throw new Error(explainIntegrationError(error));
@@ -249,10 +249,10 @@ export async function sendTickTickTestEmail() {
     const result = await transporter.sendMail({
       from: settings.smtpFrom,
       to: settings.tickTickInboxEmail,
-      subject: `[Signal Deck 测试] 滴答邮箱连通性 ${stamp}`,
+      subject: `[AI Box 测试] 滴答邮箱连通性 ${stamp}`,
       text: [
-        "这是一封来自 Signal Deck 的测试邮件。",
-        "如果你在滴答里看到了新任务，说明邮箱同步链路已经可用。",
+        "这是一封来自 AI Box 的测试邮件。",
+        "如果你在滴答清单里看到了新任务，说明邮箱投递链路已经可用。",
         `时间：${stamp}`,
       ].join("\n"),
     });
@@ -260,7 +260,7 @@ export async function sendTickTickTestEmail() {
     return {
       ok: true,
       messageId: result.messageId,
-      message: "滴答测试邮件已发出。",
+      message: "滴答测试邮件已发送。",
     };
   } catch (error) {
     throw new Error(explainIntegrationError(error));
@@ -283,8 +283,8 @@ export async function testOssConnection() {
       count: result.keyCount,
       message:
         settings.storageMode === "oss"
-          ? "OSS 已连通，且当前存储模式已切换为 OSS。"
-          : "OSS 已连通，保存后可用于图片和视频存储。",
+          ? "OSS 已连接成功，且当前附件存储模式已切换为 OSS。"
+          : "OSS 已连接成功，保存后即可用于附件存储。",
     };
   } catch (error) {
     throw new Error(explainIntegrationError(error));
@@ -330,7 +330,7 @@ async function syncToNotion(record: KnowledgeRecord) {
             ],
             icon: {
               type: "emoji",
-              emoji: "\uD83D\uDCE5",
+              emoji: "📥",
             },
             color: "gray_background",
           },
@@ -385,7 +385,7 @@ async function syncToNotion(record: KnowledgeRecord) {
               {
                 type: "text",
                 text: {
-                  content: preview.body || "无正文",
+                  content: preview.body || "无正文内容",
                 },
               },
             ],
@@ -449,7 +449,7 @@ export async function syncRecord(recordId: string, target: SyncTarget) {
       status: "synced",
       externalRef,
       payload: { title: record.title },
-      message: "同步成功。",
+      message: target === "notion" ? "已同步到 Notion。" : "已投递到滴答清单。",
     });
 
     return { externalRef };

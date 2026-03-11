@@ -3,7 +3,42 @@ import { notFound } from "next/navigation";
 import { RecordQuickActions } from "@/components/record-quick-actions";
 import { SyncPreview } from "@/components/sync-preview";
 import { getKnowledgeRecord } from "@/lib/records";
+import type { RecordType, SyncRun } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
+
+const recordTypeLabels: Record<RecordType, string> = {
+  text: "文本",
+  image: "图片",
+  pdf: "PDF",
+  document: "文档",
+  audio: "音频",
+  video: "视频",
+  mixed: "混合资料",
+};
+
+const syncTargetLabels: Record<SyncRun["target"], string> = {
+  notion: "Notion",
+  "ticktick-email": "滴答清单",
+  "feishu-doc": "飞书文档",
+};
+
+const syncStatusLabels: Record<
+  SyncRun["status"],
+  { label: string; className: string }
+> = {
+  pending: {
+    label: "处理中",
+    className: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+  },
+  synced: {
+    label: "已同步",
+    className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  },
+  failed: {
+    label: "失败",
+    className: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+  },
+};
 
 export default async function RecordDetailPage({
   params,
@@ -18,112 +53,96 @@ export default async function RecordDetailPage({
   }
 
   return (
-    <main className="min-h-screen px-6 py-10 lg:px-10">
-      <div className="mx-auto max-w-6xl">
+    <main className="min-h-screen bg-[var(--background)] px-4 py-5 lg:px-6 lg:py-6">
+      <div className="mx-auto max-w-7xl">
         <Link
           href="/"
-          className="text-sm tracking-[0.22em] text-stone-500 transition hover:text-stone-900"
+          className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
         >
-          返回首页
+          返回工作台
         </Link>
 
-        <section className="mt-6 grid gap-8 lg:grid-cols-[1.05fr_0.72fr]">
-          <div className="rounded-[36px] border border-stone-300 bg-white/75 p-6 shadow-[0_24px_90px_rgba(73,52,42,0.08)] md:p-8">
-            <p className="text-xs tracking-[0.3em] text-stone-500">{record.sourceLabel}</p>
-            <h1 className="mt-3 font-serif text-4xl leading-tight text-stone-950">
-              {record.title}
-            </h1>
-            <p className="mt-4 max-w-3xl text-base leading-8 text-stone-700">
-              {record.summary}
-            </p>
-
-            <div className="mt-6 flex flex-wrap gap-2">
-              {record.keywords.length > 0 ? (
-                record.keywords.map((keyword) => (
+        <section className="mt-5 rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] px-6 py-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)] lg:px-8">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-4xl">
+              <p className="text-xs tracking-[0.3em] text-slate-500">{record.sourceLabel}</p>
+              <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-950 lg:text-4xl">
+                {record.title}
+              </h1>
+              <p className="mt-4 text-sm leading-8 text-slate-600 lg:text-base">
+                {record.summary}
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs text-[var(--accent)]">
+                  {recordTypeLabels[record.recordType]}
+                </span>
+                {record.keywords.map((keyword) => (
                   <span
                     key={keyword}
-                    className="rounded-full bg-stone-100 px-3 py-1 text-xs text-stone-600"
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600"
                   >
                     {keyword}
                   </span>
-                ))
-              ) : (
-                <span className="text-sm text-stone-500">暂无关键词</span>
-              )}
-            </div>
-
-            <div className="mt-8 grid gap-6 md:grid-cols-2">
-              <div className="rounded-[24px] border border-stone-200 bg-stone-50 p-5">
-                <p className="text-xs tracking-[0.24em] text-stone-500">行动项</p>
-                <div className="mt-3 space-y-2 text-sm leading-7 text-stone-700">
-                  {record.actionItems.length > 0 ? (
-                    record.actionItems.map((item) => <p key={item}>- {item}</p>)
-                  ) : (
-                    <p>当前没有检测到明确待办。</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-stone-200 bg-stone-50 p-5">
-                <p className="text-xs tracking-[0.24em] text-stone-500">元信息</p>
-                <div className="mt-3 space-y-2 text-sm leading-7 text-stone-700">
-                  <p>入库时间：{formatDateTime(record.createdAt)}</p>
-                  <p>资料类型：{record.recordType}</p>
-                  <p>附件数量：{record.assets.length}</p>
-                </div>
+                ))}
               </div>
             </div>
 
-            {record.contextNote ? (
-              <div className="mt-8 rounded-[24px] border border-stone-200 bg-white p-5">
-                <p className="text-xs tracking-[0.24em] text-stone-500">手动备注</p>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-700">
-                  {record.contextNote}
-                </p>
+            <div className="grid gap-3 sm:grid-cols-3 xl:w-[360px] xl:grid-cols-1">
+              <SummaryMetric label="入库时间" value={formatDateTime(record.createdAt)} />
+              <SummaryMetric label="附件数量" value={`${record.assets.length} 个`} />
+              <SummaryMetric label="同步次数" value={`${record.syncRuns.length} 次`} />
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-6 grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+          <div className="space-y-6">
+            <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
+              <p className="text-xs tracking-[0.28em] text-slate-500">快速操作</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                先确认，再同步出去
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-slate-600">
+                如果这条资料已经整理得足够清楚，现在就可以发到 Notion 或投递到滴答清单。
+              </p>
+              <div className="mt-5">
+                <RecordQuickActions recordId={record.id} />
               </div>
-            ) : null}
+            </section>
+
+            <section className="grid gap-6 md:grid-cols-2">
+              <ListCard
+                title="AI 识别出的行动项"
+                items={
+                  record.actionItems.length > 0
+                    ? record.actionItems
+                    : ["当前没有识别出明确待办。"]
+                }
+              />
+              <TextCard
+                title="手动备注"
+                content={record.contextNote || "这条资料没有填写手动备注。"}
+              />
+            </section>
 
             {record.contentText ? (
-              <div className="mt-8 rounded-[24px] border border-stone-200 bg-white p-5">
-                <p className="text-xs tracking-[0.24em] text-stone-500">原始文本</p>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-700">
-                  {record.contentText}
-                </p>
-              </div>
+              <TextCard title="原始文本" content={record.contentText} />
             ) : null}
 
             {record.extractedText ? (
-              <div className="mt-8 rounded-[24px] border border-stone-200 bg-white p-5">
-                <p className="text-xs tracking-[0.24em] text-stone-500">抽取文本</p>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-700">
-                  {record.extractedText}
-                </p>
-              </div>
+              <TextCard title="抽取文本" content={record.extractedText} />
             ) : null}
           </div>
 
-          <aside className="space-y-6">
-            <div className="rounded-[32px] border border-stone-300 bg-white/75 p-6">
-              <p className="text-xs tracking-[0.3em] text-stone-500">同步操作</p>
-              <h2 className="mt-2 font-serif text-3xl text-stone-950">
-                先预览，再同步
+          <div className="space-y-6">
+            <SyncPreview record={record} />
+
+            <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
+              <p className="text-xs tracking-[0.28em] text-slate-500">附件</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                原始文件与截图
               </h2>
-              <p className="mt-3 text-sm leading-7 text-stone-600">
-                先看预览内容，确认没问题后再发到 Notion 或滴答清单。
-              </p>
-
-              <div className="mt-6">
-                <RecordQuickActions recordId={record.id} />
-              </div>
-
-              <div className="mt-6">
-                <SyncPreview record={record} />
-              </div>
-            </div>
-
-            <div className="rounded-[32px] border border-stone-300 bg-white/75 p-6">
-              <p className="text-xs tracking-[0.3em] text-stone-500">附件</p>
-              <div className="mt-4 space-y-3">
+              <div className="mt-5 space-y-3">
                 {record.assets.length > 0 ? (
                   record.assets.map((asset) => (
                     <a
@@ -131,53 +150,111 @@ export default async function RecordDetailPage({
                       href={`/api/assets/${asset.id}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="block rounded-2xl border border-stone-200 px-4 py-4 transition hover:border-stone-500"
+                      className="block rounded-[24px] border border-slate-200 bg-white px-4 py-4 transition hover:border-slate-300 hover:shadow-[0_14px_30px_rgba(39,73,118,0.08)]"
                     >
-                      <p className="text-sm font-medium text-stone-800">
+                      <p className="text-sm font-medium text-slate-900">
                         {asset.originalName}
                       </p>
-                      <p className="mt-1 text-xs tracking-[0.22em] text-stone-500">
-                        {asset.mimeType} / {Math.max(1, Math.round(asset.byteSize / 1024))} KB
+                      <p className="mt-2 text-xs text-slate-500">
+                        {asset.mimeType} · {Math.max(1, Math.round(asset.byteSize / 1024))} KB
                       </p>
                     </a>
                   ))
                 ) : (
-                  <p className="text-sm text-stone-600">这条资料没有附件。</p>
+                  <EmptyCard text="这条资料没有附件。" />
                 )}
               </div>
-            </div>
+            </section>
 
-            <div className="rounded-[32px] border border-stone-300 bg-white/75 p-6">
-              <p className="text-xs tracking-[0.3em] text-stone-500">同步历史</p>
-              <div className="mt-4 space-y-3">
+            <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
+              <p className="text-xs tracking-[0.28em] text-slate-500">同步历史</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                最近同步动作
+              </h2>
+              <div className="mt-5 space-y-3">
                 {record.syncRuns.length > 0 ? (
                   record.syncRuns.map((run) => (
-                    <div
+                    <article
                       key={run.id}
-                      className="rounded-2xl border border-stone-200 px-4 py-4"
+                      className="rounded-[24px] border border-slate-200 bg-white px-4 py-4"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-stone-800">
-                          {run.target}
-                        </p>
-                        <span className="text-xs tracking-[0.2em] text-stone-500">
-                          {run.status}
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            {syncTargetLabels[run.target]}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatDateTime(run.createdAt)}
+                          </p>
+                        </div>
+                        <span
+                          className={[
+                            "rounded-full px-3 py-1 text-xs",
+                            syncStatusLabels[run.status].className,
+                          ].join(" ")}
+                        >
+                          {syncStatusLabels[run.status].label}
                         </span>
                       </div>
-                      <p className="mt-2 text-sm text-stone-600">{run.message}</p>
-                      <p className="mt-1 text-xs text-stone-500">
-                        {formatDateTime(run.createdAt)}
+                      <p className="mt-3 text-sm leading-7 text-slate-600">
+                        {run.message}
                       </p>
-                    </div>
+                    </article>
                   ))
                 ) : (
-                  <p className="text-sm text-stone-600">还没有同步记录。</p>
+                  <EmptyCard text="还没有发生过同步动作。" />
                 )}
               </div>
-            </div>
-          </aside>
+            </section>
+          </div>
         </section>
       </div>
     </main>
+  );
+}
+
+function SummaryMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+      <p className="text-xs tracking-[0.22em] text-slate-500">{label}</p>
+      <p className="mt-3 text-sm font-medium text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function ListCard({ title, items }: { title: string; items: string[] }) {
+  return (
+    <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
+      <p className="text-xs tracking-[0.28em] text-slate-500">{title}</p>
+      <div className="mt-5 space-y-3">
+        {items.map((item) => (
+          <div
+            key={item}
+            className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm leading-7 text-slate-700"
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TextCard({ title, content }: { title: string; content: string }) {
+  return (
+    <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
+      <p className="text-xs tracking-[0.28em] text-slate-500">{title}</p>
+      <p className="mt-5 whitespace-pre-wrap text-sm leading-8 text-slate-700">
+        {content}
+      </p>
+    </section>
+  );
+}
+
+function EmptyCard({ text }: { text: string }) {
+  return (
+    <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/70 px-4 py-8 text-sm leading-7 text-slate-500">
+      {text}
+    </div>
   );
 }
