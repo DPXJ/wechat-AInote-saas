@@ -17,6 +17,7 @@ import type {
 import { formatDateTime } from "@/lib/utils";
 
 type WorkspaceTab = "record" | "history" | "search" | "settings";
+type HistoryFilter = "all" | "todo" | "synced" | "text" | "asset";
 
 const tabs: Array<{ id: WorkspaceTab; label: string; shortLabel: string }> = [
   { id: "record", label: "记录", shortLabel: "收录资料" },
@@ -89,6 +90,7 @@ export function HomeWorkspace({
 }) {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("record");
   const [selectedRecordId, setSelectedRecordId] = useState(records[0]?.id || "");
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") {
       return "light";
@@ -109,11 +111,6 @@ export function HomeWorkspace({
     window.localStorage.setItem("ai-box-theme", theme);
   }, [theme]);
 
-  const selectedRecord = useMemo(
-    () => records.find((record) => record.id === selectedRecordId) || records[0] || null,
-    [records, selectedRecordId],
-  );
-
   const stats = useMemo(
     () => ({
       total: records.length,
@@ -125,25 +122,44 @@ export function HomeWorkspace({
     [records],
   );
 
-  const statusItems = [
-    {
-      label: "Notion",
-      value: integrationStatus.notion.configured ? "已连接" : "未配置",
-    },
-    {
-      label: "滴答",
-      value:
-        integrationStatus.smtp.configured && integrationStatus.ticktickEmail.configured
-          ? "自动识别待办"
-          : "未配置",
-    },
-    {
-      label: "附件",
-      value: integrationSettings.storageMode === "oss" ? "OSS" : "本地",
-    },
-  ];
+  const filteredRecords = useMemo(() => {
+    return records.filter((record) => {
+      if (historyFilter === "todo") {
+        return record.actionItems.length > 0;
+      }
+
+      if (historyFilter === "synced") {
+        return record.syncRuns.some((run) => run.status === "synced");
+      }
+
+      if (historyFilter === "text") {
+        return record.recordType === "text";
+      }
+
+      if (historyFilter === "asset") {
+        return record.recordType !== "text";
+      }
+
+      return true;
+    });
+  }, [historyFilter, records]);
+
+  const selectedRecord = useMemo(
+    () =>
+      filteredRecords.find((record) => record.id === selectedRecordId) ||
+      filteredRecords[0] ||
+      null,
+    [filteredRecords, selectedRecordId],
+  );
 
   const activeMeta = tabMeta[activeTab];
+  const statusSummary = [
+    integrationStatus.notion.configured ? "Notion 已连接" : "Notion 未配置",
+    integrationStatus.smtp.configured && integrationStatus.ticktickEmail.configured
+      ? "滴答自动识别待办"
+      : "滴答未配置",
+    `附件${integrationSettings.storageMode === "oss" ? "走 OSS" : "本地保存"}`,
+  ].join(" · ");
 
   return (
     <main className="grain min-h-screen bg-[var(--background)]">
@@ -215,21 +231,11 @@ export function HomeWorkspace({
           <section className="rounded-[24px] border border-[var(--line)] bg-[var(--card-strong)] px-4 py-3 shadow-[0_16px_40px_rgba(15,23,42,0.05)] lg:px-5">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
               <div>
-                <p className="text-xs tracking-[0.28em] text-[var(--muted)]">基础提示</p>
-                <h2 className="mt-2 font-serif text-2xl text-[var(--foreground)]">
+                <h2 className="font-serif text-2xl text-[var(--foreground)]">
                   {activeMeta.title}
                 </h2>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {statusItems.map((item) => (
-                    <span
-                      key={item.label}
-                      className="rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-xs text-[var(--muted-strong)]"
-                    >
-                      {item.label} · {item.value}
-                    </span>
-                  ))}
-                </div>
                 <p className="mt-2 text-sm text-[var(--muted)]">{activeMeta.summary}</p>
+                <p className="mt-1 text-sm text-[var(--muted-strong)]">{statusSummary}</p>
               </div>
 
               <div className="grid gap-2 sm:grid-cols-[repeat(3,88px)_auto]">
@@ -267,13 +273,37 @@ export function HomeWorkspace({
                     <p className="mt-1 text-xs text-[var(--muted)]">按最近录入时间排序</p>
                   </div>
                   <span className="rounded-full bg-[var(--surface)] px-3 py-1 text-xs text-[var(--muted-strong)]">
-                    {records.length} 条
+                    {filteredRecords.length} 条
                   </span>
                 </div>
 
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[
+                    { id: "all", label: "全部" },
+                    { id: "todo", label: "仅待办" },
+                    { id: "synced", label: "仅已同步" },
+                    { id: "text", label: "文本" },
+                    { id: "asset", label: "附件" },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setHistoryFilter(item.id as HistoryFilter)}
+                      className={[
+                        "rounded-full border px-3 py-1.5 text-xs transition",
+                        historyFilter === item.id
+                          ? "border-slate-900 bg-slate-950 text-white"
+                          : "border-[var(--line)] bg-[var(--surface)] text-[var(--muted-strong)] hover:border-[var(--line-strong)]",
+                      ].join(" ")}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="mt-2">
-                  {records.length > 0 ? (
-                    records.map((record) => (
+                  {filteredRecords.length > 0 ? (
+                    filteredRecords.map((record) => (
                       <button
                         key={record.id}
                         type="button"

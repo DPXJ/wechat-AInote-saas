@@ -6,10 +6,11 @@ import type { RecordType, StoredUpload, SyncTarget } from "@/lib/types";
 
 export const runtime = "nodejs";
 
+const explicitTimePattern =
+  /(\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|\d{1,2}[:：]\d{2}|(?:今|明|后)?(?:早上|上午|中午|下午|傍晚|晚上|今晚|今早|凌晨)?\s*(?:\d{1,2}|[零〇一二两三四五六七八九十]{1,3})\s*(?:点半|点钟|点|时)(?:\s*(?:半|整|[0-5]?\d分))?|今天|明天|后天|今晚|今早|今天下午|今天晚上|本周|下周|周[一二三四五六日天]|星期[一二三四五六日天]|月底|月初|前完成|前提交|前回复)/;
+
 function hasExplicitTime(text: string) {
-  return /(\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|\d{1,2}[:：]\d{2}|今天|明天|后天|今晚|今早|今天下午|今天晚上|本周|下周|周[一二三四五六日天]|星期[一二三四五六日天]|月底|月初|前完成|前提交|前回复)/.test(
-    text,
-  );
+  return explicitTimePattern.test(text);
 }
 
 function hasTodoIntent(text: string) {

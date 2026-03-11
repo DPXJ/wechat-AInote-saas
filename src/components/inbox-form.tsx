@@ -6,7 +6,7 @@ import type {
   DragEvent as ReactDragEvent,
   FormEvent,
 } from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RecordType, SyncTarget } from "@/lib/types";
 
@@ -65,16 +65,38 @@ function mergeFiles(current: File[], incoming: File[]) {
   return Array.from(next.values());
 }
 
-function targetLabel(target: SyncTarget) {
-  if (target === "notion") {
-    return "Notion";
+function buildAutoSyncSummary(
+  items:
+    | Array<{
+        target: SyncTarget;
+        status: "synced" | "failed" | "skipped";
+        message: string;
+      }>
+    | undefined,
+) {
+  if (!items || items.length === 0) {
+    return "系统已完成基础分析。";
   }
 
-  if (target === "ticktick-email") {
-    return "滴答清单";
+  const parts: string[] = [];
+  const notion = items.find((item) => item.target === "notion");
+  const ticktick = items.find((item) => item.target === "ticktick-email");
+
+  if (notion?.status === "synced") {
+    parts.push("Notion 已同步");
+  } else if (notion?.status === "failed") {
+    parts.push("Notion 同步失败");
   }
 
-  return "飞书文档";
+  if (ticktick?.status === "synced") {
+    parts.push("已生成滴答待办");
+  } else if (ticktick?.status === "skipped") {
+    parts.push("未生成滴答待办");
+  } else if (ticktick?.status === "failed") {
+    parts.push("滴答待办创建失败");
+  }
+
+  return parts.join("，") || "系统已完成基础分析。";
 }
 
 export function InboxForm({
@@ -99,6 +121,18 @@ export function InboxForm({
   const isTextMode = activeType === "text";
 
   const dropzoneTitle = useMemo(() => `上传${currentType.label}附件`, [currentType.label]);
+
+  useEffect(() => {
+    if (!status || statusTone === "error") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setStatus("");
+    }, 4200);
+
+    return () => window.clearTimeout(timer);
+  }, [status, statusTone]);
 
   function updateStatus(message: string, tone: StatusTone = "info") {
     setStatus(message);
@@ -199,23 +233,8 @@ export function InboxForm({
       return;
     }
 
-    const autoSyncMessage = Array.isArray(payload.autoSync)
-      ? payload.autoSync
-          .map(
-            (item: {
-              target: SyncTarget;
-              status: "synced" | "failed" | "skipped";
-              message: string;
-            }) =>
-              item.status === "synced"
-                ? `${targetLabel(item.target)}：${item.message}`
-                : item.message,
-          )
-          .join(" ")
-      : "";
-
     updateStatus(
-      `记录成功。${autoSyncMessage || "系统已完成基础分析。"} 现在可以去历史记录查看结果。`,
+      `记录成功。${buildAutoSyncSummary(payload.autoSync)}。`,
       "success",
     );
     setTitle("");
@@ -400,18 +419,27 @@ export function InboxForm({
       </details>
 
       {status ? (
-        <p
-          className={[
-            "rounded-[18px] px-4 py-3 text-sm",
-            statusTone === "success"
-              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-              : statusTone === "error"
-                ? "border border-rose-200 bg-rose-50 text-rose-700"
-                : "border border-[var(--line)] bg-[var(--surface)] text-[var(--foreground)]",
-          ].join(" ")}
-        >
-          {status}
-        </p>
+        <div className="pointer-events-none fixed bottom-5 right-5 z-50 flex justify-end">
+          <div
+            className={[
+              "pointer-events-auto flex max-w-md items-start gap-3 rounded-[18px] px-4 py-3 shadow-[0_20px_40px_rgba(15,23,42,0.18)]",
+              statusTone === "success"
+                ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                : statusTone === "error"
+                  ? "border border-rose-200 bg-rose-50 text-rose-800"
+                  : "border border-[var(--line)] bg-[var(--surface-strong)] text-[var(--foreground)]",
+            ].join(" ")}
+          >
+            <div className="min-w-0 flex-1 text-sm leading-6">{status}</div>
+            <button
+              type="button"
+              onClick={() => setStatus("")}
+              className="rounded-full px-2 py-1 text-xs opacity-70 transition hover:opacity-100"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
       ) : null}
     </form>
   );
