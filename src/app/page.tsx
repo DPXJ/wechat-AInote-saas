@@ -4,13 +4,14 @@ import { getIntegrationSettings } from "@/lib/settings";
 import { getIntegrationStatus } from "@/lib/sync";
 
 export default function Home() {
-  const records = listKnowledgeRecords(9);
+  const { records, total } = listKnowledgeRecords({ limit: 20, offset: 0 });
   const integrationStatus = getIntegrationStatus();
   const integrationSettings = getIntegrationSettings();
 
   return (
     <HomeWorkspace
-      records={records}
+      initialRecords={records}
+      initialTotal={total}
       integrationSettings={integrationSettings}
       integrationStatus={integrationStatus}
     />

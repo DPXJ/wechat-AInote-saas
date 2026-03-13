@@ -71,8 +71,13 @@ async function runAutoSync(recordId: string, target: SyncTarget) {
   }
 }
 
-export async function GET() {
-  return NextResponse.json({ records: listKnowledgeRecords() });
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 100);
+  const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+
+  const { records, total } = listKnowledgeRecords({ limit, offset });
+  return NextResponse.json({ records, total, limit, offset });
 }
 
 export async function POST(request: Request) {
@@ -102,6 +107,16 @@ export async function POST(request: Request) {
     })),
   );
 
+  const fileMeta = fileEntries.map((_, i) => {
+    const tagsRaw = String(formData.get(`fileTags_${i}`) || "");
+    const desc = String(formData.get(`fileDesc_${i}`) || "");
+    const tags = tagsRaw
+      .split(/[,，]/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    return { tags, description: desc };
+  });
+
   const record = await createKnowledgeRecord(
     {
       title,
@@ -111,6 +126,7 @@ export async function POST(request: Request) {
       recordTypeHint: recordTypeHint || undefined,
     },
     uploads,
+    fileMeta,
   );
 
   const autoSync: Array<{

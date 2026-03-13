@@ -70,10 +70,11 @@ export async function searchKnowledge(query: string): Promise<SearchResponse> {
   }
 
   if (lexicalResults.length === 0) {
+    const like = `%${trimmed}%`;
     lexicalResults = db
       .prepare(
         `
-          SELECT
+          SELECT DISTINCT
             chunks.id AS chunk_id,
             chunks.record_id,
             chunks.content,
@@ -83,12 +84,18 @@ export async function searchKnowledge(query: string): Promise<SearchResponse> {
             records.source_label
           FROM chunks
           JOIN records ON records.id = chunks.record_id
-          WHERE chunks.content LIKE ? OR records.title LIKE ? OR records.summary LIKE ?
+          LEFT JOIN assets ON assets.record_id = records.id
+          WHERE chunks.content LIKE ?
+            OR records.title LIKE ?
+            OR records.summary LIKE ?
+            OR assets.tags LIKE ?
+            OR assets.description LIKE ?
+            OR assets.ocr_text LIKE ?
           ORDER BY datetime(records.created_at) DESC
           LIMIT 8
         `,
       )
-      .all(`%${trimmed}%`, `%${trimmed}%`, `%${trimmed}%`) as LexicalMatch[];
+      .all(like, like, like, like, like, like) as LexicalMatch[];
   }
 
   const merged = new Map<string, SearchCitation>();

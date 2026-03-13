@@ -1,7 +1,9 @@
 import { analyzeRecord, createEmbeddings } from "@/lib/ai";
 import { getDb } from "@/lib/db";
+import { ocrImage } from "@/lib/ocr";
 import { extractTextFromUpload } from "@/lib/parsers";
-import { readStoredUpload, storeUpload } from "@/lib/storage";
+import { deleteStoredUpload, readStoredUpload, storeUpload } from "@/lib/storage";
+import { extractTodosFromRecord } from "@/lib/todos";
 import type {
   AnalysisOutput,
   KnowledgeRecord,
@@ -43,6 +45,9 @@ type AssetRow = {
   mime_type: string;
   byte_size: number;
   storage_key: string;
+  tags: string;
+  description: string;
+  ocr_text: string;
   created_at: string;
 };
 
@@ -66,6 +71,9 @@ function mapAsset(row: AssetRow): RecordAsset {
     mimeType: row.mime_type,
     byteSize: row.byte_size,
     storageKey: row.storage_key,
+    tags: safeJsonParse(row.tags, []),
+    description: row.description || "",
+    ocrText: row.ocr_text || "",
     createdAt: row.created_at,
   };
 }
@@ -112,6 +120,7 @@ function buildChunkReason(title: string, sourceLabel: string) {
 export async function createKnowledgeRecord(
   input: RecordInput,
   uploads: StoredUpload[],
+  fileMeta?: Array<{ tags?: string[]; description?: string }>,
 ) {
   const db = getDb();
   const recordId = createId("rec");
@@ -120,7 +129,9 @@ export async function createKnowledgeRecord(
   const storedAssets: AssetRow[] = [];
   const extractedParts: string[] = [];
 
-  for (const upload of uploads) {
+  for (let i = 0; i < uploads.length; i++) {
+    const upload = uploads[i];
+    const meta = fileMeta?.[i];
     const stored = await storeUpload(
       upload.buffer,
       upload.originalName,
@@ -133,6 +144,32 @@ export async function createKnowledgeRecord(
       );
     }
 
+    const tags = meta?.tags ?? [];
+    let description = meta?.description ?? "";
+
+    let ocrText = "";
+    if (upload.mimeType.startsWith("image/")) {
+      try {
+        const ocrResult = await ocrImage(upload.buffer, upload.mimeType);
+        if (ocrResult) {
+          ocrText = ocrResult.text;
+          if (ocrResult.keywords.length > 0) {
+            tags.push(...ocrResult.keywords.filter((k) => !tags.includes(k)));
+          }
+          if (!description && ocrResult.description) {
+            description = ocrResult.description;
+          }
+          if (ocrText.trim()) {
+            extractedParts.push(
+              `图片 ${upload.originalName} OCR识别:\n${ocrText.trim()}`,
+            );
+          }
+        }
+      } catch {
+        // OCR non-critical
+      }
+    }
+
     storedAssets.push({
       id: stored.fileId,
       record_id: recordId,
@@ -140,6 +177,9 @@ export async function createKnowledgeRecord(
       mime_type: upload.mimeType,
       byte_size: upload.byteSize,
       storage_key: stored.storageKey,
+      tags: JSON.stringify(tags),
+      description: description || "",
+      ocr_text: ocrText,
       created_at: createdAt,
     });
   }
@@ -199,9 +239,11 @@ export async function createKnowledgeRecord(
 
   const insertAsset = db.prepare(`
     INSERT INTO assets (
-      id, record_id, original_name, mime_type, byte_size, storage_key, created_at
+      id, record_id, original_name, mime_type, byte_size, storage_key,
+      tags, description, ocr_text, created_at
     ) VALUES (
-      @id, @record_id, @original_name, @mime_type, @byte_size, @storage_key, @created_at
+      @id, @record_id, @original_name, @mime_type, @byte_size, @storage_key,
+      @tags, @description, @ocr_text, @created_at
     )
   `);
 
@@ -243,22 +285,37 @@ export async function createKnowledgeRecord(
     });
   });
 
-  return getKnowledgeRecord(recordId);
+  const created = getKnowledgeRecord(recordId);
+  if (created) {
+    try {
+      extractTodosFromRecord(created);
+    } catch {
+      // non-critical
+    }
+  }
+  return created;
 }
 
-export function listKnowledgeRecords(limit = 12) {
+export function listKnowledgeRecords(opts?: { limit?: number; offset?: number }) {
   const db = getDb();
+  const limit = opts?.limit ?? 20;
+  const offset = opts?.offset ?? 0;
+
+  const { total } = db
+    .prepare(`SELECT count(*) as total FROM records`)
+    .get() as { total: number };
+
   const rows = db
     .prepare(
-      `
-        SELECT * FROM records
-        ORDER BY datetime(created_at) DESC
-        LIMIT ?
-      `,
+      `SELECT * FROM records ORDER BY datetime(created_at) DESC LIMIT ? OFFSET ?`,
     )
-    .all(limit) as RecordRow[];
+    .all(limit, offset) as RecordRow[];
 
-  return rows.map((row) => getKnowledgeRecord(row.id)).filter(Boolean) as KnowledgeRecord[];
+  const records = rows
+    .map((row) => getKnowledgeRecord(row.id))
+    .filter(Boolean) as KnowledgeRecord[];
+
+  return { records, total };
 }
 
 export function getKnowledgeRecord(recordId: string) {
@@ -288,14 +345,101 @@ export function getAssetById(assetId: string) {
     .get(assetId) as AssetRow | undefined;
 }
 
-export async function readAssetBuffer(assetId: string) {
+export async function readAssetBuffer(
+  assetId: string,
+  options?: { download?: boolean },
+) {
   const asset = getAssetById(assetId);
   if (!asset) {
     return null;
   }
 
-  const content = await readStoredUpload(asset.storage_key);
+  const content = await readStoredUpload(asset.storage_key, {
+    download: options?.download,
+    fileName: asset.original_name,
+  });
   return { asset: mapAsset(asset), content };
+}
+
+export async function deleteKnowledgeRecord(recordId: string) {
+  const db = getDb();
+  const assets = db
+    .prepare(`SELECT * FROM assets WHERE record_id = ?`)
+    .all(recordId) as AssetRow[];
+
+  for (const asset of assets) {
+    await deleteStoredUpload(asset.storage_key);
+  }
+
+  db.prepare(`DELETE FROM chunks_fts WHERE record_id = ?`).run(recordId);
+  db.prepare(`DELETE FROM chunks WHERE record_id = ?`).run(recordId);
+  db.prepare(`DELETE FROM sync_runs WHERE record_id = ?`).run(recordId);
+  db.prepare(`DELETE FROM assets WHERE record_id = ?`).run(recordId);
+  db.prepare(`DELETE FROM records WHERE id = ?`).run(recordId);
+}
+
+export function updateKnowledgeRecord(
+  recordId: string,
+  fields: { title?: string; contextNote?: string; sourceLabel?: string },
+) {
+  const db = getDb();
+  const sets: string[] = [];
+  const values: Record<string, string> = { id: recordId, updated_at: nowIso() };
+
+  if (fields.title !== undefined) {
+    sets.push("title = @title");
+    values.title = fields.title;
+  }
+  if (fields.contextNote !== undefined) {
+    sets.push("context_note = @context_note");
+    values.context_note = fields.contextNote;
+  }
+  if (fields.sourceLabel !== undefined) {
+    sets.push("source_label = @source_label");
+    values.source_label = fields.sourceLabel;
+  }
+
+  if (sets.length === 0) return getKnowledgeRecord(recordId);
+
+  sets.push("updated_at = @updated_at");
+
+  db.prepare(`UPDATE records SET ${sets.join(", ")} WHERE id = @id`).run(values);
+
+  return getKnowledgeRecord(recordId);
+}
+
+export async function readAssetThumbnail(assetId: string) {
+  const asset = getAssetById(assetId);
+  if (!asset) return null;
+  if (!asset.mime_type.startsWith("image/")) return null;
+
+  const content = await readStoredUpload(asset.storage_key, { thumbnail: true });
+  return { asset: mapAsset(asset), content };
+}
+
+export function updateAssetOcr(
+  assetId: string,
+  ocrText: string,
+  keywords: string[],
+  description: string,
+) {
+  const db = getDb();
+  const asset = getAssetById(assetId);
+  if (!asset) return null;
+
+  const existingTags: string[] = safeJsonParse(asset.tags, []);
+  const mergedTags = [...existingTags, ...keywords.filter((k) => !existingTags.includes(k))];
+
+  db.prepare(
+    `UPDATE assets SET ocr_text = @ocr_text, tags = @tags, description = CASE WHEN description = '' THEN @description ELSE description END WHERE id = @id`,
+  ).run({
+    id: assetId,
+    ocr_text: ocrText,
+    tags: JSON.stringify(mergedTags),
+    description,
+  });
+
+  return getAssetById(assetId);
 }
 
 export function addSyncRun(input: {

@@ -1,0 +1,2928 @@
+[  638043ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638154ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638231ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638289ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638350ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638410ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638471ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638532ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638592ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638651ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638712ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638772ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638834ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638893ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  638953ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639014ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639075ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639137ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639197ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639262ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639318ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639377ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639439ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639499ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639560ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639622ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639681ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639742ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639802ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639863ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639923ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  639983ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640045ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640105ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640166ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640226ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640287ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640347ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640408ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640470ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640530ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640592ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640653ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640715ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640776ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640838ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640896ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  640958ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641019ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641079ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641140ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641201ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641263ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641324ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641383ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641446ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641507ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641568ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641627ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641689ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641749ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641810ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641870ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641930ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  641990ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642052ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642113ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642175ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642236ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642298ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642359ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642421ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642481ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642544ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642604ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642664ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642726ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642786ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642846ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642907ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  642967ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643025ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643086ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643146ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643208ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643271ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643331ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643392ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643452ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643514ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643578ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643651ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643712ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643773ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643834ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643895ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  643956ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644018ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644079ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644140ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644200ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644261ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644321ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644382ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644444ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644504ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644567ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644627ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644689ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644750ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644812ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644873ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644932ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  644993ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645055ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645115ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645177ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645238ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645298ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645358ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645420ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645481ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645542ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645605ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645666ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645726ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645789ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645848ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645910ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  645972ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646033ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646093ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646154ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646215ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646276ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646337ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646399ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646460ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646519ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646580ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646643ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646705ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646767ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646827ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646888ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  646950ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647010ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647070ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647132ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647192ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647254ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647314ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647375ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647435ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647496ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647557ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647617ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647677ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647738ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647800ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647861ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647922ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  647984ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648045ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648106ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648167ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648228ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648290ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648352ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648414ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648474ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648535ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648597ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648666ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648733ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648796ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648856ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648918ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  648993ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  649053ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  649112ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  649174ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  649234ms] [ERROR] ./src/lib/records.ts:160:13
+Ecmascript file had an error
+  158 |           }
+  159 |           if (!description && ocrResult.description) {
+> 160 |             description = ocrResult.description;
+      |             ^^^^^^^^^^^
+  161 |           }
+  162 |           if (ocrText.trim()) {
+  163 |             extractedParts.push(
+
+cannot reassign to a variable declared with `const`
+
+Import trace:
+  Server Component:
+    ./src/lib/records.ts
+    ./src/app/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127

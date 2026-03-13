@@ -22,6 +22,10 @@ const settingsSchema = z.object({
   ossAccessKeySecret: z.string(),
   ossPathPrefix: z.string(),
   ossPublicBaseUrl: z.string(),
+  visionModelBaseUrl: z.string().optional().default(""),
+  visionModelApiKey: z.string().optional().default(""),
+  visionModelName: z.string().optional().default(""),
+  ocrEnabled: z.boolean().optional().default(false),
 });
 
 export async function GET() {

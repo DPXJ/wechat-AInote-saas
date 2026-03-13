@@ -18,6 +18,9 @@ export interface RecordAsset {
   mimeType: string;
   byteSize: number;
   storageKey: string;
+  tags: string[];
+  description: string;
+  ocrText: string;
   createdAt: string;
 }
 
@@ -98,6 +101,33 @@ export interface SearchResponse {
   citations: SearchCitation[];
 }
 
+export type TodoPriority = "low" | "medium" | "high" | "urgent";
+export type TodoStatus = "pending" | "done";
+
+export interface Todo {
+  id: string;
+  recordId: string | null;
+  content: string;
+  priority: TodoPriority;
+  status: TodoStatus;
+  createdAt: string;
+  completedAt: string | null;
+  updatedAt: string;
+}
+
+export interface StatsData {
+  totalRecords: number;
+  todayRecords: number;
+  imageCount: number;
+  textCount: number;
+  videoCount: number;
+  documentCount: number;
+  totalTodos: number;
+  todayTodos: number;
+  pendingTodos: number;
+  urgentTodos: number;
+}
+
 export interface IntegrationSettings {
   storageMode: "local" | "oss";
   notionToken: string;
@@ -116,6 +146,10 @@ export interface IntegrationSettings {
   ossAccessKeySecret: string;
   ossPathPrefix: string;
   ossPublicBaseUrl: string;
+  visionModelBaseUrl: string;
+  visionModelApiKey: string;
+  visionModelName: string;
+  ocrEnabled: boolean;
 }
 
 export interface IntegrationStatusItem {

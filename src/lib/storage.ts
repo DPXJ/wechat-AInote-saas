@@ -74,19 +74,57 @@ export async function storeUpload(
   };
 }
 
-export async function readStoredUpload(storageKey: string) {
+export async function deleteStoredUpload(storageKey: string) {
+  if (storageKey.startsWith("oss:")) {
+    const objectKey = storageKey.replace(/^oss:/, "");
+    try {
+      const client = createOssClient();
+      await client.delete(objectKey);
+    } catch {
+      // best-effort: file may already be gone
+    }
+    return;
+  }
+
+  const resolvedKey = storageKey.replace(/^local:/, "");
+  try {
+    await fs.unlink(path.join(paths.uploadsDir, resolvedKey));
+  } catch {
+    // best-effort
+  }
+}
+
+export async function readStoredUpload(
+  storageKey: string,
+  options?: { download?: boolean; fileName?: string; thumbnail?: boolean },
+) {
   const settings = getIntegrationSettings();
 
   if (storageKey.startsWith("oss:")) {
     const objectKey = storageKey.replace(/^oss:/, "");
     const client = createOssClient();
-    const url = settings.ossPublicBaseUrl
-      ? joinUrl(settings.ossPublicBaseUrl, objectKey)
-      : client.signatureUrl(objectKey, { expires: 3600 });
+
+    if (settings.ossPublicBaseUrl) {
+      let url = joinUrl(settings.ossPublicBaseUrl, objectKey);
+      if (options?.thumbnail) {
+        url += "?x-oss-process=image/resize,m_fill,w_480,h_320";
+      }
+      return { kind: "redirect" as const, url };
+    }
+
+    const signOptions: Record<string, unknown> = { expires: 3600 };
+    if (options?.download && options.fileName) {
+      signOptions.response = {
+        "content-disposition": `attachment; filename="${encodeURIComponent(options.fileName)}"`,
+      };
+    }
+    if (options?.thumbnail) {
+      signOptions.process = "image/resize,m_fill,w_480,h_320";
+    }
 
     return {
       kind: "redirect" as const,
-      url,
+      url: client.signatureUrl(objectKey, signOptions),
     };
   }
 

@@ -1,9 +1,12 @@
+"use client";
+
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { AssetGallery } from "@/components/asset-gallery";
 import { RecordQuickActions } from "@/components/record-quick-actions";
 import { SyncPreview } from "@/components/sync-preview";
-import { getKnowledgeRecord } from "@/lib/records";
-import type { RecordType, SyncRun } from "@/lib/types";
+import type { KnowledgeRecord, RecordAsset, RecordType, SyncRun } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
 
 const recordTypeLabels: Record<RecordType, string> = {
@@ -13,7 +16,17 @@ const recordTypeLabels: Record<RecordType, string> = {
   document: "文档",
   audio: "音频",
   video: "视频",
-  mixed: "混合资料",
+  mixed: "混合",
+};
+
+const recordTypeIcons: Record<RecordType, string> = {
+  text: "📝",
+  image: "📷",
+  pdf: "📄",
+  document: "📋",
+  audio: "🎵",
+  video: "🎬",
+  mixed: "📦",
 };
 
 const syncTargetLabels: Record<SyncRun["target"], string> = {
@@ -22,239 +35,432 @@ const syncTargetLabels: Record<SyncRun["target"], string> = {
   "feishu-doc": "飞书文档",
 };
 
-const syncStatusLabels: Record<
-  SyncRun["status"],
-  { label: string; className: string }
-> = {
-  pending: {
-    label: "处理中",
-    className: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
-  },
-  synced: {
-    label: "已同步",
-    className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-  },
-  failed: {
-    label: "失败",
-    className: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
-  },
+const syncStatusStyles: Record<SyncRun["status"], { label: string; dot: string }> = {
+  pending: { label: "处理中", dot: "bg-amber-400" },
+  synced: { label: "已同步", dot: "bg-emerald-400" },
+  failed: { label: "失败", dot: "bg-rose-400" },
 };
 
-export default async function RecordDetailPage({
+export default function RecordDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-  const record = getKnowledgeRecord(id);
+  const router = useRouter();
+  const [record, setRecord] = useState<KnowledgeRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editSource, setEditSource] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const loadRecord = useCallback(async () => {
+    const { id } = await params;
+    const res = await fetch(`/api/records/${id}`);
+    if (!res.ok) {
+      setLoading(false);
+      return;
+    }
+    const data = await res.json();
+    setRecord(data.record);
+    setEditTitle(data.record.title);
+    setEditSource(data.record.sourceLabel);
+    setEditNote(data.record.contextNote);
+    setLoading(false);
+  }, [params]);
+
+  useEffect(() => {
+    loadRecord();
+  }, [loadRecord]);
+
+  const handleDelete = async () => {
+    if (!record) return;
+    const ok = window.confirm("确定删除此条记录？删除后不可恢复。");
+    if (!ok) return;
+    await fetch(`/api/records/${record.id}`, { method: "DELETE" });
+    router.push("/");
+  };
+
+  const handleSave = async () => {
+    if (!record) return;
+    setSaving(true);
+    const fields: Record<string, string> = {};
+    if (editTitle !== record.title) fields.title = editTitle;
+    if (editSource !== record.sourceLabel) fields.sourceLabel = editSource;
+    if (editNote !== record.contextNote) fields.contextNote = editNote;
+    if (Object.keys(fields).length > 0) {
+      const res = await fetch(`/api/records/${record.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      const data = await res.json();
+      if (data.record) setRecord(data.record);
+    }
+    setSaving(false);
+    setEditing(false);
+  };
+
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[var(--background)]">
+        <div className="flex flex-col items-center gap-3">
+          <svg className="h-8 w-8 animate-spin text-[var(--muted)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <p className="text-sm text-[var(--muted)]">加载中...</p>
+        </div>
+      </main>
+    );
+  }
 
   if (!record) {
-    notFound();
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[var(--background)]">
+        <div className="text-center">
+          <p className="text-lg text-[var(--foreground)]">资料不存在</p>
+          <Link href="/" className="mt-3 inline-block text-sm text-[var(--accent)]">
+            ← 返回首页
+          </Link>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-4 py-5 lg:px-6 lg:py-6">
-      <div className="mx-auto max-w-7xl">
-        <Link
-          href="/"
-          className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
-        >
-          返回工作台
-        </Link>
+    <main className="min-h-screen bg-[var(--background)] px-4 py-6 lg:px-8">
+      <div className="mx-auto max-w-4xl">
+        {/* Top bar */}
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+          >
+            ← 返回
+          </button>
+          <div className="flex items-center gap-2">
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted)] transition hover:bg-[var(--surface)]"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-sm font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {saving ? "保存中..." : "保存"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                >
+                  ✎ 编辑
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="rounded-lg px-3 py-1.5 text-sm text-rose-500 transition hover:bg-rose-500/10"
+                >
+                  🗑 删除
+                </button>
+              </>
+            )}
+          </div>
+        </div>
 
-        <section className="mt-5 rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] px-6 py-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)] lg:px-8">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div className="max-w-4xl">
-              <p className="text-xs tracking-[0.3em] text-slate-500">{record.sourceLabel}</p>
-              <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-950 lg:text-4xl">
-                {record.title}
-              </h1>
-              <p className="mt-4 text-sm leading-8 text-slate-600 lg:text-base">
-                {record.summary}
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs text-[var(--accent)]">
-                  {recordTypeLabels[record.recordType]}
+        {/* Header */}
+        <section className="mt-5">
+          <div className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--muted)]">
+            <span>{recordTypeIcons[record.recordType]}</span>
+            {editing ? (
+              <input
+                value={editSource}
+                onChange={(e) => setEditSource(e.target.value)}
+                className="rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-0.5 text-[13px] text-[var(--foreground)]"
+                placeholder="来源"
+              />
+            ) : (
+              <span>{record.sourceLabel}</span>
+            )}
+            <span className="text-[var(--line-strong)]">·</span>
+            <span>{recordTypeLabels[record.recordType]}</span>
+            <span className="text-[var(--line-strong)]">·</span>
+            <span>{formatDateTime(record.createdAt)}</span>
+            {record.assets.length > 0 && (
+              <>
+                <span className="text-[var(--line-strong)]">·</span>
+                <span>{record.assets.length} 个附件</span>
+              </>
+            )}
+          </div>
+
+          {editing ? (
+            <input
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="mt-3 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-2xl font-bold text-[var(--foreground)] lg:text-3xl"
+              placeholder="标题"
+            />
+          ) : (
+            <h1 className="mt-3 text-2xl font-bold leading-snug text-[var(--foreground)] lg:text-3xl">
+              {record.title}
+            </h1>
+          )}
+
+          <p className="mt-4 text-[15px] leading-8 text-[var(--muted-strong)]">
+            {record.summary}
+          </p>
+
+          {record.keywords.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {record.keywords.map((kw) => (
+                <span
+                  key={kw}
+                  className="rounded-md bg-[var(--accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]"
+                >
+                  {kw}
                 </span>
-                {record.keywords.map((keyword) => (
-                  <span
-                    key={keyword}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600"
-                  >
-                    {keyword}
-                  </span>
-                ))}
-              </div>
+              ))}
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-3 xl:w-[360px] xl:grid-cols-1">
-              <SummaryMetric label="入库时间" value={formatDateTime(record.createdAt)} />
-              <SummaryMetric label="附件数量" value={`${record.assets.length} 个`} />
-              <SummaryMetric label="同步次数" value={`${record.syncRuns.length} 次`} />
-            </div>
-          </div>
+          )}
         </section>
 
-        <section className="mt-6 grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-          <div className="space-y-6">
-            <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
-              <p className="text-xs tracking-[0.28em] text-slate-500">快速操作</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
-                先确认，再同步出去
-              </h2>
-              <p className="mt-3 text-sm leading-7 text-slate-600">
-                如果这条资料已经整理得足够清楚，现在就可以发到 Notion 或投递到滴答清单。
+        {/* Quick actions */}
+        <section className="mt-6 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-5">
+          <RecordQuickActions recordId={record.id} />
+        </section>
+
+        {/* Action items */}
+        {record.actionItems.length > 0 && (
+          <section className="mt-5 rounded-2xl bg-[var(--surface)] px-5 py-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              行动项
+            </p>
+            <ul className="space-y-2">
+              {record.actionItems.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-[15px] text-[var(--foreground)]">
+                  <span className="mt-0.5 text-[var(--accent)]">•</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* Context note */}
+        {editing ? (
+          <section className="mt-5 rounded-2xl bg-[var(--surface)] px-5 py-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              备注
+            </p>
+            <textarea
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-[var(--line)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)]"
+              placeholder="备注信息（可选）"
+            />
+          </section>
+        ) : record.contextNote ? (
+          <section className="mt-5 rounded-2xl bg-[var(--surface)] px-5 py-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              备注
+            </p>
+            <p className="text-[15px] leading-7 text-[var(--muted-strong)]">
+              {record.contextNote}
+            </p>
+          </section>
+        ) : null}
+
+        {/* Original text */}
+        {record.contentText && (
+          <details className="mt-5 rounded-2xl border border-[var(--line)] bg-[var(--card)]">
+            <summary className="cursor-pointer list-none px-5 py-3.5 text-sm font-medium text-[var(--muted-strong)]">
+              原始文本
+            </summary>
+            <div className="border-t border-[var(--line)] px-5 py-4">
+              <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--muted-strong)]">
+                {record.contentText}
               </p>
-              <div className="mt-5">
-                <RecordQuickActions recordId={record.id} />
-              </div>
-            </section>
+            </div>
+          </details>
+        )}
 
-            <section className="grid gap-6 md:grid-cols-2">
-              <ListCard
-                title="AI 识别出的行动项"
-                items={
-                  record.actionItems.length > 0
-                    ? record.actionItems
-                    : ["当前没有识别出明确待办。"]
-                }
-              />
-              <TextCard
-                title="手动备注"
-                content={record.contextNote || "这条资料没有填写手动备注。"}
-              />
-            </section>
+        {/* Extracted text */}
+        {record.extractedText && (
+          <details className="mt-3 rounded-2xl border border-[var(--line)] bg-[var(--card)]">
+            <summary className="cursor-pointer list-none px-5 py-3.5 text-sm font-medium text-[var(--muted-strong)]">
+              抽取文本
+            </summary>
+            <div className="border-t border-[var(--line)] px-5 py-4">
+              <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--muted-strong)]">
+                {record.extractedText}
+              </p>
+            </div>
+          </details>
+        )}
 
-            {record.contentText ? (
-              <TextCard title="原始文本" content={record.contentText} />
-            ) : null}
-
-            {record.extractedText ? (
-              <TextCard title="抽取文本" content={record.extractedText} />
-            ) : null}
+        {/* Sync preview */}
+        <details className="mt-3 rounded-2xl border border-[var(--line)] bg-[var(--card)]">
+          <summary className="cursor-pointer list-none px-5 py-3.5 text-sm font-medium text-[var(--muted-strong)]">
+            同步预览
+          </summary>
+          <div className="border-t border-[var(--line)] p-5">
+            <SyncPreview record={record} compact />
           </div>
+        </details>
 
-          <div className="space-y-6">
-            <SyncPreview record={record} />
+        {/* Assets */}
+        {record.assets.length > 0 && (
+          <section className="mt-5">
+            <AssetGallery assets={record.assets} />
 
-            <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
-              <p className="text-xs tracking-[0.28em] text-slate-500">附件</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
-                原始文件与截图
-              </h2>
-              <div className="mt-5 space-y-3">
-                {record.assets.length > 0 ? (
-                  record.assets.map((asset) => (
-                    <a
-                      key={asset.id}
-                      href={`/api/assets/${asset.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block rounded-[24px] border border-slate-200 bg-white px-4 py-4 transition hover:border-slate-300 hover:shadow-[0_14px_30px_rgba(39,73,118,0.08)]"
-                    >
-                      <p className="text-sm font-medium text-slate-900">
-                        {asset.originalName}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {asset.mimeType} · {Math.max(1, Math.round(asset.byteSize / 1024))} KB
-                      </p>
-                    </a>
-                  ))
-                ) : (
-                  <EmptyCard text="这条资料没有附件。" />
-                )}
-              </div>
-            </section>
+            <div className="mt-4 space-y-3">
+              {record.assets.map((asset) => (
+                <AssetMetaCard key={asset.id} asset={asset} onOcrDone={loadRecord} />
+              ))}
+            </div>
+          </section>
+        )}
 
-            <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
-              <p className="text-xs tracking-[0.28em] text-slate-500">同步历史</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
-                最近同步动作
-              </h2>
-              <div className="mt-5 space-y-3">
-                {record.syncRuns.length > 0 ? (
-                  record.syncRuns.map((run) => (
-                    <article
-                      key={run.id}
-                      className="rounded-[24px] border border-slate-200 bg-white px-4 py-4"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">
-                            {syncTargetLabels[run.target]}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {formatDateTime(run.createdAt)}
-                          </p>
-                        </div>
-                        <span
-                          className={[
-                            "rounded-full px-3 py-1 text-xs",
-                            syncStatusLabels[run.status].className,
-                          ].join(" ")}
-                        >
-                          {syncStatusLabels[run.status].label}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm leading-7 text-slate-600">
-                        {run.message}
-                      </p>
-                    </article>
-                  ))
-                ) : (
-                  <EmptyCard text="还没有发生过同步动作。" />
-                )}
-              </div>
-            </section>
-          </div>
-        </section>
+        {/* Sync history */}
+        {record.syncRuns.length > 0 && (
+          <section className="mt-5">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              同步历史 ({record.syncRuns.length})
+            </p>
+            <div className="space-y-2">
+              {record.syncRuns.map((run) => (
+                <div
+                  key={run.id}
+                  className="flex items-center justify-between rounded-xl bg-[var(--surface)] px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-[var(--foreground)]">
+                      {syncTargetLabels[run.target]}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[var(--muted)]">
+                      {formatDateTime(run.createdAt)}
+                    </p>
+                    {run.message && (
+                      <p className="mt-1 text-xs text-[var(--muted-strong)]">{run.message}</p>
+                    )}
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--card)] px-2.5 py-1 text-xs text-[var(--muted-strong)]">
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${syncStatusStyles[run.status].dot}`} />
+                    {syncStatusStyles[run.status].label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );
 }
 
-function SummaryMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4">
-      <p className="text-xs tracking-[0.22em] text-slate-500">{label}</p>
-      <p className="mt-3 text-sm font-medium text-slate-900">{value}</p>
-    </div>
-  );
-}
+function AssetMetaCard({ asset, onOcrDone }: { asset: RecordAsset; onOcrDone: () => void }) {
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState("");
+  const isImage = asset.mimeType.startsWith("image/");
+  const hasOcr = Boolean(asset.ocrText);
+  const hasMeta = asset.tags.length > 0 || asset.description || asset.ocrText;
 
-function ListCard({ title, items }: { title: string; items: string[] }) {
+  const handleOcr = async () => {
+    setOcrLoading(true);
+    setOcrError("");
+    try {
+      const res = await fetch(`/api/assets/${asset.id}/ocr`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        setOcrError(data.error || "OCR 识别失败");
+        return;
+      }
+      onOcrDone();
+    } catch {
+      setOcrError("OCR 请求失败，请检查网络。");
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
   return (
-    <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
-      <p className="text-xs tracking-[0.28em] text-slate-500">{title}</p>
-      <div className="mt-5 space-y-3">
-        {items.map((item) => (
-          <div
-            key={item}
-            className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm leading-7 text-slate-700"
+    <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-[var(--foreground)]">{asset.originalName}</p>
+        {isImage && !hasOcr && (
+          <button
+            type="button"
+            onClick={handleOcr}
+            disabled={ocrLoading}
+            className="rounded-lg bg-[var(--foreground)] px-3 py-1 text-xs font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
           >
-            {item}
-          </div>
-        ))}
+            {ocrLoading ? "识别中..." : "🔍 OCR 识别"}
+          </button>
+        )}
+        {isImage && hasOcr && (
+          <button
+            type="button"
+            onClick={handleOcr}
+            disabled={ocrLoading}
+            className="rounded-lg border border-[var(--line)] px-3 py-1 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--card)] disabled:opacity-50"
+          >
+            {ocrLoading ? "识别中..." : "🔄 重新识别"}
+          </button>
+        )}
       </div>
-    </section>
-  );
-}
 
-function TextCard({ title, content }: { title: string; content: string }) {
-  return (
-    <section className="rounded-[34px] border border-[var(--line)] bg-[var(--card-strong)] p-6 shadow-[0_24px_70px_rgba(39,73,118,0.08)]">
-      <p className="text-xs tracking-[0.28em] text-slate-500">{title}</p>
-      <p className="mt-5 whitespace-pre-wrap text-sm leading-8 text-slate-700">
-        {content}
-      </p>
-    </section>
-  );
-}
+      {ocrError && (
+        <p className="mt-1.5 text-xs text-rose-500">{ocrError}</p>
+      )}
 
-function EmptyCard({ text }: { text: string }) {
-  return (
-    <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/70 px-4 py-8 text-sm leading-7 text-slate-500">
-      {text}
+      {asset.description && (
+        <p className="mt-2 text-sm leading-6 text-[var(--muted-strong)]">
+          <span className="font-medium text-[var(--foreground)]">描述：</span>{asset.description}
+        </p>
+      )}
+
+      {asset.tags.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {asset.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-md bg-[var(--accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {asset.ocrText && (
+        <details className="mt-2" open>
+          <summary className="cursor-pointer text-xs font-medium text-[var(--muted)]">
+            OCR 识别文本
+          </summary>
+          <p className="mt-1 whitespace-pre-wrap rounded-lg bg-[var(--card)] px-3 py-2 text-xs leading-5 text-[var(--muted-strong)]">
+            {asset.ocrText}
+          </p>
+        </details>
+      )}
+
+      {!hasMeta && !isImage && (
+        <p className="mt-1 text-xs text-[var(--muted)]">无附加信息</p>
+      )}
     </div>
   );
 }

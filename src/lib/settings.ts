@@ -21,6 +21,10 @@ const settingKeys = [
   "ossAccessKeySecret",
   "ossPathPrefix",
   "ossPublicBaseUrl",
+  "visionModelBaseUrl",
+  "visionModelApiKey",
+  "visionModelName",
+  "ocrEnabled",
 ] as const;
 
 type SettingKey = (typeof settingKeys)[number];
@@ -43,6 +47,10 @@ const envDefaults: IntegrationSettings = {
   ossAccessKeySecret: appConfig.ossAccessKeySecret,
   ossPathPrefix: appConfig.ossPathPrefix,
   ossPublicBaseUrl: appConfig.ossPublicBaseUrl,
+  visionModelBaseUrl: "",
+  visionModelApiKey: "",
+  visionModelName: "",
+  ocrEnabled: false,
 };
 
 function normalizeBoolean(value: string | boolean | null | undefined) {
@@ -89,6 +97,15 @@ export function getIntegrationSettings(): IntegrationSettings {
     ossPathPrefix: stored.get("ossPathPrefix") ?? envDefaults.ossPathPrefix,
     ossPublicBaseUrl:
       stored.get("ossPublicBaseUrl") ?? envDefaults.ossPublicBaseUrl,
+    visionModelBaseUrl:
+      stored.get("visionModelBaseUrl") ?? envDefaults.visionModelBaseUrl,
+    visionModelApiKey:
+      stored.get("visionModelApiKey") ?? envDefaults.visionModelApiKey,
+    visionModelName:
+      stored.get("visionModelName") ?? envDefaults.visionModelName,
+    ocrEnabled: normalizeBoolean(
+      stored.get("ocrEnabled") ?? String(envDefaults.ocrEnabled),
+    ),
   };
 }
 
@@ -187,6 +204,26 @@ export function saveIntegrationSettings(input: IntegrationSettings) {
     statement.run({
       key: "ossPublicBaseUrl",
       value: input.ossPublicBaseUrl.trim(),
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "visionModelBaseUrl",
+      value: input.visionModelBaseUrl.trim(),
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "visionModelApiKey",
+      value: input.visionModelApiKey,
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "visionModelName",
+      value: input.visionModelName.trim(),
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "ocrEnabled",
+      value: String(input.ocrEnabled),
       updated_at: updatedAt,
     });
   });

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AssetGallery } from "@/components/asset-gallery";
 import { InboxForm } from "@/components/inbox-form";
 import { IntegrationsPanel } from "@/components/integrations-panel";
-import { RecordQuickActions } from "@/components/record-quick-actions";
 import { SearchPanel } from "@/components/search-panel";
-import { SyncPreview } from "@/components/sync-preview";
+import { StatsBar } from "@/components/stats-bar";
+import { TodoPanel } from "@/components/todo-panel";
 import type {
   IntegrationSettings,
   IntegrationStatus,
@@ -16,34 +17,18 @@ import type {
 } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
 
-type WorkspaceTab = "record" | "history" | "search" | "settings";
-type HistoryFilter = "all" | "todo" | "synced" | "text" | "asset";
+type WorkspaceTab = "record" | "history" | "todos" | "search" | "settings";
+type HistoryFilter = "all" | "text" | "image" | "video" | "audio" | "document" | "pdf" | "synced";
 
-const tabs: Array<{ id: WorkspaceTab; label: string; shortLabel: string }> = [
-  { id: "record", label: "记录", shortLabel: "收录资料" },
-  { id: "history", label: "历史记录", shortLabel: "查看结果" },
-  { id: "search", label: "AI 搜索", shortLabel: "找回原文" },
-  { id: "settings", label: "设置", shortLabel: "配置通道" },
+const PAGE_SIZE = 20;
+
+const tabs: Array<{ id: WorkspaceTab; label: string; icon: string }> = [
+  { id: "record", label: "开始记录", icon: "✦" },
+  { id: "history", label: "历史", icon: "☰" },
+  { id: "todos", label: "待办", icon: "☑" },
+  { id: "search", label: "搜索", icon: "⌕" },
+  { id: "settings", label: "设置", icon: "⚙" },
 ];
-
-const tabMeta: Record<WorkspaceTab, { title: string; summary: string }> = {
-  record: {
-    title: "内容录入",
-    summary: "文本直接粘贴，附件按类型上传。",
-  },
-  history: {
-    title: "历史记录",
-    summary: "按时间查看资料、AI 摘要和同步状态。",
-  },
-  search: {
-    title: "AI 搜索",
-    summary: "一句话找回原文、出处和上下文。",
-  },
-  settings: {
-    title: "连接设置",
-    summary: "把 Notion、滴答邮箱和 OSS 配置到可用状态。",
-  },
-};
 
 const recordTypeLabels: Record<RecordType, string> = {
   text: "文本",
@@ -55,55 +40,68 @@ const recordTypeLabels: Record<RecordType, string> = {
   mixed: "混合",
 };
 
+const recordTypeIcons: Record<RecordType, string> = {
+  text: "📝",
+  image: "📷",
+  pdf: "📄",
+  document: "📋",
+  audio: "🎵",
+  video: "🎬",
+  mixed: "📦",
+};
+
 const syncTargetLabels: Record<SyncRun["target"], string> = {
   notion: "Notion",
   "ticktick-email": "滴答清单",
   "feishu-doc": "飞书文档",
 };
 
-const syncStatusLabels: Record<
-  SyncRun["status"],
-  { label: string; className: string }
-> = {
-  pending: {
-    label: "处理中",
-    className: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
-  },
-  synced: {
-    label: "已同步",
-    className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-  },
-  failed: {
-    label: "失败",
-    className: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
-  },
+const syncStatusStyles: Record<SyncRun["status"], { label: string; dot: string }> = {
+  pending: { label: "处理中", dot: "bg-amber-400" },
+  synced: { label: "已同步", dot: "bg-emerald-400" },
+  failed: { label: "失败", dot: "bg-rose-400" },
 };
 
+const historyFilters: Array<{ id: HistoryFilter; label: string }> = [
+  { id: "all", label: "全部" },
+  { id: "text", label: "文本" },
+  { id: "image", label: "图片" },
+  { id: "video", label: "视频" },
+  { id: "audio", label: "音频" },
+  { id: "document", label: "文档" },
+  { id: "pdf", label: "PDF" },
+  { id: "synced", label: "已同步" },
+];
+
 export function HomeWorkspace({
-  records,
+  initialRecords,
+  initialTotal,
   integrationSettings,
   integrationStatus,
 }: {
-  records: KnowledgeRecord[];
+  initialRecords: KnowledgeRecord[];
+  initialTotal: number;
   integrationSettings: IntegrationSettings;
   integrationStatus: IntegrationStatus;
 }) {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("record");
-  const [selectedRecordId, setSelectedRecordId] = useState(records[0]?.id || "");
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(() => {
+    if (typeof window === "undefined") return "record";
+    const saved = window.sessionStorage.getItem("ai-box-tab");
+    if (saved && ["record", "history", "todos", "search", "settings"].includes(saved)) {
+      return saved as WorkspaceTab;
+    }
+    return "record";
+  });
+  const [records, setRecords] = useState<KnowledgeRecord[]>(initialRecords);
+  const [total, setTotal] = useState(initialTotal);
+  const [selectedRecordId, setSelectedRecordId] = useState(initialRecords[0]?.id || "");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
+  const [loadingMore, setLoadingMore] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") {
-      return "light";
-    }
-
-    const savedTheme = window.localStorage.getItem("ai-box-theme");
-    if (savedTheme === "dark" || savedTheme === "light") {
-      return savedTheme;
-    }
-
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
+    if (typeof window === "undefined") return "light";
+    const saved = window.localStorage.getItem("ai-box-theme");
+    if (saved === "dark" || saved === "light") return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
 
   useEffect(() => {
@@ -111,426 +109,560 @@ export function HomeWorkspace({
     window.localStorage.setItem("ai-box-theme", theme);
   }, [theme]);
 
-  const stats = useMemo(
-    () => ({
-      total: records.length,
-      actionable: records.filter((record) => record.actionItems.length > 0).length,
-      synced: records.reduce((sum, record) => {
-        return sum + record.syncRuns.filter((run) => run.status === "synced").length;
-      }, 0),
-    }),
-    [records],
+  useEffect(() => {
+    window.sessionStorage.setItem("ai-box-tab", activeTab);
+  }, [activeTab]);
+
+  const refreshRecords = useCallback(async () => {
+    const res = await fetch(`/api/records?limit=${records.length || PAGE_SIZE}&offset=0`);
+    const data = await res.json();
+    setRecords(data.records);
+    setTotal(data.total);
+  }, [records.length]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || records.length >= total) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/records?limit=${PAGE_SIZE}&offset=${records.length}`);
+      const data = await res.json();
+      setRecords((prev) => [...prev, ...data.records]);
+      setTotal(data.total);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, records.length, total]);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const ok = window.confirm("确定删除此条记录？删除后不可恢复。");
+      if (!ok) return;
+      await fetch(`/api/records/${id}`, { method: "DELETE" });
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+      setTotal((prev) => prev - 1);
+      if (selectedRecordId === id) setSelectedRecordId("");
+    },
+    [selectedRecordId],
+  );
+
+  const handleUpdate = useCallback(
+    async (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => {
+      const res = await fetch(`/api/records/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      const data = await res.json();
+      if (data.record) {
+        setRecords((prev) => prev.map((r) => (r.id === id ? data.record : r)));
+      }
+    },
+    [],
   );
 
   const filteredRecords = useMemo(() => {
-    return records.filter((record) => {
-      if (historyFilter === "todo") {
-        return record.actionItems.length > 0;
-      }
-
-      if (historyFilter === "synced") {
-        return record.syncRuns.some((run) => run.status === "synced");
-      }
-
-      if (historyFilter === "text") {
-        return record.recordType === "text";
-      }
-
-      if (historyFilter === "asset") {
-        return record.recordType !== "text";
-      }
-
-      return true;
+    return records.filter((r) => {
+      if (historyFilter === "synced") return r.syncRuns.some((run) => run.status === "synced");
+      if (historyFilter === "all") return true;
+      return r.recordType === historyFilter;
     });
   }, [historyFilter, records]);
 
   const selectedRecord = useMemo(
-    () =>
-      filteredRecords.find((record) => record.id === selectedRecordId) ||
-      filteredRecords[0] ||
-      null,
+    () => filteredRecords.find((r) => r.id === selectedRecordId) || filteredRecords[0] || null,
     [filteredRecords, selectedRecordId],
   );
 
-  const activeMeta = tabMeta[activeTab];
-  const statusSummary = [
-    integrationStatus.notion.configured ? "Notion 已连接" : "Notion 未配置",
-    integrationStatus.smtp.configured && integrationStatus.ticktickEmail.configured
-      ? "滴答自动识别待办"
-      : "滴答未配置",
-    `附件${integrationSettings.storageMode === "oss" ? "走 OSS" : "本地保存"}`,
-  ].join(" · ");
+  const showFloatingSearch = activeTab === "record" || activeTab === "history";
 
   return (
-    <main className="grain min-h-screen bg-[var(--background)]">
-      <div className="mx-auto grid min-h-screen max-w-[1440px] gap-3 px-4 py-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-6 lg:py-4">
-        <aside className="hidden self-stretch lg:block">
-          <div className="flex h-full flex-col rounded-[28px] border border-[var(--line)] bg-[var(--card-strong)] p-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
-            <div className="rounded-[22px] bg-slate-950 px-4 py-4 text-white">
-              <p className="text-[11px] tracking-[0.3em] text-slate-400">微信资料台</p>
-              <h1 className="mt-2 font-serif text-[28px] leading-none">AI 收件箱</h1>
-              <p className="mt-3 text-sm text-slate-300">把微信里的内容先收进来。</p>
+    <main className="min-h-screen bg-[var(--background)]">
+      <div className="mx-auto grid min-h-screen max-w-[1440px] lg:grid-cols-[220px_minmax(0,1fr)]">
+        {/* ── Sidebar ── */}
+        <aside className="hidden border-r border-[var(--line)] bg-[var(--sidebar-bg)] lg:block">
+          <div className="sticky top-0 flex h-screen flex-col px-3 py-6">
+            <div className="mb-10 px-3">
+              <h1 className="text-xl font-bold tracking-tight text-[var(--foreground)]">
+                AI 信迹
+              </h1>
+              <p className="mt-1 text-[13px] text-[var(--muted)]">AI 知识收件箱</p>
             </div>
 
-            <nav className="mt-4 flex-1 space-y-2">
+            <nav className="flex-1 space-y-1">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
                   className={[
-                    "w-full rounded-[20px] border px-4 py-3 text-left transition",
+                    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition",
                     activeTab === tab.id
-                      ? "border-slate-900 bg-slate-950 text-white"
-                      : "border-[var(--line)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--line-strong)]",
+                      ? "bg-[var(--sidebar-active)] font-semibold text-[var(--foreground)]"
+                      : "text-[var(--muted-strong)] hover:bg-[var(--sidebar-active)] hover:text-[var(--foreground)]",
                   ].join(" ")}
                 >
-                  <p className="text-sm font-medium">{tab.label}</p>
-                  <p
-                    className={[
-                      "mt-1 text-xs",
-                      activeTab === tab.id ? "text-slate-300" : "text-[var(--muted)]",
-                    ].join(" ")}
-                  >
-                    {tab.shortLabel}
-                  </p>
+                  <span className="w-5 text-center text-base">{tab.icon}</span>
+                  <span className="text-[15px]">{tab.label}</span>
                 </button>
               ))}
             </nav>
 
-            <div className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] px-4 py-4">
-              <p className="text-xs tracking-[0.24em] text-[var(--muted)]">当前规则</p>
-              <div className="mt-3 space-y-2 text-sm text-[var(--foreground)]">
-                <p>Notion 自动同步</p>
-                <p>识别明确时间自动投递滴答</p>
-                <p>附件可切到 OSS 存储</p>
-              </div>
-            </div>
+            <button
+              suppressHydrationWarning
+              type="button"
+              onClick={() => setTheme((c) => (c === "light" ? "dark" : "light"))}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[var(--muted)] transition hover:bg-[var(--sidebar-active)] hover:text-[var(--foreground)]"
+            >
+              <span className="w-5 text-center text-base">
+                {theme === "light" ? "☀" : "☾"}
+              </span>
+              <span className="text-[15px]">{theme === "light" ? "切换暗色" : "切换亮色"}</span>
+            </button>
           </div>
         </aside>
 
+        {/* ── Content ── */}
         <div className="min-w-0">
-          <div className="flex gap-2 overflow-auto pb-2 lg:hidden">
+          {/* Mobile header */}
+          <header className="sticky top-0 z-10 flex items-center gap-1 border-b border-[var(--line)] bg-[var(--background)]/95 px-4 py-2.5 backdrop-blur lg:hidden">
+            <span className="mr-3 text-base font-bold text-[var(--foreground)]">AI 信迹</span>
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={[
-                  "shrink-0 rounded-full px-4 py-2 text-sm transition",
+                  "rounded-lg px-3 py-1.5 text-sm transition",
                   activeTab === tab.id
-                    ? "bg-slate-950 text-white"
-                    : "border border-[var(--line)] bg-[var(--surface-strong)] text-[var(--muted-strong)]",
+                    ? "bg-[var(--foreground)] font-medium text-[var(--background)]"
+                    : "text-[var(--muted-strong)]",
                 ].join(" ")}
               >
                 {tab.label}
               </button>
             ))}
-          </div>
+            <button
+              suppressHydrationWarning
+              type="button"
+              onClick={() => setTheme((c) => (c === "light" ? "dark" : "light"))}
+              className="ml-auto text-sm text-[var(--muted)]"
+            >
+              {theme === "light" ? "☀" : "☾"}
+            </button>
+          </header>
 
-          <section className="rounded-[24px] border border-[var(--line)] bg-[var(--card-strong)] px-4 py-3 shadow-[0_16px_40px_rgba(15,23,42,0.05)] lg:px-5">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-              <div>
-                <h2 className="font-serif text-2xl text-[var(--foreground)]">
-                  {activeMeta.title}
-                </h2>
-                <p className="mt-2 text-sm text-[var(--muted)]">{activeMeta.summary}</p>
-                <p className="mt-1 text-sm text-[var(--muted-strong)]">{statusSummary}</p>
-              </div>
+          <div className="p-5 lg:p-8">
+            {/* Stats bar — show on record and history tabs */}
+            {(activeTab === "record" || activeTab === "history") && <StatsBar />}
 
-              <div className="grid gap-2 sm:grid-cols-[repeat(3,88px)_auto]">
-                <MiniStat label="资料" value={String(stats.total)} />
-                <MiniStat label="待办" value={String(stats.actionable)} />
-                <MiniStat label="同步" value={String(stats.synced)} />
-                <button
-                  suppressHydrationWarning
-                  type="button"
-                  onClick={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-                  className="rounded-[18px] border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] transition hover:border-[var(--line-strong)]"
-                >
-                  {theme === "light" ? "切换暗色" : "切换亮色"}
-                </button>
-              </div>
-            </div>
-          </section>
+            {/* Inline AI Search bar — between stats and content */}
+            {showFloatingSearch && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("search")}
+                className="mb-6 flex w-full items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--card)] px-5 py-3 text-left transition hover:border-[var(--foreground)]/20"
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--muted)]">
+                  <circle cx="8" cy="8" r="5.5" />
+                  <path d="M12 12l4 4" />
+                </svg>
+                <span className="text-sm text-[var(--muted)]">AI 搜索：一句话找回原文...</span>
+              </button>
+            )}
 
-          {activeTab === "record" ? (
-            <section className="mt-3 rounded-[32px] border border-[var(--line)] bg-[var(--card-strong)] p-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)] lg:p-5">
+            {/* ── Tab: Record ── */}
+            {activeTab === "record" && (
               <InboxForm
-                onCreated={(recordId) => {
-                  setSelectedRecordId(recordId);
+                onCreated={async (id) => {
+                  setSelectedRecordId(id);
+                  await refreshRecords();
                 }}
               />
-            </section>
-          ) : null}
+            )}
 
-          {activeTab === "history" ? (
-            <section className="mt-4 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-              <section className="rounded-[28px] border border-[var(--line)] bg-[var(--card-strong)] p-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
-                <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] pb-3">
-                  <div>
-                    <p className="text-sm font-medium text-[var(--foreground)]">最近资料</p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">按最近录入时间排序</p>
-                  </div>
-                  <span className="rounded-full bg-[var(--surface)] px-3 py-1 text-xs text-[var(--muted-strong)]">
-                    {filteredRecords.length} 条
-                  </span>
-                </div>
+            {/* ── Tab: History ── */}
+            {activeTab === "history" && (
+              <HistoryTab
+                records={filteredRecords}
+                total={total}
+                hasMore={records.length < total}
+                loadingMore={loadingMore}
+                selectedRecord={selectedRecord}
+                historyFilter={historyFilter}
+                onFilterChange={setHistoryFilter}
+                onSelectRecord={setSelectedRecordId}
+                onLoadMore={loadMore}
+                onDelete={handleDelete}
+                onUpdate={handleUpdate}
+              />
+            )}
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {[
-                    { id: "all", label: "全部" },
-                    { id: "todo", label: "仅待办" },
-                    { id: "synced", label: "仅已同步" },
-                    { id: "text", label: "文本" },
-                    { id: "asset", label: "附件" },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setHistoryFilter(item.id as HistoryFilter)}
-                      className={[
-                        "rounded-full border px-3 py-1.5 text-xs transition",
-                        historyFilter === item.id
-                          ? "border-slate-900 bg-slate-950 text-white"
-                          : "border-[var(--line)] bg-[var(--surface)] text-[var(--muted-strong)] hover:border-[var(--line-strong)]",
-                      ].join(" ")}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
+            {/* ── Tab: Todos ── */}
+            {activeTab === "todos" && <TodoPanel />}
 
-                <div className="mt-2">
-                  {filteredRecords.length > 0 ? (
-                    filteredRecords.map((record) => (
-                      <button
-                        key={record.id}
-                        type="button"
-                        onClick={() => setSelectedRecordId(record.id)}
-                        className={[
-                          "flex w-full items-start justify-between gap-3 border-b border-[var(--line)] px-2 py-4 text-left transition last:border-b-0",
-                          selectedRecord?.id === record.id
-                            ? "rounded-[18px] bg-slate-950 text-white"
-                            : "text-[var(--foreground)] hover:bg-[var(--surface)]",
-                        ].join(" ")}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 text-xs">
-                            <span
-                              className={
-                                selectedRecord?.id === record.id
-                                  ? "text-slate-300"
-                                  : "text-[var(--muted)]"
-                              }
-                            >
-                              {record.sourceLabel}
-                            </span>
-                            <span
-                              className={[
-                                "rounded-full px-2 py-0.5",
-                                selectedRecord?.id === record.id
-                                  ? "bg-white/10 text-slate-200"
-                                  : "bg-[var(--surface)] text-[var(--muted-strong)]",
-                              ].join(" ")}
-                            >
-                              {recordTypeLabels[record.recordType]}
-                            </span>
-                          </div>
-                          <p className="mt-2 truncate text-sm font-medium">{record.title}</p>
-                          <p
-                            className={[
-                              "mt-2 line-clamp-2 text-sm leading-6",
-                              selectedRecord?.id === record.id
-                                ? "text-slate-300"
-                                : "text-[var(--muted-strong)]",
-                            ].join(" ")}
-                          >
-                            {record.summary}
-                          </p>
-                          <p
-                            className={[
-                              "mt-2 text-xs",
-                              selectedRecord?.id === record.id
-                                ? "text-slate-400"
-                                : "text-[var(--muted)]",
-                            ].join(" ")}
-                          >
-                            {formatDateTime(record.createdAt)}
-                          </p>
-                        </div>
-                      </button>
-                    ))
-                  ) : (
-                    <EmptyCard text="还没有资料，先去记录里收录内容。" />
-                  )}
-                </div>
-              </section>
+            {/* ── Tab: Search ── */}
+            {activeTab === "search" && <SearchPanel />}
 
-              <section className="rounded-[28px] border border-[var(--line)] bg-[var(--card-strong)] p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
-                {selectedRecord ? (
-                  <>
-                    <div className="flex flex-col gap-4 border-b border-[var(--line)] pb-5 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
-                          <span>{selectedRecord.sourceLabel}</span>
-                          <span>·</span>
-                          <span>{recordTypeLabels[selectedRecord.recordType]}</span>
-                          <span>·</span>
-                          <span>{formatDateTime(selectedRecord.createdAt)}</span>
-                        </div>
-                        <h3 className="mt-3 text-2xl font-semibold text-[var(--foreground)]">
-                          {selectedRecord.title}
-                        </h3>
-                        <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--muted-strong)]">
-                          {selectedRecord.summary}
-                        </p>
-                      </div>
-                      <Link
-                        href={`/records/${selectedRecord.id}`}
-                        className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[var(--line-strong)]"
-                      >
-                        查看完整详情
-                      </Link>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      {selectedRecord.keywords.length > 0 ? (
-                        selectedRecord.keywords.map((keyword) => (
-                          <span
-                            key={keyword}
-                            className="rounded-full bg-[var(--surface)] px-3 py-1 text-xs text-[var(--muted-strong)]"
-                          >
-                            {keyword}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-[var(--muted)]">暂无关键词。</span>
-                      )}
-                    </div>
-
-                    <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                      <InfoPanel
-                        title="行动项"
-                        content={
-                          selectedRecord.actionItems.length > 0
-                            ? selectedRecord.actionItems.join("\n")
-                            : "当前没有识别出明确待办。"
-                        }
-                      />
-                      <InfoPanel
-                        title="补充说明"
-                        content={selectedRecord.contextNote || "没有补充说明。"}
-                      />
-                    </div>
-
-                    <div className="mt-5 border-t border-[var(--line)] pt-5">
-                      <RecordQuickActions recordId={selectedRecord.id} />
-                    </div>
-
-                    <details className="mt-4 rounded-[22px] border border-[var(--line)] bg-[var(--surface)] px-4 py-4">
-                      <summary className="cursor-pointer list-none text-sm font-medium text-[var(--foreground)]">
-                        查看同步预览
-                      </summary>
-                      <div className="mt-4">
-                        <SyncPreview record={selectedRecord} compact />
-                      </div>
-                    </details>
-
-                    <details
-                      open
-                      className="mt-4 rounded-[22px] border border-[var(--line)] bg-[var(--surface)] px-4 py-4"
-                    >
-                      <summary className="cursor-pointer list-none text-sm font-medium text-[var(--foreground)]">
-                        同步历史
-                      </summary>
-                      <div className="mt-4 space-y-3">
-                        {selectedRecord.syncRuns.length > 0 ? (
-                          selectedRecord.syncRuns.map((run) => (
-                            <article
-                              key={run.id}
-                              className="rounded-[18px] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4"
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-medium text-[var(--foreground)]">
-                                    {syncTargetLabels[run.target]}
-                                  </p>
-                                  <p className="mt-1 text-xs text-[var(--muted)]">
-                                    {formatDateTime(run.createdAt)}
-                                  </p>
-                                </div>
-                                <span
-                                  className={[
-                                    "rounded-full px-3 py-1 text-xs",
-                                    syncStatusLabels[run.status].className,
-                                  ].join(" ")}
-                                >
-                                  {syncStatusLabels[run.status].label}
-                                </span>
-                              </div>
-                              <p className="mt-3 text-sm leading-7 text-[var(--muted-strong)]">
-                                {run.message}
-                              </p>
-                            </article>
-                          ))
-                        ) : (
-                          <EmptyCard text="还没有同步记录。" />
-                        )}
-                      </div>
-                    </details>
-                  </>
-                ) : (
-                  <EmptyCard text="从左侧选择一条资料，这里会显示 AI 整理结果和同步状态。" />
-                )}
-              </section>
-            </section>
-          ) : null}
-
-          {activeTab === "search" ? (
-            <section className="mt-4">
-              <SearchPanel />
-            </section>
-          ) : null}
-
-          {activeTab === "settings" ? (
-            <section className="mt-4">
+            {/* ── Tab: Settings ── */}
+            {activeTab === "settings" && (
               <IntegrationsPanel
                 initialSettings={integrationSettings}
                 initialStatus={integrationStatus}
               />
-            </section>
-          ) : null}
+            )}
+          </div>
         </div>
       </div>
     </main>
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: string }) {
+/* ────────────────────────────────────────────────── */
+/* History Tab                                         */
+/* ────────────────────────────────────────────────── */
+
+function HistoryTab({
+  records,
+  total,
+  hasMore,
+  loadingMore,
+  selectedRecord,
+  historyFilter,
+  onFilterChange,
+  onSelectRecord,
+  onLoadMore,
+  onDelete,
+  onUpdate,
+}: {
+  records: KnowledgeRecord[];
+  total: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  selectedRecord: KnowledgeRecord | null;
+  historyFilter: HistoryFilter;
+  onFilterChange: (f: HistoryFilter) => void;
+  onSelectRecord: (id: string) => void;
+  onLoadMore: () => void;
+  onDelete: (id: string) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => void;
+}) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) onLoadMore();
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, onLoadMore]);
+
   return (
-    <div className="rounded-[18px] border border-[var(--line)] bg-[var(--surface)] px-3 py-3 text-center">
-      <p className="text-[11px] text-[var(--muted)]">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">{value}</p>
+    <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+      {/* Left: list */}
+      <div>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {historyFilters.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onFilterChange(item.id)}
+              className={[
+                "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                historyFilter === item.id
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
+                  : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+              ].join(" ")}
+            >
+              {item.label}
+            </button>
+          ))}
+          <span className="ml-auto text-sm text-[var(--muted)]">{total} 条</span>
+        </div>
+
+        <div className="space-y-1">
+          {records.length > 0 ? (
+            records.map((record) => {
+              const active = selectedRecord?.id === record.id;
+              return (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => onSelectRecord(record.id)}
+                  className={[
+                    "w-full rounded-xl px-4 py-3.5 text-left transition",
+                    active
+                      ? "bg-[var(--accent)] text-white shadow-sm"
+                      : "hover:bg-[var(--surface)]",
+                  ].join(" ")}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">
+                      {recordTypeIcons[record.recordType]}
+                    </span>
+                    <span
+                      className={[
+                        "text-[13px]",
+                        active ? "text-white/70" : "text-[var(--muted)]",
+                      ].join(" ")}
+                    >
+                      {formatDateTime(record.createdAt)}
+                    </span>
+                    {record.syncRuns.some((r) => r.status === "synced") && (
+                      <span
+                        className={[
+                          "ml-auto inline-block h-1.5 w-1.5 rounded-full",
+                          active ? "bg-white/60" : "bg-emerald-400",
+                        ].join(" ")}
+                      />
+                    )}
+                  </div>
+                  <p className="mt-1.5 truncate text-[15px] font-medium leading-snug">
+                    {record.title}
+                  </p>
+                  <p
+                    className={[
+                      "mt-1 line-clamp-2 text-[13px] leading-relaxed",
+                      active ? "text-white/60" : "text-[var(--muted)]",
+                    ].join(" ")}
+                  >
+                    {record.summary}
+                  </p>
+                  {/* Inline keywords */}
+                  {record.keywords.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {record.keywords.slice(0, 3).map((kw) => (
+                        <span
+                          key={kw}
+                          className={[
+                            "rounded px-1.5 py-0.5 text-[11px]",
+                            active
+                              ? "bg-white/20 text-white/80"
+                              : "bg-[var(--accent-soft)] text-[var(--accent)]",
+                          ].join(" ")}
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              );
+            })
+          ) : (
+            <div className="flex flex-col items-center py-16 text-center">
+              <span className="text-3xl">📭</span>
+              <p className="mt-3 text-sm text-[var(--muted)]">暂无资料，先去收录。</p>
+            </div>
+          )}
+
+          {/* Infinite scroll sentinel */}
+          {hasMore && (
+            <div ref={sentinelRef} className="flex justify-center py-4">
+              {loadingMore ? (
+                <span className="text-sm text-[var(--muted)]">加载中...</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onLoadMore}
+                  className="rounded-lg px-4 py-2 text-sm text-[var(--accent)] transition hover:bg-[var(--surface)]"
+                >
+                  加载更多
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right: detail pane (simplified) */}
+      {selectedRecord ? (
+        <RecordPane
+          record={selectedRecord}
+          onDelete={onDelete}
+          onUpdate={onUpdate}
+        />
+      ) : (
+        <div className="flex items-center justify-center rounded-2xl border border-dashed border-[var(--line)] py-24">
+          <p className="text-sm text-[var(--muted)]">选择左侧资料查看详情</p>
+        </div>
+      )}
     </div>
   );
 }
 
-function EmptyCard({ text }: { text: string }) {
-  return (
-    <div className="rounded-[20px] border border-dashed border-[var(--line-strong)] bg-[var(--surface-strong)] px-4 py-8 text-sm leading-7 text-[var(--muted)]">
-      {text}
-    </div>
-  );
-}
+/* ────────────────────────────────────────────────── */
+/* Record Detail Pane (simplified inline)              */
+/* ────────────────────────────────────────────────── */
 
-function InfoPanel({ title, content }: { title: string; content: string }) {
+function RecordPane({
+  record,
+  onDelete,
+  onUpdate,
+}: {
+  record: KnowledgeRecord;
+  onDelete: (id: string) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(record.title);
+  const [editSource, setEditSource] = useState(record.sourceLabel);
+  const [editNote, setEditNote] = useState(record.contextNote);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+    setEditTitle(record.title);
+    setEditSource(record.sourceLabel);
+    setEditNote(record.contextNote);
+  }, [record.id, record.title, record.sourceLabel, record.contextNote]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const fields: Record<string, string> = {};
+    if (editTitle !== record.title) fields.title = editTitle;
+    if (editSource !== record.sourceLabel) fields.sourceLabel = editSource;
+    if (editNote !== record.contextNote) fields.contextNote = editNote;
+    if (Object.keys(fields).length > 0) {
+      await onUpdate(record.id, fields);
+    }
+    setSaving(false);
+    setEditing(false);
+  };
+
   return (
-    <div className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] px-4 py-4">
-      <p className="text-sm font-medium text-[var(--foreground)]">{title}</p>
-      <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--muted-strong)]">
-        {content}
-      </p>
+    <div className="space-y-5 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-6">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-2 text-[13px] text-[var(--muted)]">
+          <span>{recordTypeIcons[record.recordType]}</span>
+          {editing ? (
+            <input
+              value={editSource}
+              onChange={(e) => setEditSource(e.target.value)}
+              className="rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-0.5 text-[13px] text-[var(--foreground)]"
+              placeholder="来源"
+            />
+          ) : (
+            <span>{record.sourceLabel}</span>
+          )}
+          <span className="text-[var(--line-strong)]">·</span>
+          <span>{recordTypeLabels[record.recordType]}</span>
+          <span className="text-[var(--line-strong)]">·</span>
+          <span>{formatDateTime(record.createdAt)}</span>
+        </div>
+
+        {editing ? (
+          <input
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            className="mt-2 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xl font-bold text-[var(--foreground)]"
+            placeholder="标题"
+          />
+        ) : (
+          <h2 className="mt-2 text-xl font-bold leading-snug text-[var(--foreground)]">
+            {record.title}
+          </h2>
+        )}
+      </div>
+
+      {/* Summary */}
+      <p className="text-[15px] leading-7 text-[var(--muted-strong)]">{record.summary}</p>
+
+      {/* Keywords */}
+      {record.keywords.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {record.keywords.map((kw) => (
+            <span
+              key={kw}
+              className="rounded-md bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-medium text-[var(--accent)]"
+            >
+              {kw}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Context note (editable) */}
+      {editing ? (
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+            备注
+          </p>
+          <textarea
+            value={editNote}
+            onChange={(e) => setEditNote(e.target.value)}
+            rows={3}
+            className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)]"
+            placeholder="备注信息（可选）"
+          />
+        </div>
+      ) : record.contextNote ? (
+        <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+            备注
+          </p>
+          <p className="text-sm leading-6 text-[var(--muted-strong)]">{record.contextNote}</p>
+        </div>
+      ) : null}
+
+      {/* Assets preview */}
+      {record.assets.length > 0 && <AssetGallery assets={record.assets} useThumbnails />}
+
+      {/* Footer: actions */}
+      <div className="flex items-center justify-between border-t border-[var(--line)] pt-4">
+        <Link
+          href={`/records/${record.id}`}
+          className="text-sm font-medium text-[var(--accent)] transition hover:underline"
+        >
+          查看完整详情 →
+        </Link>
+
+        <div className="flex items-center gap-2">
+          {editing ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted)] transition hover:bg-[var(--surface)]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-sm font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
+              >
+                {saving ? "保存中..." : "保存"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+              >
+                ✎ 编辑
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(record.id)}
+                className="rounded-lg px-3 py-1.5 text-sm text-rose-500 transition hover:bg-rose-500/10"
+              >
+                🗑 删除
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

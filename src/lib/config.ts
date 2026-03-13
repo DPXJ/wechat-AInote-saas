@@ -1,8 +1,8 @@
 import path from "node:path";
 
 export const appConfig = {
-  appName: "Signal Deck",
-  appDescription: "AI inbox for files, notes, and searchable context.",
+  appName: "AI 信迹",
+  appDescription: "AI 知识收件箱，记录你的信息足迹。",
   baseUrl: process.env.APP_BASE_URL || "http://localhost:3000",
   dataRoot:
     process.env.DATA_ROOT ||
