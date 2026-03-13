@@ -33,12 +33,25 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = settingsSchema.safeParse(await request.json());
-
-  if (!body.success) {
-    return NextResponse.json({ error: "Invalid settings payload." }, { status: 400 });
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return NextResponse.json({ error: "请求体解析失败，请重试。" }, { status: 400 });
   }
 
-  const settings = saveIntegrationSettings(body.data);
-  return NextResponse.json({ settings });
+  const body = settingsSchema.safeParse(raw);
+
+  if (!body.success) {
+    const details = body.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    return NextResponse.json({ error: `配置校验失败: ${details}` }, { status: 400 });
+  }
+
+  try {
+    const settings = saveIntegrationSettings(body.data);
+    return NextResponse.json({ settings });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "未知错误";
+    return NextResponse.json({ error: `保存失败: ${msg}` }, { status: 500 });
+  }
 }

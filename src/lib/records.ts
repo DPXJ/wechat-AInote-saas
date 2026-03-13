@@ -151,22 +151,20 @@ export async function createKnowledgeRecord(
     if (upload.mimeType.startsWith("image/")) {
       try {
         const ocrResult = await ocrImage(upload.buffer, upload.mimeType);
-        if (ocrResult) {
-          ocrText = ocrResult.text;
-          if (ocrResult.keywords.length > 0) {
-            tags.push(...ocrResult.keywords.filter((k) => !tags.includes(k)));
-          }
-          if (!description && ocrResult.description) {
-            description = ocrResult.description;
-          }
-          if (ocrText.trim()) {
-            extractedParts.push(
-              `图片 ${upload.originalName} OCR识别:\n${ocrText.trim()}`,
-            );
-          }
+        ocrText = ocrResult.text;
+        if (ocrResult.keywords.length > 0) {
+          tags.push(...ocrResult.keywords.filter((k) => !tags.includes(k)));
+        }
+        if (!description && ocrResult.description) {
+          description = ocrResult.description;
+        }
+        if (ocrText.trim()) {
+          extractedParts.push(
+            `图片 ${upload.originalName} OCR识别:\n${ocrText.trim()}`,
+          );
         }
       } catch {
-        // OCR non-critical
+        // OCR non-critical — disabled or failed
       }
     }
 

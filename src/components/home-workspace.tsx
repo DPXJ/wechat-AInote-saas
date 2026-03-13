@@ -84,34 +84,42 @@ export function HomeWorkspace({
   integrationSettings: IntegrationSettings;
   integrationStatus: IntegrationStatus;
 }) {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>(() => {
-    if (typeof window === "undefined") return "record";
-    const saved = window.sessionStorage.getItem("ai-box-tab");
-    if (saved && ["record", "history", "todos", "search", "settings"].includes(saved)) {
-      return saved as WorkspaceTab;
-    }
-    return "record";
-  });
+  const [activeTab, setActiveTabRaw] = useState<WorkspaceTab>("record");
+  const tabRestoredRef = useRef(false);
   const [records, setRecords] = useState<KnowledgeRecord[]>(initialRecords);
   const [total, setTotal] = useState(initialTotal);
   const [selectedRecordId, setSelectedRecordId] = useState(initialRecords[0]?.id || "");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [loadingMore, setLoadingMore] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "light";
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
     const saved = window.localStorage.getItem("ai-box-theme");
-    if (saved === "dark" || saved === "light") return saved;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  });
+    if (saved === "dark" || saved === "light") {
+      setTheme(saved);
+    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      setTheme("dark");
+    }
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("ai-box-theme", theme);
   }, [theme]);
 
+  const setActiveTab = useCallback((tab: WorkspaceTab) => {
+    setActiveTabRaw(tab);
+    window.sessionStorage.setItem("ai-box-tab", tab);
+  }, []);
+
   useEffect(() => {
-    window.sessionStorage.setItem("ai-box-tab", activeTab);
-  }, [activeTab]);
+    if (tabRestoredRef.current) return;
+    tabRestoredRef.current = true;
+    const saved = window.sessionStorage.getItem("ai-box-tab");
+    if (saved && ["record", "history", "todos", "search", "settings"].includes(saved)) {
+      setActiveTabRaw(saved as WorkspaceTab);
+    }
+  }, []);
 
   const refreshRecords = useCallback(async () => {
     const res = await fetch(`/api/records?limit=${records.length || PAGE_SIZE}&offset=0`);
