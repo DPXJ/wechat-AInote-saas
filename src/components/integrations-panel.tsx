@@ -13,13 +13,26 @@ const actionLabels: Record<ActionTarget, string> = {
   oss: "测试 OSS",
 };
 
-const settingsTabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
-  { id: "notion", label: "Notion", icon: "📔" },
-  { id: "ticktick", label: "滴答清单", icon: "✅" },
-  { id: "storage", label: "附件存储", icon: "💾" },
-  { id: "ocr", label: "OCR 识别", icon: "🔍" },
-  { id: "imap", label: "邮件收录", icon: "📧" },
-  { id: "backup", label: "数据备份", icon: "💿" },
+function SettingsTabIcon({ id }: { id: string }) {
+  const p = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  switch (id) {
+    case "notion": return <svg {...p}><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>;
+    case "ticktick": return <svg {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M9 12l2 2 4-4" /></svg>;
+    case "storage": return <svg {...p}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>;
+    case "ocr": return <svg {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
+    case "imap": return <svg {...p}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 7l-10 7L2 7" /></svg>;
+    case "backup": return <svg {...p}><path d="M12 2v6M12 22v-6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M22 12h-6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24" /></svg>;
+    default: return null;
+  }
+}
+
+const settingsTabs: Array<{ id: SettingsTab; label: string }> = [
+  { id: "notion", label: "Notion" },
+  { id: "ticktick", label: "滴答清单" },
+  { id: "storage", label: "附件存储" },
+  { id: "ocr", label: "OCR 识别" },
+  { id: "imap", label: "邮件收录" },
+  { id: "backup", label: "数据备份" },
 ];
 
 export function IntegrationsPanel({
@@ -122,7 +135,7 @@ export function IntegrationsPanel({
                 : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]",
             ].join(" ")}
           >
-            <span>{tab.icon}</span>
+            <SettingsTabIcon id={tab.id} />
             <span>{tab.label}</span>
           </button>
         ))}

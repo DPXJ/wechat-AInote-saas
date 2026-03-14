@@ -36,6 +36,10 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--background)] ai-dot-bg">
       <div className="ai-waves pointer-events-none fixed inset-0" />
+      <div className="ai-orbs">
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+      </div>
 
       <div className="relative z-10 w-full max-w-sm px-6">
         <div className="mb-8 text-center">

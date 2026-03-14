@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 :root {
   --background: #fafafa;
   --foreground: #18181b;
@@ -26,10 +34,10 @@
   --sidebar-active: #f4f4f5;
   --ai-gradient: linear-gradient(135deg, #a855f7, #6366f1, #06b6d4);
   --ai-gradient-soft: linear-gradient(135deg, rgba(168,85,247,0.08), rgba(99,102,241,0.08), rgba(6,182,212,0.08));
-  --ai-glow-1: rgba(168, 85, 247, 0.04);
-  --ai-glow-2: rgba(6, 182, 212, 0.03);
+  --ai-glow-1: rgba(168, 85, 247, 0.06);
+  --ai-glow-2: rgba(6, 182, 212, 0.05);
   --dot-color: rgba(0, 0, 0, 0.04);
-  --wave-color: rgba(168, 85, 247, 0.03);
+  --wave-color: rgba(168, 85, 247, 0.04);
 }
 
 [data-theme="dark"] {
@@ -52,10 +60,10 @@
   --sidebar-active: #1c1c1f;
   --ai-gradient: linear-gradient(135deg, #c084fc, #818cf8, #22d3ee);
   --ai-gradient-soft: linear-gradient(135deg, rgba(192,132,252,0.06), rgba(129,140,248,0.06), rgba(34,211,238,0.06));
-  --ai-glow-1: rgba(192, 132, 252, 0.06);
-  --ai-glow-2: rgba(34, 211, 238, 0.04);
+  --ai-glow-1: rgba(192, 132, 252, 0.10);
+  --ai-glow-2: rgba(34, 211, 238, 0.08);
   --dot-color: rgba(255, 255, 255, 0.03);
-  --wave-color: rgba(129, 140, 248, 0.04);
+  --wave-color: rgba(129, 140, 248, 0.05);
 }
 
 @theme inline {
@@ -163,6 +171,36 @@ nextjs-portal,
   100% { transform: translateX(0) translateY(0); }
 }
 
+@keyframes ai-orb-float-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  15% { transform: translate(120px, -80px) scale(1.12); }
+  35% { transform: translate(-60px, 100px) scale(0.9); }
+  55% { transform: translate(80px, 40px) scale(1.08); }
+  75% { transform: translate(-100px, -50px) scale(0.95); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes ai-orb-float-2 {
+  0% { transform: translate(0, 0) scale(1); }
+  20% { transform: translate(-100px, 60px) scale(1.1); }
+  45% { transform: translate(80px, -120px) scale(0.88); }
+  70% { transform: translate(-60px, -40px) scale(1.06); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes ai-orb-float-3 {
+  0% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(90px, 70px) scale(1.08); }
+  50% { transform: translate(-80px, -90px) scale(0.92); }
+  75% { transform: translate(50px, -40px) scale(1.05); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes ai-line-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
 .ai-waves {
   position: fixed;
   inset: 0;
@@ -170,6 +208,7 @@ nextjs-portal,
   pointer-events: none;
   overflow: hidden;
 }
+
 .ai-waves::before,
 .ai-waves::after {
   content: "";
@@ -179,27 +218,75 @@ nextjs-portal,
   top: -50%;
   left: -50%;
   border-radius: 40%;
-  opacity: 0.5;
+  opacity: 0.7;
 }
 .ai-waves::before {
   background: repeating-linear-gradient(
     0deg,
     transparent,
-    transparent 120px,
-    var(--wave-color) 120px,
-    var(--wave-color) 121px
+    transparent 140px,
+    var(--wave-color) 140px,
+    var(--wave-color) 141px
   );
-  animation: ai-wave-drift 20s ease-in-out infinite;
+  animation: ai-wave-drift 24s ease-in-out infinite;
 }
 .ai-waves::after {
   background: repeating-linear-gradient(
     90deg,
     transparent,
-    transparent 160px,
-    var(--wave-color) 160px,
-    var(--wave-color) 161px
+    transparent 180px,
+    var(--wave-color) 180px,
+    var(--wave-color) 181px
   );
-  animation: ai-wave-drift 28s ease-in-out infinite reverse;
+  animation: ai-wave-drift 32s ease-in-out infinite reverse;
+}
+
+/* Floating gradient orbs */
+.ai-orbs {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ai-orbs .orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+}
+.ai-orbs .orb-1 {
+  width: 500px;
+  height: 500px;
+  top: -5%;
+  left: 5%;
+  background: rgba(168, 85, 247, 0.07);
+  animation: ai-orb-float-1 16s ease-in-out infinite;
+}
+.ai-orbs .orb-2 {
+  width: 450px;
+  height: 450px;
+  bottom: 5%;
+  right: 5%;
+  background: rgba(6, 182, 212, 0.06);
+  animation: ai-orb-float-2 20s ease-in-out infinite;
+}
+.ai-orbs .orb-3 {
+  width: 350px;
+  height: 350px;
+  top: 35%;
+  right: 25%;
+  background: rgba(99, 102, 241, 0.05);
+  animation: ai-orb-float-3 24s ease-in-out infinite;
+}
+
+[data-theme="dark"] .ai-orbs .orb-1 {
+  background: rgba(192, 132, 252, 0.10);
+}
+[data-theme="dark"] .ai-orbs .orb-2 {
+  background: rgba(34, 211, 238, 0.08);
+}
+[data-theme="dark"] .ai-orbs .orb-3 {
+  background: rgba(129, 140, 248, 0.06);
 }
 
 /* Modal overlay — stronger */
@@ -217,6 +304,7 @@ nextjs-portal,
 /* Input focus bottom-border animation */
 .input-focus-bar {
   position: relative;
+  overflow: hidden;
 }
 .input-focus-bar::after {
   content: "";
@@ -227,11 +315,11 @@ nextjs-portal,
   height: 2px;
   background: var(--ai-gradient);
   border-radius: 1px;
-  transition: width 0.25s ease, left 0.25s ease;
+  transition: width 0.3s ease, left 0.3s ease;
 }
 .input-focus-bar:focus-within::after {
-  width: 100%;
-  left: 0;
+  width: calc(100% - 24px);
+  left: 12px;
 }
 
 /* Scrollbar */

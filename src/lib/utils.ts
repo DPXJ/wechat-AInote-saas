@@ -131,3 +131,25 @@ export function formatDateTime(value: string) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+
+export function formatDateOnly(value: string) {
+  const d = new Date(value);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  if (isToday) return "今天";
+  if (isYesterday) return "昨天";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "long",
+    day: "numeric",
+  }).format(d);
+}
+
+export function formatTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}

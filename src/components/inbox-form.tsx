@@ -226,13 +226,13 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
 
       {/* Text mode */}
       {isTextMode ? (
-        <div className="input-focus-bar overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-sm">
+        <div className="input-focus-bar overflow-hidden rounded-3xl border border-[var(--line-strong)] bg-[var(--surface)] shadow-sm">
           <textarea
             value={contentText}
             onChange={(e) => setContentText(e.target.value)}
             rows={10}
             placeholder={currentType.placeholder}
-            className="min-h-[220px] max-h-[400px] w-full resize-none border-none bg-transparent px-5 py-4 text-[15px] leading-8 text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+            className="min-h-[280px] max-h-[500px] w-full resize-none border-none bg-transparent px-6 py-5 text-[15px] leading-8 text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
           />
           <div className="flex items-center justify-between border-t border-[var(--line)] bg-[var(--surface)] px-5 py-3">
             <button
@@ -264,7 +264,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             }}
             onDrop={handleDrop}
             className={[
-              "rounded-2xl border-2 border-dashed px-6 py-10 text-center transition",
+              "rounded-3xl border-2 border-dashed px-6 py-10 text-center transition",
               dragging
                 ? "border-[var(--accent)] bg-[var(--accent-soft)]"
                 : "border-[var(--line-strong)] bg-[var(--surface)]",
@@ -344,7 +344,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       )}
 
       {/* Optional fields */}
-      <details className="rounded-2xl border border-[var(--line)] bg-[var(--card)]">
+      <details className="rounded-3xl border border-[var(--line)] bg-[var(--card)]">
         <summary className="cursor-pointer list-none px-5 py-3.5 text-sm text-[var(--muted-strong)]">
           更多信息
           <span className="ml-2 text-xs text-[var(--muted)]">标题、来源、备注</span>

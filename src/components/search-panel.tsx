@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { KeyboardEvent, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { SearchResponse } from "@/lib/types";
 
@@ -55,7 +54,7 @@ function highlightText(text: string, query: string): ReactNode {
   );
 }
 
-export function SearchPanel() {
+export function SearchPanel({ onOpenRecord }: { onOpenRecord?: (recordId: string) => void } = {}) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -257,10 +256,11 @@ export function SearchPanel() {
                         </div>
                       )}
                       {msg.citations && msg.citations.length > 0 && msg.citations.map((citation) => (
-                        <Link
+                        <button
+                          type="button"
                           key={`${citation.recordId}-${citation.score}-${idx}`}
-                          href={citation.recordId ? `/records/${citation.recordId}` : "#"}
-                          className="block rounded-2xl border border-[var(--line)] bg-[var(--card)] px-5 py-4 transition hover:border-[var(--line-strong)]"
+                          onClick={() => citation.recordId && onOpenRecord?.(citation.recordId)}
+                          className="block w-full rounded-2xl border border-[var(--line)] bg-[var(--card)] px-5 py-4 text-left transition hover:border-[var(--line-strong)]"
                         >
                           <div className="flex items-center justify-between gap-3">
                             <p className="text-[15px] font-medium text-[var(--foreground)]">
@@ -276,7 +276,7 @@ export function SearchPanel() {
                           {citation.reason && (
                             <p className="mt-2 text-xs text-[var(--muted)]">{citation.reason}</p>
                           )}
-                        </Link>
+                        </button>
                       ))}
                     </div>
                   )}
