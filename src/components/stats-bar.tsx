@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { StatsData } from "@/lib/types";
 
 function IconTotal() {
@@ -72,23 +72,43 @@ const statItems: Array<{
   { key: "urgentTodos", label: "紧急待办", icon: IconUrgent, accent: "text-rose-400", clickable: true },
 ];
 
+const CACHE_KEY = "ai-box-stats-cache";
+
+function getCachedStats(): StatsData | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function StatsBar({ onNavigateToTodos }: { onNavigateToTodos?: () => void } = {}) {
   const [stats, setStats] = useState<StatsData | null>(null);
+  const fetched = useRef(false);
 
   useEffect(() => {
-    fetch("/api/stats")
-      .then((r) => r.json())
-      .then(setStats)
-      .catch(() => {});
-  }, []);
+    const cached = getCachedStats();
+    if (cached) setStats(cached);
 
-  if (!stats) return null;
+    if (!fetched.current) {
+      fetched.current = true;
+      fetch("/api/stats")
+        .then((r) => r.json())
+        .then((data) => {
+          setStats(data);
+          try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch {}
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   return (
     <div className="mb-2 shrink-0 grid grid-cols-3 gap-2 sm:grid-cols-6">
       {statItems.map((item) => {
         const Icon = item.icon;
         const isClickable = item.clickable && onNavigateToTodos;
+        const value = stats?.[item.key];
         return (
           <div
             key={item.key}
@@ -112,10 +132,19 @@ export function StatsBar({ onNavigateToTodos }: { onNavigateToTodos?: () => void
               <Icon />
             </div>
             <div className="min-w-0">
-              <p className={`text-lg font-bold leading-tight ${item.accent || "text-[var(--foreground)]"}`}>
-                {stats[item.key]}
-              </p>
-              <p className="text-[11px] text-[var(--muted)]">{item.label}</p>
+              {value !== undefined ? (
+                <>
+                  <p className={`text-lg font-bold leading-tight ${item.accent || "text-[var(--foreground)]"}`}>
+                    {value}
+                  </p>
+                  <p className="text-[11px] text-[var(--muted)]">{item.label}</p>
+                </>
+              ) : (
+                <>
+                  <div className="h-5 w-8 animate-pulse rounded bg-[var(--surface)]" />
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">{item.label}</p>
+                </>
+              )}
             </div>
           </div>
         );
