@@ -1,170 +1,143 @@
-import { getDb } from "@/lib/db";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { KnowledgeRecord, Todo, TodoPriority, TodoStatus } from "@/lib/types";
 import { createId, nowIso } from "@/lib/utils";
 
-type TodoRow = {
-  id: string;
-  record_id: string | null;
-  content: string;
-  priority: string;
-  status: string;
-  created_at: string;
-  completed_at: string | null;
-  updated_at: string;
-  deleted_at: string | null;
-  synced_at: string | null;
-};
-
-function mapTodo(row: TodoRow): Todo {
+function mapTodo(row: Record<string, unknown>): Todo {
   return {
-    id: row.id,
-    recordId: row.record_id,
-    content: row.content,
+    id: row.id as string,
+    recordId: (row.record_id as string) || null,
+    content: row.content as string,
     priority: row.priority as TodoPriority,
     status: row.status as TodoStatus,
-    createdAt: row.created_at,
-    completedAt: row.completed_at,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at,
-    syncedAt: row.synced_at,
+    createdAt: row.created_at as string,
+    completedAt: (row.completed_at as string) || null,
+    updatedAt: row.updated_at as string,
+    deletedAt: (row.deleted_at as string) || null,
+    syncedAt: (row.synced_at as string) || null,
   };
 }
 
-export function createTodo(input: {
-  content: string;
-  priority?: TodoPriority;
-  recordId?: string | null;
-}) {
-  const db = getDb();
+export async function createTodo(
+  userId: string,
+  input: { content: string; priority?: TodoPriority; recordId?: string | null },
+) {
   const now = nowIso();
   const id = createId("todo");
 
-  db.prepare(
-    `INSERT INTO todos (id, record_id, content, priority, status, created_at, updated_at)
-     VALUES (@id, @record_id, @content, @priority, 'pending', @created_at, @updated_at)`,
-  ).run({
+  await getSupabaseAdmin().from("todos").insert({
     id,
+    user_id: userId,
     record_id: input.recordId || null,
     content: input.content,
     priority: input.priority || "medium",
+    status: "pending",
     created_at: now,
     updated_at: now,
   });
 
-  return getTodo(id);
+  return getTodo(userId, id);
 }
 
-export function getTodo(id: string) {
-  const db = getDb();
-  const row = db.prepare(`SELECT * FROM todos WHERE id = ?`).get(id) as TodoRow | undefined;
-  return row ? mapTodo(row) : null;
+export async function getTodo(userId: string, id: string) {
+  const { data } = await getSupabaseAdmin()
+    .from("todos")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data ? mapTodo(data) : null;
 }
 
-export function listTodos(opts?: {
-  status?: TodoStatus;
-  priority?: TodoPriority;
-  limit?: number;
-  offset?: number;
-}) {
-  const db = getDb();
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-
-  if (opts?.status === "deleted") {
-    conditions.push("status = 'deleted'");
-  } else if (opts?.status) {
-    conditions.push("status = ?");
-    conditions.push("status != 'deleted'");
-    params.push(opts.status);
-  } else {
-    conditions.push("status != 'deleted'");
-  }
-
-  if (opts?.priority) {
-    conditions.push("priority = ?");
-    params.push(opts.priority);
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+export async function listTodos(
+  userId: string,
+  opts?: { status?: TodoStatus; priority?: TodoPriority; limit?: number; offset?: number },
+) {
+  const supabase = getSupabaseAdmin();
   const limit = opts?.limit ?? 50;
   const offset = opts?.offset ?? 0;
 
-  const { total } = db
-    .prepare(`SELECT count(*) as total FROM todos ${where}`)
-    .get(...params) as { total: number };
+  let countQuery = supabase
+    .from("todos")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
 
-  const rows = db
-    .prepare(
-      `SELECT * FROM todos ${where}
-       ORDER BY
-         CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-         CASE status WHEN 'pending' THEN 0 ELSE 1 END,
-         datetime(created_at) DESC
-       LIMIT ? OFFSET ?`,
-    )
-    .all(...params, limit, offset) as TodoRow[];
+  let dataQuery = supabase
+    .from("todos")
+    .select("*")
+    .eq("user_id", userId);
 
-  return { todos: rows.map(mapTodo), total };
+  if (opts?.status === "deleted") {
+    countQuery = countQuery.eq("status", "deleted");
+    dataQuery = dataQuery.eq("status", "deleted");
+  } else if (opts?.status) {
+    countQuery = countQuery.eq("status", opts.status).neq("status", "deleted");
+    dataQuery = dataQuery.eq("status", opts.status).neq("status", "deleted");
+  } else {
+    countQuery = countQuery.neq("status", "deleted");
+    dataQuery = dataQuery.neq("status", "deleted");
+  }
+
+  if (opts?.priority) {
+    countQuery = countQuery.eq("priority", opts.priority);
+    dataQuery = dataQuery.eq("priority", opts.priority);
+  }
+
+  const { count: total } = await countQuery;
+
+  const { data: rows } = await dataQuery
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  return { todos: (rows || []).map(mapTodo), total: total ?? 0 };
 }
 
-export function updateTodo(
+export async function updateTodo(
+  userId: string,
   id: string,
   fields: { content?: string; priority?: TodoPriority; status?: TodoStatus; syncedAt?: string },
 ) {
-  const db = getDb();
-  const sets: string[] = ["updated_at = @updated_at"];
-  const values: Record<string, string | null> = {
-    id,
-    updated_at: nowIso(),
-  };
+  const updates: Record<string, unknown> = { updated_at: nowIso() };
 
-  if (fields.content !== undefined) {
-    sets.push("content = @content");
-    values.content = fields.content;
-  }
-  if (fields.priority !== undefined) {
-    sets.push("priority = @priority");
-    values.priority = fields.priority;
-  }
-  if (fields.syncedAt !== undefined) {
-    sets.push("synced_at = @synced_at");
-    values.synced_at = fields.syncedAt;
-  }
+  if (fields.content !== undefined) updates.content = fields.content;
+  if (fields.priority !== undefined) updates.priority = fields.priority;
+  if (fields.syncedAt !== undefined) updates.synced_at = fields.syncedAt;
   if (fields.status !== undefined) {
-    sets.push("status = @status");
-    values.status = fields.status;
+    updates.status = fields.status;
     if (fields.status === "done") {
-      sets.push("completed_at = @completed_at");
-      values.completed_at = nowIso();
+      updates.completed_at = nowIso();
     } else if (fields.status === "pending") {
-      sets.push("completed_at = NULL");
-      sets.push("deleted_at = NULL");
+      updates.completed_at = null;
+      updates.deleted_at = null;
     } else if (fields.status === "deleted") {
-      sets.push("deleted_at = @deleted_at");
-      values.deleted_at = nowIso();
+      updates.deleted_at = nowIso();
     }
   }
 
-  db.prepare(`UPDATE todos SET ${sets.join(", ")} WHERE id = @id`).run(values);
-  return getTodo(id);
+  await getSupabaseAdmin()
+    .from("todos")
+    .update(updates)
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  return getTodo(userId, id);
 }
 
-export function deleteTodo(id: string) {
-  return updateTodo(id, { status: "deleted" });
+export async function deleteTodo(userId: string, id: string) {
+  return updateTodo(userId, id, { status: "deleted" });
 }
 
-export function hardDeleteTodo(id: string) {
-  getDb().prepare("DELETE FROM todos WHERE id = ?").run(id);
+export async function hardDeleteTodo(userId: string, id: string) {
+  await getSupabaseAdmin().from("todos").delete().eq("id", id).eq("user_id", userId);
 }
 
-export function restoreTodo(id: string) {
-  return updateTodo(id, { status: "pending" });
+export async function restoreTodo(userId: string, id: string) {
+  return updateTodo(userId, id, { status: "pending" });
 }
 
-export function extractTodosFromRecord(record: KnowledgeRecord) {
+export async function extractTodosFromRecord(userId: string, record: KnowledgeRecord) {
   if (record.actionItems.length === 0) return;
   for (const item of record.actionItems) {
-    createTodo({
+    await createTodo(userId, {
       content: item,
       priority: "medium",
       recordId: record.id,
@@ -172,27 +145,41 @@ export function extractTodosFromRecord(record: KnowledgeRecord) {
   }
 }
 
-export function getTodoStats() {
-  const db = getDb();
+export async function getTodoStats(userId: string) {
+  const supabase = getSupabaseAdmin();
   const today = new Date().toISOString().slice(0, 10);
 
-  const { total } = db
-    .prepare(`SELECT count(*) as total FROM todos WHERE status != 'deleted'`)
-    .get() as { total: number };
-  const { pending } = db
-    .prepare(`SELECT count(*) as pending FROM todos WHERE status = 'pending'`)
-    .get() as { pending: number };
-  const { todayCount } = db
-    .prepare(`SELECT count(*) as todayCount FROM todos WHERE date(created_at) = ? AND status != 'deleted'`)
-    .get(today) as { todayCount: number };
-  const { urgentCount } = db
-    .prepare(`SELECT count(*) as urgentCount FROM todos WHERE status = 'pending' AND priority = 'urgent'`)
-    .get() as { urgentCount: number };
+  const { count: total } = await supabase
+    .from("todos")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .neq("status", "deleted");
+
+  const { count: pending } = await supabase
+    .from("todos")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("status", "pending");
+
+  const { count: todayCount } = await supabase
+    .from("todos")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .neq("status", "deleted")
+    .gte("created_at", `${today}T00:00:00`)
+    .lt("created_at", `${today}T23:59:59.999`);
+
+  const { count: urgentCount } = await supabase
+    .from("todos")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .eq("priority", "urgent");
 
   return {
-    totalTodos: total,
-    pendingTodos: pending,
-    todayTodos: todayCount,
-    urgentTodos: urgentCount,
+    totalTodos: total ?? 0,
+    pendingTodos: pending ?? 0,
+    todayTodos: todayCount ?? 0,
+    urgentTodos: urgentCount ?? 0,
   };
 }

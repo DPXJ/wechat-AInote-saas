@@ -1,7 +1,6 @@
 import { ImapFlow } from "imapflow";
 import { getIntegrationSettings } from "@/lib/settings";
 import { createKnowledgeRecord } from "@/lib/records";
-import type { StoredUpload } from "@/lib/types";
 
 interface ImapConfig {
   host: string;
@@ -11,13 +10,9 @@ interface ImapConfig {
   tls: boolean;
 }
 
-function getImapConfig(): ImapConfig | null {
-  const settings = getIntegrationSettings();
-  if (
-    !settings.imapHost ||
-    !settings.imapUser ||
-    !settings.imapPass
-  ) {
+async function getImapConfig(userId: string): Promise<ImapConfig | null> {
+  const settings = await getIntegrationSettings(userId);
+  if (!settings.imapHost || !settings.imapUser || !settings.imapPass) {
     return null;
   }
   return {
@@ -29,18 +24,18 @@ function getImapConfig(): ImapConfig | null {
   };
 }
 
-export async function fetchNewEmails(maxCount = 10): Promise<{ fetched: number; errors: string[] }> {
-  const config = getImapConfig();
+export async function fetchNewEmails(
+  userId: string,
+  maxCount = 10,
+): Promise<{ fetched: number; errors: string[] }> {
+  const config = await getImapConfig(userId);
   if (!config) return { fetched: 0, errors: ["IMAP 配置不完整"] };
 
   const client = new ImapFlow({
     host: config.host,
     port: config.port,
     secure: config.tls,
-    auth: {
-      user: config.user,
-      pass: config.pass,
-    },
+    auth: { user: config.user, pass: config.pass },
     logger: false,
   });
 
@@ -54,11 +49,7 @@ export async function fetchNewEmails(maxCount = 10): Promise<{ fetched: number; 
     try {
       const messages = client.fetch(
         { seen: false },
-        {
-          source: true,
-          envelope: true,
-          uid: true,
-        },
+        { source: true, envelope: true, uid: true },
         { changedSince: BigInt(0) },
       );
 
@@ -72,15 +63,15 @@ export async function fetchNewEmails(maxCount = 10): Promise<{ fetched: number; 
           const from = msg.envelope?.from?.[0]?.address || "email";
           const source = msg.source;
           const bodyText = source ? source.toString("utf-8").slice(0, 5000) : "";
-
           const textContent = extractTextFromEmail(bodyText);
 
           await createKnowledgeRecord(
+            userId,
             {
               contentText: textContent,
               title: subject,
               sourceLabel: `邮件 · ${from}`,
-              contextNote: `通过 IMAP 自动收录`,
+              contextNote: "通过 IMAP 自动收录",
             },
             [],
           );
@@ -88,7 +79,6 @@ export async function fetchNewEmails(maxCount = 10): Promise<{ fetched: number; 
           if (msg.uid) {
             await client.messageFlagsAdd({ uid: msg.uid }, ["\\Seen"], { uid: true });
           }
-
           fetched++;
         } catch (err) {
           errors.push(err instanceof Error ? err.message : "处理邮件失败");

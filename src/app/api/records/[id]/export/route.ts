@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getKnowledgeRecord } from "@/lib/records";
+import { requireUserId } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-function recordToMarkdown(record: NonNullable<ReturnType<typeof getKnowledgeRecord>>) {
+function recordToMarkdown(record: NonNullable<Awaited<ReturnType<typeof getKnowledgeRecord>>>) {
   const lines: string[] = [];
   lines.push(`# ${record.title}`);
   lines.push("");
@@ -68,7 +69,7 @@ function recordToMarkdown(record: NonNullable<ReturnType<typeof getKnowledgeReco
   return lines.join("\n");
 }
 
-function recordToHtml(record: NonNullable<ReturnType<typeof getKnowledgeRecord>>) {
+function recordToHtml(record: NonNullable<Awaited<ReturnType<typeof getKnowledgeRecord>>>) {
   const md = recordToMarkdown(record);
   const escaped = md
     .replace(/&/g, "&amp;")
@@ -101,29 +102,37 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  const format = new URL(request.url).searchParams.get("format") || "markdown";
-  const record = getKnowledgeRecord(id);
+  try {
+    const userId = await requireUserId();
+    const { id } = await params;
+    const format = new URL(request.url).searchParams.get("format") || "markdown";
+    const record = await getKnowledgeRecord(userId, id);
 
-  if (!record) {
-    return NextResponse.json({ error: "资料不存在" }, { status: 404 });
-  }
+    if (!record) {
+      return NextResponse.json({ error: "资料不存在" }, { status: 404 });
+    }
 
-  if (format === "html") {
-    const html = recordToHtml(record);
-    return new Response(html, {
+    if (format === "html") {
+      const html = recordToHtml(record);
+      return new Response(html, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(record.title)}.html"`,
+        },
+      });
+    }
+
+    const md = recordToMarkdown(record);
+    return new Response(md, {
       headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(record.title)}.html"`,
+        "Content-Type": "text/markdown; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(record.title)}.md"`,
       },
     });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    throw err;
   }
-
-  const md = recordToMarkdown(record);
-  return new Response(md, {
-    headers: {
-      "Content-Type": "text/markdown; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${encodeURIComponent(record.title)}.md"`,
-    },
-  });
 }

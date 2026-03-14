@@ -14,10 +14,11 @@ export class OcrError extends Error {
 }
 
 export async function ocrImage(
+  userId: string,
   buffer: Buffer,
   mimeType: string,
 ): Promise<OcrResult> {
-  const settings = getIntegrationSettings();
+  const settings = await getIntegrationSettings(userId);
   if (!settings.ocrEnabled) {
     throw new OcrError("OCR 未启用，请在设置中开启。");
   }

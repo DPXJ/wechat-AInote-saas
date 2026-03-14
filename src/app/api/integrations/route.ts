@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { requireUserId } from "@/lib/supabase/server";
 import {
   getIntegrationStatus,
   sendTickTickTestEmail,
@@ -15,36 +16,45 @@ const bodySchema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json({ status: getIntegrationStatus() });
+  try {
+    const userId = await requireUserId();
+    return NextResponse.json({ status: await getIntegrationStatus(userId) });
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    throw e;
+  }
 }
 
 export async function POST(request: Request) {
-  const body = bodySchema.safeParse(await request.json());
-
-  if (!body.success) {
-    return NextResponse.json({ error: "无效的连接测试目标。" }, { status: 400 });
-  }
-
   try {
+    const userId = await requireUserId();
+    const body = bodySchema.safeParse(await request.json());
+
+    if (!body.success) {
+      return NextResponse.json({ error: "无效的连接测试目标。" }, { status: 400 });
+    }
+
     const result =
       body.data.target === "notion"
-        ? await testNotionConnection()
+        ? await testNotionConnection(userId)
         : body.data.target === "smtp"
-          ? await testSmtpConnection()
+          ? await testSmtpConnection(userId)
           : body.data.target === "oss"
-            ? await testOssConnection()
-            : await sendTickTickTestEmail();
+            ? await testOssConnection(userId)
+            : await sendTickTickTestEmail(userId);
 
     return NextResponse.json({
       ...result,
-      status: getIntegrationStatus(),
+      status: await getIntegrationStatus(userId),
     });
-  } catch (error) {
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "连接测试失败。",
-        status: getIntegrationStatus(),
-      },
+      { error: e instanceof Error ? e.message : "连接测试失败。" },
       { status: 400 },
     );
   }

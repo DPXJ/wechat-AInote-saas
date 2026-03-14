@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createKnowledgeRecord, listKnowledgeRecords } from "@/lib/records";
 import { getIntegrationSettings } from "@/lib/settings";
 import { syncRecord } from "@/lib/sync";
+import { requireUserId } from "@/lib/supabase/server";
 import type { RecordType, StoredUpload, SyncTarget } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -19,13 +20,13 @@ function hasTodoIntent(text: string) {
   );
 }
 
-function canAutoSyncNotion() {
-  const settings = getIntegrationSettings();
+async function canAutoSyncNotion(userId: string) {
+  const settings = await getIntegrationSettings(userId);
   return Boolean(settings.notionToken && settings.notionParentPageId);
 }
 
-function canAutoSyncTickTick() {
-  const settings = getIntegrationSettings();
+async function canAutoSyncTickTick(userId: string) {
+  const settings = await getIntegrationSettings(userId);
   return Boolean(
     settings.smtpHost &&
       settings.smtpUser &&
@@ -51,9 +52,9 @@ function shouldAutoSyncTickTick(record: {
   );
 }
 
-async function runAutoSync(recordId: string, target: SyncTarget) {
+async function runAutoSync(userId: string, recordId: string, target: SyncTarget) {
   try {
-    await syncRecord(recordId, target);
+    await syncRecord(userId, recordId, target);
     return {
       target,
       status: "synced" as const,
@@ -72,84 +73,101 @@ async function runAutoSync(recordId: string, target: SyncTarget) {
 }
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 100);
-  const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+  try {
+    const userId = await requireUserId();
+    const url = new URL(request.url);
+    const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 100);
+    const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
 
-  const { records, total } = listKnowledgeRecords({ limit, offset });
-  return NextResponse.json({ records, total, limit, offset });
+    const { records, total } = await listKnowledgeRecords(userId, { limit, offset });
+    return NextResponse.json({ records, total, limit, offset });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    throw err;
+  }
 }
 
 export async function POST(request: Request) {
-  const formData = await request.formData();
-  const title = String(formData.get("title") || "");
-  const sourceLabel = String(formData.get("sourceLabel") || "");
-  const contextNote = String(formData.get("contextNote") || "");
-  const contentText = String(formData.get("contentText") || "");
-  const recordTypeHint = String(formData.get("recordTypeHint") || "") as RecordType | "";
-  const fileEntries = formData
-    .getAll("files")
-    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  try {
+    const userId = await requireUserId();
+    const formData = await request.formData();
+    const title = String(formData.get("title") || "");
+    const sourceLabel = String(formData.get("sourceLabel") || "");
+    const contextNote = String(formData.get("contextNote") || "");
+    const contentText = String(formData.get("contentText") || "");
+    const recordTypeHint = String(formData.get("recordTypeHint") || "") as RecordType | "";
+    const fileEntries = formData
+      .getAll("files")
+      .filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
-  if (!contentText.trim() && fileEntries.length === 0) {
-    return NextResponse.json(
-      { error: "至少提供一段文本，或上传一个附件。" },
-      { status: 400 },
-    );
-  }
-
-  const uploads: StoredUpload[] = await Promise.all(
-    fileEntries.map(async (file) => ({
-      originalName: file.name,
-      mimeType: file.type || "application/octet-stream",
-      byteSize: file.size,
-      buffer: Buffer.from(await file.arrayBuffer()),
-    })),
-  );
-
-  const fileMeta = fileEntries.map((_, i) => {
-    const tagsRaw = String(formData.get(`fileTags_${i}`) || "");
-    const desc = String(formData.get(`fileDesc_${i}`) || "");
-    const tags = tagsRaw
-      .split(/[,，]/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-    return { tags, description: desc };
-  });
-
-  const record = await createKnowledgeRecord(
-    {
-      title,
-      sourceLabel,
-      contextNote,
-      contentText,
-      recordTypeHint: recordTypeHint || undefined,
-    },
-    uploads,
-    fileMeta,
-  );
-
-  const autoSync: Array<{
-    target: SyncTarget;
-    status: "synced" | "failed" | "skipped";
-    message: string;
-  }> = [];
-
-  if (record && canAutoSyncNotion()) {
-    autoSync.push(await runAutoSync(record.id, "notion"));
-  }
-
-  if (record && canAutoSyncTickTick()) {
-    if (shouldAutoSyncTickTick(record)) {
-      autoSync.push(await runAutoSync(record.id, "ticktick-email"));
-    } else {
-      autoSync.push({
-        target: "ticktick-email",
-        status: "skipped",
-        message: "未识别出明确时间，本次未自动生成滴答待办。",
-      });
+    if (!contentText.trim() && fileEntries.length === 0) {
+      return NextResponse.json(
+        { error: "至少提供一段文本，或上传一个附件。" },
+        { status: 400 },
+      );
     }
-  }
 
-  return NextResponse.json({ record, autoSync });
+    const uploads: StoredUpload[] = await Promise.all(
+      fileEntries.map(async (file) => ({
+        originalName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        byteSize: file.size,
+        buffer: Buffer.from(await file.arrayBuffer()),
+      })),
+    );
+
+    const fileMeta = fileEntries.map((_, i) => {
+      const tagsRaw = String(formData.get(`fileTags_${i}`) || "");
+      const desc = String(formData.get(`fileDesc_${i}`) || "");
+      const tags = tagsRaw
+        .split(/[,，]/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+      return { tags, description: desc };
+    });
+
+    const record = await createKnowledgeRecord(
+      userId,
+      {
+        title,
+        sourceLabel,
+        contextNote,
+        contentText,
+        recordTypeHint: recordTypeHint || undefined,
+      },
+      uploads,
+      fileMeta,
+    );
+
+    const autoSync: Array<{
+      target: SyncTarget;
+      status: "synced" | "failed" | "skipped";
+      message: string;
+    }> = [];
+
+    if (record && (await canAutoSyncNotion(userId))) {
+      autoSync.push(await runAutoSync(userId, record.id, "notion"));
+    }
+
+    if (record && (await canAutoSyncTickTick(userId))) {
+      if (shouldAutoSyncTickTick(record)) {
+        autoSync.push(await runAutoSync(userId, record.id, "ticktick-email"));
+      } else {
+        autoSync.push({
+          target: "ticktick-email",
+          status: "skipped",
+          message: "未识别出明确时间，本次未自动生成滴答待办。",
+        });
+      }
+    }
+
+    return NextResponse.json({ record, autoSync });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    throw err;
+  }
 }

@@ -1,49 +1,67 @@
-import { getDb } from "@/lib/db";
 import { getKnowledgeRecord } from "@/lib/records";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { KnowledgeRecord } from "@/lib/types";
 import { createId, nowIso } from "@/lib/utils";
 
-export function addFavorite(recordId: string) {
-  const db = getDb();
-  const existing = db
-    .prepare("SELECT id FROM favorites WHERE record_id = ?")
-    .get(recordId) as { id: string } | undefined;
+export async function addFavorite(userId: string, recordId: string) {
+  const supabase = getSupabaseAdmin();
+
+  const { data: existing } = await supabase
+    .from("favorites")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("record_id", recordId)
+    .maybeSingle();
+
   if (existing) return existing.id;
+
   const id = createId("fav");
-  db.prepare(
-    "INSERT INTO favorites (id, record_id, created_at) VALUES (?, ?, ?)",
-  ).run(id, recordId, nowIso());
+  await supabase.from("favorites").insert({
+    id,
+    user_id: userId,
+    record_id: recordId,
+    created_at: nowIso(),
+  });
   return id;
 }
 
-export function removeFavorite(recordId: string) {
-  getDb().prepare("DELETE FROM favorites WHERE record_id = ?").run(recordId);
+export async function removeFavorite(userId: string, recordId: string) {
+  await getSupabaseAdmin()
+    .from("favorites")
+    .delete()
+    .eq("user_id", userId)
+    .eq("record_id", recordId);
 }
 
-export function isFavorite(recordId: string): boolean {
-  return !!getDb()
-    .prepare("SELECT id FROM favorites WHERE record_id = ?")
-    .get(recordId);
+export async function isFavorite(userId: string, recordId: string): Promise<boolean> {
+  const { data } = await getSupabaseAdmin()
+    .from("favorites")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("record_id", recordId)
+    .maybeSingle();
+  return !!data;
 }
 
-export function listFavorites(): KnowledgeRecord[] {
-  const rows = getDb()
-    .prepare(
-      "SELECT record_id FROM favorites ORDER BY created_at DESC",
-    )
-    .all() as Array<{ record_id: string }>;
+export async function listFavorites(userId: string): Promise<KnowledgeRecord[]> {
+  const { data: rows } = await getSupabaseAdmin()
+    .from("favorites")
+    .select("record_id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
 
   const records: KnowledgeRecord[] = [];
-  for (const row of rows) {
-    const rec = getKnowledgeRecord(row.record_id);
+  for (const row of rows || []) {
+    const rec = await getKnowledgeRecord(userId, row.record_id);
     if (rec) records.push(rec);
   }
   return records;
 }
 
-export function getFavoriteRecordIds(): Set<string> {
-  const rows = getDb()
-    .prepare("SELECT record_id FROM favorites")
-    .all() as Array<{ record_id: string }>;
-  return new Set(rows.map((r) => r.record_id));
+export async function getFavoriteRecordIds(userId: string): Promise<Set<string>> {
+  const { data: rows } = await getSupabaseAdmin()
+    .from("favorites")
+    .select("record_id")
+    .eq("user_id", userId);
+  return new Set((rows || []).map((r) => r.record_id));
 }

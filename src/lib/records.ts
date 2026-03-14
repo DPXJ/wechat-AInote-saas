@@ -1,10 +1,9 @@
 import crypto from "node:crypto";
 import { analyzeRecord, createEmbeddings } from "@/lib/ai";
-import { getDb } from "@/lib/db";
-import { ocrImage } from "@/lib/ocr";
 import { extractTextFromUpload } from "@/lib/parsers";
 import { deleteStoredUpload, readStoredUpload, storeUpload } from "@/lib/storage";
-import { extractTodosFromRecord } from "@/lib/todos";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import type { Database } from "@/lib/supabase/database.types";
 import type {
   AnalysisOutput,
   KnowledgeRecord,
@@ -13,58 +12,18 @@ import type {
   RecordType,
   StoredUpload,
   SyncRun,
+  SyncTarget,
 } from "@/lib/types";
 import {
   chunkText,
   createId,
   inferRecordType,
   nowIso,
-  safeJsonParse,
 } from "@/lib/utils";
 
-type RecordRow = {
-  id: string;
-  title: string;
-  source_label: string;
-  source_channel: string;
-  record_type: RecordType;
-  content_text: string;
-  extracted_text: string;
-  summary: string;
-  context_note: string;
-  keywords: string;
-  action_items: string;
-  suggested_targets: string;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
-};
-
-type AssetRow = {
-  id: string;
-  record_id: string;
-  original_name: string;
-  mime_type: string;
-  byte_size: number;
-  storage_key: string;
-  tags: string;
-  description: string;
-  ocr_text: string;
-  file_hash: string;
-  created_at: string;
-};
-
-type SyncRow = {
-  id: string;
-  record_id: string;
-  target: string;
-  status: string;
-  external_ref: string | null;
-  payload: string;
-  message: string;
-  created_at: string;
-  updated_at: string;
-};
+type RecordRow = Database["public"]["Tables"]["records"]["Row"];
+type AssetRow = Database["public"]["Tables"]["assets"]["Row"];
+type SyncRow = Database["public"]["Tables"]["sync_runs"]["Row"];
 
 function mapAsset(row: AssetRow): RecordAsset {
   return {
@@ -72,9 +31,9 @@ function mapAsset(row: AssetRow): RecordAsset {
     recordId: row.record_id,
     originalName: row.original_name,
     mimeType: row.mime_type,
-    byteSize: row.byte_size,
+    byteSize: Number(row.byte_size),
     storageKey: row.storage_key,
-    tags: safeJsonParse(row.tags, []),
+    tags: row.tags || [],
     description: row.description || "",
     ocrText: row.ocr_text || "",
     createdAt: row.created_at,
@@ -87,9 +46,9 @@ function mapSync(row: SyncRow): SyncRun {
     recordId: row.record_id,
     target: row.target as SyncRun["target"],
     status: row.status as SyncRun["status"],
-    externalRef: row.external_ref,
-    payload: safeJsonParse(row.payload, {}),
-    message: row.message,
+    externalRef: row.external_ref || null,
+    payload: (row.payload as Record<string, unknown>) || {},
+    message: row.message || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -101,14 +60,14 @@ function mapRecord(row: RecordRow, assets: AssetRow[], syncRows: SyncRow[]): Kno
     title: row.title,
     sourceLabel: row.source_label,
     sourceChannel: row.source_channel,
-    recordType: row.record_type,
+    recordType: row.record_type as RecordType,
     contentText: row.content_text,
     extractedText: row.extracted_text,
     summary: row.summary,
     contextNote: row.context_note,
-    keywords: safeJsonParse(row.keywords, []),
-    actionItems: safeJsonParse(row.action_items, []),
-    suggestedTargets: safeJsonParse(row.suggested_targets, []),
+    keywords: row.keywords || [],
+    actionItems: row.action_items || [],
+    suggestedTargets: (row.suggested_targets || []) as SyncTarget[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     assets: assets.map(mapAsset),
@@ -121,25 +80,30 @@ function buildChunkReason(title: string, sourceLabel: string) {
 }
 
 export async function createKnowledgeRecord(
+  userId: string,
   input: RecordInput,
   uploads: StoredUpload[],
   fileMeta?: Array<{ tags?: string[]; description?: string }>,
 ) {
-  const db = getDb();
+  const supabase = getSupabaseAdmin();
   const recordId = createId("rec");
   const createdAt = nowIso();
   const assetNames = uploads.map((item) => item.originalName);
-  const storedAssets: AssetRow[] = [];
+  type AssetInsert = Database["public"]["Tables"]["assets"]["Insert"];
+  const storedAssets: AssetInsert[] = [];
   const extractedParts: string[] = [];
 
   for (let i = 0; i < uploads.length; i++) {
     const upload = uploads[i];
     const meta = fileMeta?.[i];
-
     const fileHash = crypto.createHash("md5").update(upload.buffer).digest("hex");
-    const existingAsset = db
-      .prepare(`SELECT id, storage_key FROM assets WHERE file_hash = ?`)
-      .get(fileHash) as { id: string; storage_key: string } | undefined;
+
+    const { data: existingAsset } = await supabase
+      .from("assets")
+      .select("id, storage_key")
+      .eq("file_hash", fileHash)
+      .eq("user_id", userId)
+      .maybeSingle();
 
     const stored = existingAsset
       ? { fileId: existingAsset.id, storageKey: existingAsset.storage_key, absolutePath: "" }
@@ -147,9 +111,7 @@ export async function createKnowledgeRecord(
 
     const extractedText = await extractTextFromUpload(upload);
     if (extractedText.trim()) {
-      extractedParts.push(
-        `附件 ${upload.originalName} 抽取内容:\n${extractedText.trim()}`,
-      );
+      extractedParts.push(`附件 ${upload.originalName} 抽取内容:\n${extractedText.trim()}`);
     }
 
     const tags = meta?.tags ?? [];
@@ -158,7 +120,8 @@ export async function createKnowledgeRecord(
     let ocrText = "";
     if (upload.mimeType.startsWith("image/")) {
       try {
-        const ocrResult = await ocrImage(upload.buffer, upload.mimeType);
+        const { ocrImage } = await import("@/lib/ocr");
+        const ocrResult = await ocrImage(userId, upload.buffer, upload.mimeType);
         ocrText = ocrResult.text;
         if (ocrResult.keywords.length > 0) {
           tags.push(...ocrResult.keywords.filter((k) => !tags.includes(k)));
@@ -167,12 +130,10 @@ export async function createKnowledgeRecord(
           description = ocrResult.description;
         }
         if (ocrText.trim()) {
-          extractedParts.push(
-            `图片 ${upload.originalName} OCR识别:\n${ocrText.trim()}`,
-          );
+          extractedParts.push(`图片 ${upload.originalName} OCR识别:\n${ocrText.trim()}`);
         }
       } catch {
-        // OCR non-critical — disabled or failed
+        // OCR non-critical
       }
     }
 
@@ -180,11 +141,12 @@ export async function createKnowledgeRecord(
     storedAssets.push({
       id: assetId,
       record_id: recordId,
+      user_id: userId,
       original_name: upload.originalName,
       mime_type: upload.mimeType,
       byte_size: upload.byteSize,
       storage_key: stored.storageKey,
-      tags: JSON.stringify(tags),
+      tags,
       description: description || "",
       ocr_text: ocrText,
       file_hash: fileHash,
@@ -196,13 +158,14 @@ export async function createKnowledgeRecord(
   const extractedText = extractedParts.join("\n\n");
   let title =
     input.title?.trim() ||
-    storedAssets[0]?.original_name ||
+    (storedAssets[0]?.original_name as string) ||
     contentText.slice(0, 42) ||
     "未命名资料";
   const sourceLabel = input.sourceLabel?.trim() || "手动收件箱";
   const contextNote = input.contextNote?.trim() || "";
   const recordType =
     input.recordTypeHint || inferRecordType(uploads.map((item) => item.mimeType));
+
   const analysis: AnalysisOutput = await analyzeRecord({
     title,
     sourceLabel,
@@ -213,31 +176,16 @@ export async function createKnowledgeRecord(
     assetNames,
   });
 
-  const titleMatchesFilename = storedAssets.some(
-    (a) => a.original_name === title,
-  );
+  const titleMatchesFilename = storedAssets.some((a) => a.original_name as string === title);
   if (analysis.title && (titleMatchesFilename || !input.title?.trim())) {
     title = analysis.title;
   }
 
-  const combinedText = [contentText, extractedText, contextNote]
-    .filter(Boolean)
-    .join("\n\n");
+  const combinedText = [contentText, extractedText, contextNote].filter(Boolean).join("\n\n");
 
-  db.prepare(
-    `
-      INSERT INTO records (
-        id, title, source_label, source_channel, record_type, content_text,
-        extracted_text, summary, context_note, keywords, action_items,
-        suggested_targets, created_at, updated_at
-      ) VALUES (
-        @id, @title, @source_label, @source_channel, @record_type, @content_text,
-        @extracted_text, @summary, @context_note, @keywords, @action_items,
-        @suggested_targets, @created_at, @updated_at
-      )
-    `,
-  ).run({
+  await supabase.from("records").insert({
     id: recordId,
+    user_id: userId,
     title,
     source_label: sourceLabel,
     source_channel: "manual-web",
@@ -246,65 +194,42 @@ export async function createKnowledgeRecord(
     extracted_text: extractedText,
     summary: analysis.summary,
     context_note: contextNote,
-    keywords: JSON.stringify(analysis.keywords),
-    action_items: JSON.stringify(analysis.actionItems),
-    suggested_targets: JSON.stringify(analysis.suggestedTargets),
+    keywords: analysis.keywords,
+    action_items: analysis.actionItems,
+    suggested_targets: analysis.suggestedTargets,
     created_at: createdAt,
     updated_at: createdAt,
   });
 
-  const insertAsset = db.prepare(`
-    INSERT INTO assets (
-      id, record_id, original_name, mime_type, byte_size, storage_key,
-      tags, description, ocr_text, file_hash, created_at
-    ) VALUES (
-      @id, @record_id, @original_name, @mime_type, @byte_size, @storage_key,
-      @tags, @description, @ocr_text, @file_hash, @created_at
-    )
-  `);
-
-  for (const asset of storedAssets) {
-    insertAsset.run(asset);
+  if (storedAssets.length > 0) {
+    await supabase.from("assets").insert(storedAssets);
   }
 
   const chunks = chunkText(combinedText || analysis.summary);
   const chunkEmbeddings = await createEmbeddings(chunks);
-  const insertChunk = db.prepare(`
-    INSERT INTO chunks (
-      id, record_id, chunk_index, content, reason, embedding, created_at
-    ) VALUES (
-      @id, @record_id, @chunk_index, @content, @reason, @embedding, @created_at
-    )
-  `);
-  const insertFts = db.prepare(`
-    INSERT INTO chunks_fts (chunk_id, record_id, content, reason)
-    VALUES (@chunk_id, @record_id, @content, @reason)
-  `);
-
-  chunks.forEach((chunk, index) => {
+  const chunkRows = chunks.map((chunk, index) => {
     const chunkId = createId("chk");
-    const payload = {
+    return {
       id: chunkId,
       record_id: recordId,
+      user_id: userId,
       chunk_index: index,
       content: chunk,
       reason: buildChunkReason(title, sourceLabel),
       embedding: chunkEmbeddings ? JSON.stringify(chunkEmbeddings[index]) : null,
       created_at: createdAt,
     };
-    insertChunk.run(payload);
-    insertFts.run({
-      chunk_id: chunkId,
-      record_id: recordId,
-      content: chunk,
-      reason: payload.reason,
-    });
   });
 
-  const created = getKnowledgeRecord(recordId);
+  if (chunkRows.length > 0) {
+    await supabase.from("chunks").insert(chunkRows);
+  }
+
+  const created = await getKnowledgeRecord(userId, recordId);
   if (created) {
     try {
-      extractTodosFromRecord(created);
+      const { extractTodosFromRecord } = await import("@/lib/todos");
+      await extractTodosFromRecord(userId, created);
     } catch {
       // non-critical
     }
@@ -312,109 +237,145 @@ export async function createKnowledgeRecord(
   return created;
 }
 
-export function listKnowledgeRecords(opts?: { limit?: number; offset?: number; includeDeleted?: boolean }) {
-  const db = getDb();
+export async function listKnowledgeRecords(
+  userId: string,
+  opts?: { limit?: number; offset?: number; includeDeleted?: boolean },
+) {
+  const supabase = getSupabaseAdmin();
   const limit = opts?.limit ?? 20;
   const offset = opts?.offset ?? 0;
-  const whereClause = opts?.includeDeleted ? "" : "WHERE deleted_at IS NULL";
 
-  const { total } = db
-    .prepare(`SELECT count(*) as total FROM records ${whereClause}`)
-    .get() as { total: number };
+  let countQuery = supabase
+    .from("records")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (!opts?.includeDeleted) {
+    countQuery = countQuery.is("deleted_at", null);
+  }
+  const { count: total } = await countQuery;
 
-  const rows = db
-    .prepare(
-      `SELECT * FROM records ${whereClause} ORDER BY datetime(created_at) DESC LIMIT ? OFFSET ?`,
-    )
-    .all(limit, offset) as RecordRow[];
+  let query = supabase
+    .from("records")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (!opts?.includeDeleted) {
+    query = query.is("deleted_at", null);
+  }
+  const { data: rows } = await query;
 
-  const records = rows
-    .map((row) => getKnowledgeRecord(row.id))
-    .filter(Boolean) as KnowledgeRecord[];
+  const records: KnowledgeRecord[] = [];
+  for (const row of (rows || []) as RecordRow[]) {
+    const rec = await getKnowledgeRecord(userId, row.id);
+    if (rec) records.push(rec);
+  }
 
-  return { records, total };
+  return { records, total: total ?? 0 };
 }
 
-export function listDeletedRecords(opts?: { limit?: number; offset?: number }) {
-  const db = getDb();
+export async function listDeletedRecords(
+  userId: string,
+  opts?: { limit?: number; offset?: number },
+) {
+  const supabase = getSupabaseAdmin();
   const limit = opts?.limit ?? 50;
   const offset = opts?.offset ?? 0;
 
-  const { total } = db
-    .prepare(`SELECT count(*) as total FROM records WHERE deleted_at IS NOT NULL`)
-    .get() as { total: number };
+  const { count: total } = await supabase
+    .from("records")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .not("deleted_at", "is", null);
 
-  const rows = db
-    .prepare(
-      `SELECT * FROM records WHERE deleted_at IS NOT NULL ORDER BY datetime(deleted_at) DESC LIMIT ? OFFSET ?`,
-    )
-    .all(limit, offset) as RecordRow[];
+  const { data: rows } = await supabase
+    .from("records")
+    .select("*")
+    .eq("user_id", userId)
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  const records = rows.map((row) => getKnowledgeRecord(row.id)).filter(Boolean) as KnowledgeRecord[];
-  return { records, total };
-}
-
-export function softDeleteRecord(recordId: string) {
-  const db = getDb();
-  db.prepare(`UPDATE records SET deleted_at = @deleted_at, updated_at = @updated_at WHERE id = @id`).run({
-    id: recordId,
-    deleted_at: nowIso(),
-    updated_at: nowIso(),
-  });
-}
-
-export function restoreRecord(recordId: string) {
-  const db = getDb();
-  db.prepare(`UPDATE records SET deleted_at = NULL, updated_at = @updated_at WHERE id = @id`).run({
-    id: recordId,
-    updated_at: nowIso(),
-  });
-}
-
-export function cleanupOldDeletedRecords(days = 30) {
-  const db = getDb();
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const rows = db
-    .prepare(`SELECT id FROM records WHERE deleted_at IS NOT NULL AND deleted_at < ?`)
-    .all(cutoff) as Array<{ id: string }>;
-  return rows.map((r) => r.id);
-}
-
-export function getKnowledgeRecord(recordId: string) {
-  const db = getDb();
-  const row = db
-    .prepare(`SELECT * FROM records WHERE id = ?`)
-    .get(recordId) as RecordRow | undefined;
-
-  if (!row) {
-    return null;
+  const records: KnowledgeRecord[] = [];
+  for (const row of (rows || []) as RecordRow[]) {
+    const rec = await getKnowledgeRecord(userId, row.id);
+    if (rec) records.push(rec);
   }
-
-  const assets = db
-    .prepare(`SELECT * FROM assets WHERE record_id = ? ORDER BY created_at ASC`)
-    .all(recordId) as AssetRow[];
-  const syncRows = db
-    .prepare(`SELECT * FROM sync_runs WHERE record_id = ? ORDER BY created_at DESC`)
-    .all(recordId) as SyncRow[];
-
-  return mapRecord(row, assets, syncRows);
+  return { records, total: total ?? 0 };
 }
 
-export function getAssetById(assetId: string) {
-  const db = getDb();
-  return db
-    .prepare(`SELECT * FROM assets WHERE id = ?`)
-    .get(assetId) as AssetRow | undefined;
+export async function softDeleteRecord(userId: string, recordId: string) {
+  const now = nowIso();
+  await getSupabaseAdmin()
+    .from("records")
+    .update({ deleted_at: now, updated_at: now })
+    .eq("id", recordId)
+    .eq("user_id", userId);
+}
+
+export async function restoreRecord(userId: string, recordId: string) {
+  await getSupabaseAdmin()
+    .from("records")
+    .update({ deleted_at: null, updated_at: nowIso() })
+    .eq("id", recordId)
+    .eq("user_id", userId);
+}
+
+export async function cleanupOldDeletedRecords(userId: string, days = 30) {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const { data: rows } = await getSupabaseAdmin()
+    .from("records")
+    .select("id")
+    .eq("user_id", userId)
+    .not("deleted_at", "is", null)
+    .lt("deleted_at", cutoff);
+  return (rows || []).map((r) => r.id as string);
+}
+
+export async function getKnowledgeRecord(userId: string, recordId: string) {
+  const supabase = getSupabaseAdmin();
+
+  const { data: row } = await supabase
+    .from("records")
+    .select("*")
+    .eq("id", recordId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!row) return null;
+
+  const { data: assets } = await supabase
+    .from("assets")
+    .select("*")
+    .eq("record_id", recordId)
+    .order("created_at", { ascending: true });
+
+  const { data: syncRows } = await supabase
+    .from("sync_runs")
+    .select("*")
+    .eq("record_id", recordId)
+    .order("created_at", { ascending: false });
+
+  return mapRecord(row as RecordRow, (assets || []) as AssetRow[], (syncRows || []) as SyncRow[]);
+}
+
+export async function getAssetById(userId: string, assetId: string): Promise<AssetRow | null> {
+  const { data } = await getSupabaseAdmin()
+    .from("assets")
+    .select("*")
+    .eq("id", assetId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return (data ?? null) as AssetRow | null;
 }
 
 export async function readAssetBuffer(
+  userId: string,
   assetId: string,
   options?: { download?: boolean },
 ) {
-  const asset = getAssetById(assetId);
-  if (!asset) {
-    return null;
-  }
+  const asset = await getAssetById(userId, assetId);
+  if (!asset) return null;
 
   const content = await readStoredUpload(asset.storage_key, {
     download: options?.download,
@@ -423,60 +384,51 @@ export async function readAssetBuffer(
   return { asset: mapAsset(asset), content };
 }
 
-export async function deleteKnowledgeRecord(recordId: string) {
-  softDeleteRecord(recordId);
+export async function deleteKnowledgeRecord(userId: string, recordId: string) {
+  await softDeleteRecord(userId, recordId);
 }
 
-export async function hardDeleteRecord(recordId: string) {
-  const db = getDb();
-  const assets = db
-    .prepare(`SELECT * FROM assets WHERE record_id = ?`)
-    .all(recordId) as AssetRow[];
+export async function hardDeleteRecord(userId: string, recordId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data: assets } = await supabase
+    .from("assets")
+    .select("storage_key")
+    .eq("record_id", recordId)
+    .eq("user_id", userId);
 
-  for (const asset of assets) {
+  for (const asset of assets || []) {
     await deleteStoredUpload(asset.storage_key);
   }
 
-  db.prepare(`DELETE FROM chunks_fts WHERE record_id = ?`).run(recordId);
-  db.prepare(`DELETE FROM chunks WHERE record_id = ?`).run(recordId);
-  db.prepare(`DELETE FROM sync_runs WHERE record_id = ?`).run(recordId);
-  db.prepare(`DELETE FROM assets WHERE record_id = ?`).run(recordId);
-  db.prepare(`DELETE FROM favorites WHERE record_id = ?`).run(recordId);
-  db.prepare(`DELETE FROM records WHERE id = ?`).run(recordId);
+  await supabase.from("chunks").delete().eq("record_id", recordId).eq("user_id", userId);
+  await supabase.from("sync_runs").delete().eq("record_id", recordId).eq("user_id", userId);
+  await supabase.from("assets").delete().eq("record_id", recordId).eq("user_id", userId);
+  await supabase.from("favorites").delete().eq("record_id", recordId).eq("user_id", userId);
+  await supabase.from("records").delete().eq("id", recordId).eq("user_id", userId);
 }
 
-export function updateKnowledgeRecord(
+export async function updateKnowledgeRecord(
+  userId: string,
   recordId: string,
   fields: { title?: string; contextNote?: string; sourceLabel?: string },
 ) {
-  const db = getDb();
-  const sets: string[] = [];
-  const values: Record<string, string> = { id: recordId, updated_at: nowIso() };
+  const updates: Record<string, string> = { updated_at: nowIso() };
 
-  if (fields.title !== undefined) {
-    sets.push("title = @title");
-    values.title = fields.title;
-  }
-  if (fields.contextNote !== undefined) {
-    sets.push("context_note = @context_note");
-    values.context_note = fields.contextNote;
-  }
-  if (fields.sourceLabel !== undefined) {
-    sets.push("source_label = @source_label");
-    values.source_label = fields.sourceLabel;
-  }
+  if (fields.title !== undefined) updates.title = fields.title;
+  if (fields.contextNote !== undefined) updates.context_note = fields.contextNote;
+  if (fields.sourceLabel !== undefined) updates.source_label = fields.sourceLabel;
 
-  if (sets.length === 0) return getKnowledgeRecord(recordId);
+  await getSupabaseAdmin()
+    .from("records")
+    .update(updates)
+    .eq("id", recordId)
+    .eq("user_id", userId);
 
-  sets.push("updated_at = @updated_at");
-
-  db.prepare(`UPDATE records SET ${sets.join(", ")} WHERE id = @id`).run(values);
-
-  return getKnowledgeRecord(recordId);
+  return getKnowledgeRecord(userId, recordId);
 }
 
-export async function readAssetThumbnail(assetId: string) {
-  const asset = getAssetById(assetId);
+export async function readAssetThumbnail(userId: string, assetId: string) {
+  const asset = await getAssetById(userId, assetId);
   if (!asset) return null;
   if (!asset.mime_type.startsWith("image/")) return null;
 
@@ -484,57 +436,52 @@ export async function readAssetThumbnail(assetId: string) {
   return { asset: mapAsset(asset), content };
 }
 
-export function updateAssetOcr(
+export async function updateAssetOcr(
+  userId: string,
   assetId: string,
   ocrText: string,
   keywords: string[],
   description: string,
 ) {
-  const db = getDb();
-  const asset = getAssetById(assetId);
+  const asset = await getAssetById(userId, assetId);
   if (!asset) return null;
 
-  const existingTags: string[] = safeJsonParse(asset.tags, []);
-  const mergedTags = [...existingTags, ...keywords.filter((k) => !existingTags.includes(k))];
+  const existingTags: string[] = asset.tags || [];
+  const mergedTags = [...existingTags, ...keywords.filter((k: string) => !existingTags.includes(k))];
 
-  db.prepare(
-    `UPDATE assets SET ocr_text = @ocr_text, tags = @tags, description = CASE WHEN description = '' THEN @description ELSE description END WHERE id = @id`,
-  ).run({
-    id: assetId,
-    ocr_text: ocrText,
-    tags: JSON.stringify(mergedTags),
-    description,
-  });
+  await getSupabaseAdmin()
+    .from("assets")
+    .update({
+      ocr_text: ocrText,
+      tags: mergedTags,
+      description: asset.description ? asset.description : description,
+    })
+    .eq("id", assetId)
+    .eq("user_id", userId);
 
-  return getAssetById(assetId);
+  return getAssetById(userId, assetId);
 }
 
-export function addSyncRun(input: {
-  recordId: string;
-  target: SyncRun["target"];
-  status: SyncRun["status"];
-  externalRef?: string | null;
-  payload?: Record<string, unknown>;
-  message?: string;
-}) {
-  const db = getDb();
+export async function addSyncRun(
+  userId: string,
+  input: {
+    recordId: string;
+    target: SyncRun["target"];
+    status: SyncRun["status"];
+    externalRef?: string | null;
+    payload?: Record<string, unknown>;
+    message?: string;
+  },
+) {
   const createdAt = nowIso();
-
-  db.prepare(
-    `
-      INSERT INTO sync_runs (
-        id, record_id, target, status, external_ref, payload, message, created_at, updated_at
-      ) VALUES (
-        @id, @record_id, @target, @status, @external_ref, @payload, @message, @created_at, @updated_at
-      )
-    `,
-  ).run({
+  await getSupabaseAdmin().from("sync_runs").insert({
     id: createId("sync"),
     record_id: input.recordId,
+    user_id: userId,
     target: input.target,
     status: input.status,
     external_ref: input.externalRef || null,
-    payload: JSON.stringify(input.payload || {}),
+    payload: input.payload || {},
     message: input.message || "",
     created_at: createdAt,
     updated_at: createdAt,

@@ -1,38 +1,19 @@
 import { answerWithContext, createEmbeddings, isAiConfigured } from "@/lib/ai";
-import { getDb } from "@/lib/db";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { SearchCitation, SearchResponse } from "@/lib/types";
 import { cosineSimilarity, safeJsonParse, trimText } from "@/lib/utils";
 
-type LexicalMatch = {
-  chunk_id: string;
-  record_id: string;
-  content: string;
-  reason: string;
-  rank: number;
-  title: string;
-  source_label: string;
-};
-
-type SemanticChunk = {
-  id: string;
-  record_id: string;
-  content: string;
-  reason: string;
-  embedding: string | null;
-  title: string;
-  source_label: string;
-};
-
-function buildFtsQuery(query: string) {
+function buildTsQuery(query: string) {
   return query
     .split(/\s+/)
     .map((token) => token.trim())
     .filter(Boolean)
-    .map((token) => `${token.replace(/["']/g, "")}*`)
-    .join(" OR ");
+    .map((token) => `${token.replace(/["']/g, "")}:*`)
+    .join(" | ");
 }
 
 export async function searchKnowledge(
+  userId: string,
   query: string,
   history?: Array<{ role: string; content: string }>,
 ): Promise<SearchResponse> {
@@ -44,90 +25,110 @@ export async function searchKnowledge(
     };
   }
 
-  const db = getDb();
-  let lexicalResults: LexicalMatch[] = [];
-
-  try {
-    lexicalResults = db
-      .prepare(
-        `
-          SELECT
-            chunks_fts.chunk_id,
-            chunks_fts.record_id,
-            chunks.content,
-            chunks.reason,
-            bm25(chunks_fts) AS rank,
-            records.title,
-            records.source_label
-          FROM chunks_fts
-          JOIN chunks ON chunks.id = chunks_fts.chunk_id
-          JOIN records ON records.id = chunks_fts.record_id
-          WHERE chunks_fts MATCH ?
-          ORDER BY rank
-          LIMIT 8
-        `,
-      )
-      .all(buildFtsQuery(trimmed) || trimmed) as LexicalMatch[];
-  } catch {
-    lexicalResults = [];
-  }
-
-  if (lexicalResults.length === 0) {
-    const like = `%${trimmed}%`;
-    lexicalResults = db
-      .prepare(
-        `
-          SELECT DISTINCT
-            chunks.id AS chunk_id,
-            chunks.record_id,
-            chunks.content,
-            chunks.reason,
-            0 AS rank,
-            records.title,
-            records.source_label
-          FROM chunks
-          JOIN records ON records.id = chunks.record_id
-          LEFT JOIN assets ON assets.record_id = records.id
-          WHERE chunks.content LIKE ?
-            OR records.title LIKE ?
-            OR records.summary LIKE ?
-            OR assets.tags LIKE ?
-            OR assets.description LIKE ?
-            OR assets.ocr_text LIKE ?
-          ORDER BY datetime(records.created_at) DESC
-          LIMIT 8
-        `,
-      )
-      .all(like, like, like, like, like, like) as LexicalMatch[];
-  }
-
+  const supabase = getSupabaseAdmin();
   const merged = new Map<string, SearchCitation>();
 
-  for (const row of lexicalResults) {
-    merged.set(row.chunk_id, {
-      recordId: row.record_id,
-      title: row.title,
-      sourceLabel: row.source_label,
-      snippet: trimText(row.content, 220),
-      reason: row.reason,
-      score: Math.abs(Number(row.rank || 0)) + 1,
-    });
+  const tsQuery = buildTsQuery(trimmed);
+  if (tsQuery) {
+    const { data: ftsRows } = await supabase
+      .from("chunks")
+      .select("id, record_id, content, reason")
+      .eq("user_id", userId)
+      .textSearch("tsv", tsQuery)
+      .limit(8);
+
+    if (ftsRows && ftsRows.length > 0) {
+      const recordIds = [...new Set(ftsRows.map((r) => r.record_id))];
+      const { data: recordRows } = await supabase
+        .from("records")
+        .select("id, title, source_label")
+        .in("id", recordIds);
+      const recordMap = new Map((recordRows || []).map((r) => [r.id, r]));
+
+      for (const row of ftsRows) {
+        const rec = recordMap.get(row.record_id);
+        merged.set(row.id, {
+          recordId: row.record_id,
+          title: rec?.title || "",
+          sourceLabel: rec?.source_label || "",
+          snippet: trimText(row.content, 220),
+          reason: row.reason,
+          score: 2,
+        });
+      }
+    }
   }
 
-  type TodoMatch = { id: string; content: string; priority: string; status: string; created_at: string; record_id: string | null };
-  const todoLike = `%${trimmed}%`;
-  const todoMatches = db
-    .prepare(
-      `SELECT id, content, priority, status, created_at, record_id FROM todos WHERE content LIKE ? AND status != 'deleted' ORDER BY datetime(created_at) DESC LIMIT 5`,
-    )
-    .all(todoLike) as TodoMatch[];
+  if (merged.size === 0) {
+    const like = `%${trimmed}%`;
+    const { data: likeChunks } = await supabase
+      .from("chunks")
+      .select("id, record_id, content, reason")
+      .eq("user_id", userId)
+      .ilike("content", like)
+      .order("created_at", { ascending: false })
+      .limit(8);
 
-  for (const t of todoMatches) {
-    const pLabel = { urgent: "紧急", high: "高", medium: "中", low: "低" }[t.priority] || t.priority;
+    if (likeChunks && likeChunks.length > 0) {
+      const recordIds = [...new Set(likeChunks.map((r) => r.record_id))];
+      const { data: recordRows } = await supabase
+        .from("records")
+        .select("id, title, source_label")
+        .in("id", recordIds);
+      const recordMap = new Map((recordRows || []).map((r) => [r.id, r]));
+
+      for (const row of likeChunks) {
+        const rec = recordMap.get(row.record_id);
+        merged.set(row.id, {
+          recordId: row.record_id,
+          title: rec?.title || "",
+          sourceLabel: rec?.source_label || "",
+          snippet: trimText(row.content, 220),
+          reason: row.reason,
+          score: 1,
+        });
+      }
+    }
+
+    const { data: titleMatches } = await supabase
+      .from("records")
+      .select("id, title, source_label, summary")
+      .eq("user_id", userId)
+      .or(`title.ilike.${like},summary.ilike.${like}`)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    for (const row of titleMatches || []) {
+      if (!merged.has(`rec-${row.id}`)) {
+        merged.set(`rec-${row.id}`, {
+          recordId: row.id,
+          title: row.title,
+          sourceLabel: row.source_label,
+          snippet: trimText(row.summary || "", 220),
+          reason: "标题或摘要匹配",
+          score: 1.5,
+        });
+      }
+    }
+  }
+
+  const todoLike = `%${trimmed}%`;
+  const { data: todoMatches } = await supabase
+    .from("todos")
+    .select("id, content, priority, status, created_at, record_id")
+    .eq("user_id", userId)
+    .neq("status", "deleted")
+    .ilike("content", todoLike)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  for (const t of todoMatches || []) {
+    const pLabel: Record<string, string> = { urgent: "紧急", high: "高", medium: "中", low: "低" };
     merged.set(`todo-${t.id}`, {
       recordId: t.record_id || "",
       title: `[待办] ${trimText(t.content, 40)}`,
-      sourceLabel: `待办 · ${pLabel} · ${t.status === "done" ? "已完成" : "待进行"}`,
+      sourceLabel: `待办 · ${pLabel[t.priority] || t.priority} · ${t.status === "done" ? "已完成" : "待处理"}`,
       snippet: t.content,
       reason: "匹配待办事项",
       score: 0.8,
@@ -135,45 +136,41 @@ export async function searchKnowledge(
   }
 
   if (isAiConfigured()) {
-    const embeddingRows = db
-      .prepare(
-        `
-          SELECT
-            chunks.id,
-            chunks.record_id,
-            chunks.content,
-            chunks.reason,
-            chunks.embedding,
-            records.title,
-            records.source_label
-          FROM chunks
-          JOIN records ON records.id = chunks.record_id
-          WHERE chunks.embedding IS NOT NULL
-          ORDER BY datetime(records.created_at) DESC
-          LIMIT 80
-        `,
-      )
-      .all() as SemanticChunk[];
+    const { data: embeddingRows } = await supabase
+      .from("chunks")
+      .select("id, record_id, content, reason, embedding")
+      .eq("user_id", userId)
+      .not("embedding", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(80);
 
-    const [queryEmbedding] = (await createEmbeddings([trimmed])) || [];
-    if (queryEmbedding) {
-      for (const row of embeddingRows) {
-        const vector = safeJsonParse<number[]>(row.embedding, []);
-        const score = cosineSimilarity(queryEmbedding, vector);
-        if (score < 0.42) {
-          continue;
+    if (embeddingRows && embeddingRows.length > 0) {
+      const recordIds = [...new Set(embeddingRows.map((r) => r.record_id))];
+      const { data: recordRows } = await supabase
+        .from("records")
+        .select("id, title, source_label")
+        .in("id", recordIds);
+      const recordMap = new Map((recordRows || []).map((r) => [r.id, r]));
+
+      const [queryEmbedding] = (await createEmbeddings([trimmed])) || [];
+      if (queryEmbedding) {
+        for (const row of embeddingRows) {
+          const vector = safeJsonParse<number[]>(row.embedding, []);
+          const score = cosineSimilarity(queryEmbedding, vector);
+          if (score < 0.42) continue;
+
+          const rec = recordMap.get(row.record_id);
+          const previous = merged.get(row.id);
+          const boosted = score * 10 + (previous?.score || 0);
+          merged.set(row.id, {
+            recordId: row.record_id,
+            title: rec?.title || "",
+            sourceLabel: rec?.source_label || "",
+            snippet: trimText(row.content, 220),
+            reason: previous?.reason || row.reason,
+            score: boosted,
+          });
         }
-
-        const previous = merged.get(row.id);
-        const boosted = score * 10 + (previous?.score || 0);
-        merged.set(row.id, {
-          recordId: row.record_id,
-          title: row.title,
-          sourceLabel: row.source_label,
-          snippet: trimText(row.content, 220),
-          reason: previous?.reason || row.reason,
-          score: boosted,
-        });
       }
     }
   }

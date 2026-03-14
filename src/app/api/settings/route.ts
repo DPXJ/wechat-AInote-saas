@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { requireUserId } from "@/lib/supabase/server";
 import { getIntegrationSettings, saveIntegrationSettings } from "@/lib/settings";
 
 export const runtime = "nodejs";
@@ -34,29 +35,42 @@ const settingsSchema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json({ settings: getIntegrationSettings() });
+  try {
+    const userId = await requireUserId();
+    return NextResponse.json({ settings: await getIntegrationSettings(userId) });
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    throw e;
+  }
 }
 
 export async function POST(request: Request) {
-  let raw: unknown;
   try {
-    raw = await request.json();
-  } catch {
-    return NextResponse.json({ error: "请求体解析失败，请重试。" }, { status: 400 });
-  }
+    const userId = await requireUserId();
 
-  const body = settingsSchema.safeParse(raw);
+    let raw: unknown;
+    try {
+      raw = await request.json();
+    } catch {
+      return NextResponse.json({ error: "请求体解析失败，请重试。" }, { status: 400 });
+    }
 
-  if (!body.success) {
-    const details = body.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-    return NextResponse.json({ error: `配置校验失败: ${details}` }, { status: 400 });
-  }
+    const body = settingsSchema.safeParse(raw);
 
-  try {
-    const settings = saveIntegrationSettings(body.data);
+    if (!body.success) {
+      const details = body.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+      return NextResponse.json({ error: `配置校验失败: ${details}` }, { status: 400 });
+    }
+
+    const settings = await saveIntegrationSettings(userId, body.data);
     return NextResponse.json({ settings });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "未知错误";
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    const msg = e instanceof Error ? e.message : "未知错误";
     return NextResponse.json({ error: `保存失败: ${msg}` }, { status: 500 });
   }
 }

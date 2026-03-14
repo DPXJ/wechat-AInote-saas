@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { requireUserId } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const userId = await requireUserId();
     const body = await request.json();
     const { orderedIds } = body as { orderedIds: string[] };
 
@@ -12,19 +14,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "缺少 orderedIds" }, { status: 400 });
     }
 
-    const db = getDb();
-    const stmt = db.prepare(`UPDATE todos SET sort_order = ? WHERE id = ?`);
-    const updateAll = db.transaction(() => {
-      for (let i = 0; i < orderedIds.length; i++) {
-        stmt.run(i, orderedIds[i]);
-      }
-    });
-    updateAll();
+    const supabase = getSupabaseAdmin();
+
+    const updates = orderedIds.map((id, i) =>
+      supabase
+        .from("todos")
+        .update({ sort_order: i })
+        .eq("id", id)
+        .eq("user_id", userId),
+    );
+    await Promise.all(updates);
 
     return NextResponse.json({ ok: true });
-  } catch (err) {
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "排序失败" },
+      { error: e instanceof Error ? e.message : "排序失败" },
       { status: 500 },
     );
   }

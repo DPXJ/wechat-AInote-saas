@@ -1,37 +1,37 @@
 import { NextResponse, type NextRequest } from "next/server";
-import fs from "node:fs";
-import path from "node:path";
-import { getDb } from "@/lib/db";
-import { paths, appConfig } from "@/lib/config";
+import { requireUserId } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
+const TABLES = ["records", "assets", "todos", "favorites", "settings"] as const;
+
 export async function GET() {
   try {
-    const db = getDb();
-    const backupDir = path.join(appConfig.dataRoot, "backups");
-    fs.mkdirSync(backupDir, { recursive: true });
+    const userId = await requireUserId();
+    const supabase = getSupabaseAdmin();
 
+    const backup: Record<string, unknown[]> = {};
+    for (const table of TABLES) {
+      const { data } = await supabase.from(table).select("*").eq("user_id", userId);
+      backup[table] = data ?? [];
+    }
+
+    const json = JSON.stringify(backup, null, 2);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupFile = path.join(backupDir, `backup-${timestamp}.sqlite`);
 
-    db.exec(`VACUUM INTO '${backupFile.replace(/'/g, "''")}'`);
-
-    const buffer = fs.readFileSync(backupFile);
-
-    try {
-      fs.unlinkSync(backupFile);
-    } catch { /* cleanup optional */ }
-
-    return new Response(buffer, {
+    return new Response(json, {
       headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="ai-signal-backup-${timestamp}.sqlite"`,
+        "Content-Type": "application/json",
+        "Content-Disposition": `attachment; filename="ai-signal-backup-${timestamp}.json"`,
       },
     });
-  } catch (err) {
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "备份失败" },
+      { error: e instanceof Error ? e.message : "备份失败" },
       { status: 500 },
     );
   }
@@ -39,34 +39,42 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const userId = await requireUserId();
+    const supabase = getSupabaseAdmin();
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     if (!file) {
       return NextResponse.json({ error: "请上传备份文件" }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    const header = buffer.slice(0, 16).toString("ascii");
-    if (!header.startsWith("SQLite format 3")) {
-      return NextResponse.json({ error: "无效的 SQLite 备份文件" }, { status: 400 });
+    const text = await file.text();
+    let backup: Record<string, unknown[]>;
+    try {
+      backup = JSON.parse(text);
+    } catch {
+      return NextResponse.json({ error: "无效的备份文件格式" }, { status: 400 });
     }
 
-    const backupDir = path.join(appConfig.dataRoot, "backups");
-    fs.mkdirSync(backupDir, { recursive: true });
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const currentBackup = path.join(backupDir, `pre-restore-${timestamp}.sqlite`);
-    fs.copyFileSync(paths.dbFile, currentBackup);
-
-    fs.writeFileSync(paths.dbFile, buffer);
+    for (const table of TABLES) {
+      if (!backup[table] || !Array.isArray(backup[table])) continue;
+      await supabase.from(table).delete().eq("user_id", userId);
+      const rows = backup[table].map((row: any) => ({ ...row, user_id: userId }));
+      if (rows.length > 0) {
+        await supabase.from(table).upsert(rows);
+      }
+    }
 
     return NextResponse.json({
       ok: true,
-      message: "数据库已恢复，请刷新页面。原数据库已备份至 backups 目录。",
+      message: "数据已从备份恢复，请刷新页面。",
     });
-  } catch (err) {
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "恢复失败" },
+      { error: e instanceof Error ? e.message : "恢复失败" },
       { status: 500 },
     );
   }

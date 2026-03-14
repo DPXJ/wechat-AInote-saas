@@ -1,73 +1,107 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getDb } from "@/lib/db";
-import { safeJsonParse } from "@/lib/utils";
+import { requireUserId } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const db = getDb();
+  try {
+    const userId = await requireUserId();
+    const supabase = getSupabaseAdmin();
 
-  const records = db
-    .prepare(`SELECT id, keywords FROM records WHERE deleted_at IS NULL AND keywords != '[]'`)
-    .all() as Array<{ id: string; keywords: string }>;
+    const { data: records } = await supabase
+      .from("records")
+      .select("id, keywords")
+      .eq("user_id", userId)
+      .is("deleted_at", null);
 
-  const assets = db
-    .prepare(`SELECT id, tags FROM assets WHERE tags != '[]'`)
-    .all() as Array<{ id: string; tags: string }>;
+    const { data: assets } = await supabase
+      .from("assets")
+      .select("id, tags")
+      .eq("user_id", userId);
 
-  const tagCount = new Map<string, number>();
+    const tagCount = new Map<string, number>();
 
-  for (const r of records) {
-    const kws: string[] = safeJsonParse(r.keywords, []);
-    for (const k of kws) {
-      const key = k.trim().toLowerCase();
-      if (key) tagCount.set(key, (tagCount.get(key) || 0) + 1);
+    for (const r of records ?? []) {
+      const kws: string[] = r.keywords || [];
+      for (const k of kws) {
+        const key = k.trim().toLowerCase();
+        if (key) tagCount.set(key, (tagCount.get(key) || 0) + 1);
+      }
     }
-  }
 
-  for (const a of assets) {
-    const tags: string[] = safeJsonParse(a.tags, []);
-    for (const t of tags) {
-      const key = t.trim().toLowerCase();
-      if (key) tagCount.set(key, (tagCount.get(key) || 0) + 1);
+    for (const a of assets ?? []) {
+      const tags: string[] = a.tags || [];
+      for (const t of tags) {
+        const key = t.trim().toLowerCase();
+        if (key) tagCount.set(key, (tagCount.get(key) || 0) + 1);
+      }
     }
+
+    const result = Array.from(tagCount.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
+
+    return NextResponse.json({ tags: result, total: result.length });
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    throw e;
   }
-
-  const result = Array.from(tagCount.entries())
-    .map(([tag, count]) => ({ tag, count }))
-    .sort((a, b) => b.count - a.count);
-
-  return NextResponse.json({ tags: result, total: result.length });
 }
 
 export async function DELETE(request: NextRequest) {
-  const { tag } = await request.json();
-  if (!tag || typeof tag !== "string") {
-    return NextResponse.json({ error: "缺少 tag 参数" }, { status: 400 });
+  try {
+    const userId = await requireUserId();
+    const { tag } = await request.json();
+    if (!tag || typeof tag !== "string") {
+      return NextResponse.json({ error: "缺少 tag 参数" }, { status: 400 });
+    }
+
+    const supabase = getSupabaseAdmin();
+    const targetLower = tag.trim().toLowerCase();
+    let removedCount = 0;
+
+    const { data: records } = await supabase
+      .from("records")
+      .select("id, keywords")
+      .eq("user_id", userId);
+
+    for (const r of records ?? []) {
+      const kws: string[] = r.keywords || [];
+      if (!kws.some((k) => k.trim().toLowerCase() === targetLower)) continue;
+      const filtered = kws.filter((k) => k.trim().toLowerCase() !== targetLower);
+      await supabase
+        .from("records")
+        .update({ keywords: filtered })
+        .eq("id", r.id)
+        .eq("user_id", userId);
+      removedCount++;
+    }
+
+    const { data: assets } = await supabase
+      .from("assets")
+      .select("id, tags")
+      .eq("user_id", userId);
+
+    for (const a of assets ?? []) {
+      const tags: string[] = a.tags || [];
+      if (!tags.some((t) => t.trim().toLowerCase() === targetLower)) continue;
+      const filtered = tags.filter((t) => t.trim().toLowerCase() !== targetLower);
+      await supabase
+        .from("assets")
+        .update({ tags: filtered })
+        .eq("id", a.id)
+        .eq("user_id", userId);
+      removedCount++;
+    }
+
+    return NextResponse.json({ ok: true, removed: removedCount });
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    throw e;
   }
-
-  const db = getDb();
-  const targetLower = tag.trim().toLowerCase();
-
-  const records = db
-    .prepare(`SELECT id, keywords FROM records WHERE keywords LIKE ?`)
-    .all(`%${tag}%`) as Array<{ id: string; keywords: string }>;
-
-  for (const r of records) {
-    const kws: string[] = safeJsonParse(r.keywords, []);
-    const filtered = kws.filter((k) => k.trim().toLowerCase() !== targetLower);
-    db.prepare(`UPDATE records SET keywords = ? WHERE id = ?`).run(JSON.stringify(filtered), r.id);
-  }
-
-  const assets = db
-    .prepare(`SELECT id, tags FROM assets WHERE tags LIKE ?`)
-    .all(`%${tag}%`) as Array<{ id: string; tags: string }>;
-
-  for (const a of assets) {
-    const tags: string[] = safeJsonParse(a.tags, []);
-    const filtered = tags.filter((t) => t.trim().toLowerCase() !== targetLower);
-    db.prepare(`UPDATE assets SET tags = ? WHERE id = ?`).run(JSON.stringify(filtered), a.id);
-  }
-
-  return NextResponse.json({ ok: true, removed: records.length + assets.length });
 }

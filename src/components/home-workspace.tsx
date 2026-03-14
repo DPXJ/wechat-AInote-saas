@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AssetGallery } from "@/components/asset-gallery";
 import { InboxForm } from "@/components/inbox-form";
 import { IntegrationsPanel } from "@/components/integrations-panel";
@@ -10,6 +11,7 @@ import { RecordDetailModal } from "@/components/record-detail-modal";
 import { ReportPanel } from "@/components/report-panel";
 import { TagManager } from "@/components/tag-manager";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { createSupabaseBrowser } from "@/lib/supabase/client";
 import type {
   IntegrationSettings,
   IntegrationStatus,
@@ -81,6 +83,7 @@ export function HomeWorkspace({
   integrationSettings: IntegrationSettings;
   integrationStatus: IntegrationStatus;
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTabRaw] = useState<WorkspaceTab>("record");
   const tabRestoredRef = useRef(false);
   const [records, setRecords] = useState<KnowledgeRecord[]>(initialRecords);
@@ -93,6 +96,21 @@ export function HomeWorkspace({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [detailModalId, setDetailModalId] = useState<string | null>(null);
   const [pendingTodoCount, setPendingTodoCount] = useState(0);
+  const [userEmail, setUserEmail] = useState("");
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowser();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setUserEmail(data.user.email);
+    });
+  }, []);
+
+  const handleLogout = async () => {
+    const supabase = createSupabaseBrowser();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
 
   useEffect(() => {
     fetch("/api/todos?limit=1&status=pending")
@@ -288,12 +306,18 @@ export function HomeWorkspace({
               sidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
             ].join(" ")}>
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-400 to-cyan-400 text-[11px] font-bold text-white">
-                A
+                {userEmail ? userEmail[0].toUpperCase() : "U"}
               </span>
               {!sidebarCollapsed && (
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium text-[var(--foreground)]">Admin</p>
-                  <p className="truncate text-[11px] text-[var(--muted)]">已登录</p>
+                  <p className="truncate text-[13px] font-medium text-[var(--foreground)]">{userEmail || "用户"}</p>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="truncate text-[11px] text-[var(--muted)] transition hover:text-rose-500"
+                  >
+                    退出登录
+                  </button>
                 </div>
               )}
             </div>
@@ -921,6 +945,9 @@ function RecordPane({
   const [editNote, setEditNote] = useState(record.contextNote);
   const [saving, setSaving] = useState(false);
   const [isFav, setIsFav] = useState(initialFavorited ?? false);
+  const [syncing, setSyncing] = useState("");
+  const [syncMsg, setSyncMsg] = useState("");
+  const isSynced = record.syncRuns.some((r) => r.status === "synced");
 
   useEffect(() => {
     setEditing(false);
@@ -954,6 +981,25 @@ function RecordPane({
     }
     setSaving(false);
     setEditing(false);
+  };
+
+  const handleSync = async (target: "notion" | "ticktick-email") => {
+    setSyncing(target);
+    setSyncMsg("正在同步...");
+    try {
+      const res = await fetch(`/api/records/${record.id}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target }),
+      });
+      const data = await res.json();
+      setSyncMsg(res.ok ? "同步成功 ✓" : (data.error || "同步失败"));
+    } catch {
+      setSyncMsg("网络错误");
+    } finally {
+      setSyncing("");
+      setTimeout(() => setSyncMsg(""), 3000);
+    }
   };
 
   const toggleFavorite = async () => {
@@ -1095,44 +1141,68 @@ function RecordPane({
       </div>
 
       {/* Fixed footer */}
-      <div className="flex items-center justify-between border-t border-[var(--line)] px-6 py-3">
-        <button
-          type="button"
-          onClick={toggleFavorite}
-          className={[
-            "transition",
-            isFav ? "text-amber-400" : "text-[var(--muted)] hover:text-amber-400",
-          ].join(" ")}
-          title={isFav ? "取消收藏" : "添加收藏"}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill={isFav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3z" />
-          </svg>
-        </button>
+      <div className="shrink-0 border-t border-[var(--line)] px-6 py-3">
+        {syncMsg && <p className="mb-2 text-center text-[12px] text-[var(--muted)]">{syncMsg}</p>}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleFavorite}
+              className={[
+                "transition",
+                isFav ? "text-amber-400" : "text-[var(--muted)] hover:text-amber-400",
+              ].join(" ")}
+              title={isFav ? "取消收藏" : "添加收藏"}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={isFav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3z" />
+              </svg>
+            </button>
 
-        <div className="flex items-center gap-2">
-          {editing ? (
-            <>
-              <button type="button" onClick={() => setEditing(false)} className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted)] transition hover:bg-[var(--surface)]">
-                取消
-              </button>
-              <button type="button" onClick={handleSave} disabled={saving} className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-sm font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50">
-                {saving ? "保存中..." : "保存"}
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" onClick={() => onOpenDetail(record.id)} className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
-                详情
-              </button>
-              <button type="button" onClick={() => setEditing(true)} className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
-                编辑
-              </button>
-              <button type="button" onClick={() => onDelete(record.id)} className="rounded-lg px-3 py-1.5 text-sm text-rose-500 transition hover:bg-rose-500/10">
-                删除
-              </button>
-            </>
-          )}
+            <button
+              type="button"
+              onClick={() => handleSync("notion")}
+              disabled={!!syncing}
+              className={[
+                "flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] transition",
+                isSynced
+                  ? "text-emerald-500"
+                  : "text-[var(--muted-strong)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+                syncing ? "opacity-50" : "",
+              ].join(" ")}
+              title={isSynced ? "已同步到 Notion" : "同步到 Notion"}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />
+              </svg>
+              {syncing === "notion" ? "同步中..." : isSynced ? "已同步" : "Notion"}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {editing ? (
+              <>
+                <button type="button" onClick={() => setEditing(false)} className="rounded-lg px-3 py-1.5 text-[12px] text-[var(--muted)] transition hover:bg-[var(--surface)]">
+                  取消
+                </button>
+                <button type="button" onClick={handleSave} disabled={saving} className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50">
+                  {saving ? "保存中..." : "保存"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => onOpenDetail(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
+                  详情
+                </button>
+                <button type="button" onClick={() => setEditing(true)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
+                  编辑
+                </button>
+                <button type="button" onClick={() => onDelete(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-rose-500 transition hover:bg-rose-500/10">
+                  删除
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

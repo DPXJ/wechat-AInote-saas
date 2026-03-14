@@ -165,112 +165,117 @@ export function TodoPanel() {
   }, [todos]);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <h2 className="text-xl font-bold text-[var(--foreground)]">待办事项</h2>
+    <div className="flex h-full flex-col">
+      {/* Fixed header: title + create + filters */}
+      <div className="shrink-0 space-y-4">
+        <h2 className="text-xl font-bold text-[var(--foreground)]">待办事项</h2>
 
-      {/* Quick create */}
-      <div className="flex items-center gap-2">
-        <div className="input-focus-bar flex-1">
-          <input
-            type="text"
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-            placeholder="添加新待办..."
-            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-[var(--foreground)] focus:outline-none"
-          />
-        </div>
-        <select
-          value={newPriority}
-          onChange={(e) => setNewPriority(e.target.value as TodoPriority)}
-          className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)]"
-        >
-          {priorities.map((p) => (
-            <option key={p} value={p}>{priorityConfig[p].label}</option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={creating || !newContent.trim()}
-          className="rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
-        >
-          添加
-        </button>
-      </div>
-
-      {/* Filter tabs + date filter */}
-      <div className="flex flex-wrap items-center gap-2">
-        {([
-          { id: "all", label: "全部" },
-          { id: "pending", label: "待进行" },
-          { id: "done", label: "已完成" },
-          { id: "deleted", label: "已删除" },
-        ] as const).map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            className={[
-              "rounded-lg px-3 py-1.5 text-sm font-medium transition",
-              filter === f.id
-                ? "bg-[var(--foreground)] text-[var(--background)]"
-                : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
-            ].join(" ")}
-          >
-            {f.label}
-          </button>
-        ))}
-
-        <select
-          value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value)}
-          className="ml-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
-        >
-          <option value="">全部日期</option>
-          {availableDates.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
-
-        <span className="text-sm text-[var(--muted)]">{filteredTodos.length} 条</span>
-      </div>
-
-      {/* Todo list grouped by date */}
-      <div className="space-y-6">
-        {filteredTodos.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <span className="text-3xl">☑</span>
-            <p className="mt-3 text-sm text-[var(--muted)]">暂无待办事项</p>
+        {/* Quick create */}
+        <div className="flex items-center gap-2">
+          <div className="input-focus-bar flex-1">
+            <input
+              type="text"
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+              placeholder="添加新待办..."
+              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-[var(--foreground)] focus:outline-none"
+            />
           </div>
-        ) : (
-          groups.map((group) => (
-            <div key={group.dateKey}>
-              {/* Date divider */}
-              <div className="mb-3 flex items-center gap-3">
-                <span className="text-xs font-semibold text-[var(--muted)]">{group.label}</span>
-                <span className="text-[10px] text-[var(--muted)]">{group.dateKey}</span>
-                <div className="h-px flex-1 bg-[var(--line)]" />
-              </div>
+          <select
+            value={newPriority}
+            onChange={(e) => setNewPriority(e.target.value as TodoPriority)}
+            className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)]"
+          >
+            {priorities.map((p) => (
+              <option key={p} value={p}>{priorityConfig[p].label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={creating || !newContent.trim()}
+            className="rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
+          >
+            添加
+          </button>
+        </div>
 
-              <div className="space-y-2.5">
-                {group.items.map((todo) => (
-                  <TodoCard
-                    key={todo.id}
-                    todo={todo}
-                    onToggleStatus={() => toggleStatus(todo)}
-                    onCyclePriority={() => cyclePriority(todo)}
-                    onSoftDelete={() => handleSoftDelete(todo.id)}
-                    onHardDelete={() => handleHardDelete(todo.id)}
-                    onRestore={() => handleRestore(todo.id)}
-                    onOpenDetail={() => setDetailTodo(todo)}
-                    onSynced={fetchTodos}
-                  />
-                ))}
-              </div>
+        {/* Filter tabs + date filter */}
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            { id: "all", label: "全部" },
+            { id: "pending", label: "待处理" },
+            { id: "done", label: "已完成" },
+            { id: "deleted", label: "已删除" },
+          ] as const).map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFilter(f.id)}
+              className={[
+                "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                filter === f.id
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
+                  : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+              ].join(" ")}
+            >
+              {f.label}
+            </button>
+          ))}
+
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="ml-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
+          >
+            <option value="">全部日期</option>
+            {availableDates.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+
+          <span className="text-sm text-[var(--muted)]">{filteredTodos.length} 条</span>
+        </div>
+      </div>
+
+      {/* Scrollable todo list */}
+      <div className="hide-scrollbar mt-4 min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl space-y-6">
+          {filteredTodos.length === 0 ? (
+            <div className="flex flex-col items-center py-16 text-center">
+              <span className="text-3xl">☑</span>
+              <p className="mt-3 text-sm text-[var(--muted)]">暂无待办事项</p>
             </div>
-          ))
-        )}
+          ) : (
+            groups.map((group) => (
+              <div key={group.dateKey}>
+                {/* Date divider */}
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="text-xs font-semibold text-[var(--muted)]">{group.label}</span>
+                  <span className="text-[10px] text-[var(--muted)]">{group.dateKey}</span>
+                  <div className="h-px flex-1 bg-[var(--line)]" />
+                </div>
+
+                <div className="space-y-2.5">
+                  {group.items.map((todo) => (
+                    <TodoCard
+                      key={todo.id}
+                      todo={todo}
+                      onToggleStatus={() => toggleStatus(todo)}
+                      onCyclePriority={() => cyclePriority(todo)}
+                      onSoftDelete={() => handleSoftDelete(todo.id)}
+                      onHardDelete={() => handleHardDelete(todo.id)}
+                      onRestore={() => handleRestore(todo.id)}
+                      onOpenDetail={() => setDetailTodo(todo)}
+                      onSynced={fetchTodos}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Detail modal */}
@@ -514,7 +519,7 @@ function TodoDetailModal({
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-xs text-[var(--muted)]">
-            <div>状态：<span className="text-[var(--foreground)]">{todo.status === "pending" ? "待进行" : todo.status === "done" ? "已完成" : "已删除"}</span></div>
+            <div>状态：<span className="text-[var(--foreground)]">{todo.status === "pending" ? "待处理" : todo.status === "done" ? "已完成" : "已删除"}</span></div>
             <div>创建时间：<span className="text-[var(--foreground)]">{formatBeijingTime(todo.createdAt)}</span></div>
             {todo.recordId && <div className="col-span-2">来源记录：<a href={`/records/${todo.recordId}`} className="text-[var(--muted-strong)] hover:underline">{todo.recordId}</a></div>}
           </div>

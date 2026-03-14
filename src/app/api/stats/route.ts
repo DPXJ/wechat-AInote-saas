@@ -1,41 +1,54 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { requireUserId } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTodoStats } from "@/lib/todos";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const userId = await requireUserId();
+    const supabase = getSupabaseAdmin();
+    const today = new Date().toISOString().slice(0, 10);
 
-  const { totalRecords } = db
-    .prepare(`SELECT count(*) as totalRecords FROM records`)
-    .get() as { totalRecords: number };
-  const { todayRecords } = db
-    .prepare(`SELECT count(*) as todayRecords FROM records WHERE date(created_at) = ?`)
-    .get(today) as { todayRecords: number };
-  const { imageCount } = db
-    .prepare(`SELECT count(*) as imageCount FROM records WHERE record_type = 'image'`)
-    .get() as { imageCount: number };
-  const { textCount } = db
-    .prepare(`SELECT count(*) as textCount FROM records WHERE record_type = 'text'`)
-    .get() as { textCount: number };
-  const { videoCount } = db
-    .prepare(`SELECT count(*) as videoCount FROM records WHERE record_type = 'video'`)
-    .get() as { videoCount: number };
-  const { documentCount } = db
-    .prepare(`SELECT count(*) as documentCount FROM records WHERE record_type IN ('document', 'pdf')`)
-    .get() as { documentCount: number };
+    const [
+      totalRes,
+      todayRes,
+      imageRes,
+      textRes,
+      videoRes,
+      documentRes,
+    ] = await Promise.all([
+      supabase.from("records").select("id", { count: "exact", head: true }).eq("user_id", userId),
+      supabase.from("records").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", `${today}T00:00:00`).lt("created_at", `${today}T23:59:59.999`),
+      supabase.from("records").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("record_type", "image"),
+      supabase.from("records").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("record_type", "text"),
+      supabase.from("records").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("record_type", "video"),
+      supabase.from("records").select("id", { count: "exact", head: true }).eq("user_id", userId).in("record_type", ["document", "pdf"]),
+    ]);
 
-  const todoStats = getTodoStats();
+    const totalRecords = totalRes.count ?? 0;
+    const todayRecords = todayRes.count ?? 0;
+    const imageCount = imageRes.count ?? 0;
+    const textCount = textRes.count ?? 0;
+    const videoCount = videoRes.count ?? 0;
+    const documentCount = documentRes.count ?? 0;
 
-  return NextResponse.json({
-    totalRecords,
-    todayRecords,
-    imageCount,
-    textCount,
-    videoCount,
-    documentCount,
-    ...todoStats,
-  });
+    const todoStats = await getTodoStats(userId);
+
+    return NextResponse.json({
+      totalRecords,
+      todayRecords,
+      imageCount,
+      textCount,
+      videoCount,
+      documentCount,
+      ...todoStats,
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    throw e;
+  }
 }
