@@ -1,0 +1,9 @@
+node_modules
+.next
+.local-data
+.git
+.env
+.env.local
+*.md
+.codex
+.playwright-mcp

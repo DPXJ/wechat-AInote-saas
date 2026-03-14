@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { analyzeRecord, createEmbeddings } from "@/lib/ai";
 import { getDb } from "@/lib/db";
 import { ocrImage } from "@/lib/ocr";
@@ -36,6 +37,7 @@ type RecordRow = {
   suggested_targets: string;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 };
 
 type AssetRow = {
@@ -48,6 +50,7 @@ type AssetRow = {
   tags: string;
   description: string;
   ocr_text: string;
+  file_hash: string;
   created_at: string;
 };
 
@@ -132,11 +135,16 @@ export async function createKnowledgeRecord(
   for (let i = 0; i < uploads.length; i++) {
     const upload = uploads[i];
     const meta = fileMeta?.[i];
-    const stored = await storeUpload(
-      upload.buffer,
-      upload.originalName,
-      upload.mimeType,
-    );
+
+    const fileHash = crypto.createHash("md5").update(upload.buffer).digest("hex");
+    const existingAsset = db
+      .prepare(`SELECT id, storage_key FROM assets WHERE file_hash = ?`)
+      .get(fileHash) as { id: string; storage_key: string } | undefined;
+
+    const stored = existingAsset
+      ? { fileId: existingAsset.id, storageKey: existingAsset.storage_key, absolutePath: "" }
+      : await storeUpload(upload.buffer, upload.originalName, upload.mimeType);
+
     const extractedText = await extractTextFromUpload(upload);
     if (extractedText.trim()) {
       extractedParts.push(
@@ -168,8 +176,9 @@ export async function createKnowledgeRecord(
       }
     }
 
+    const assetId = existingAsset ? createId("asset") : stored.fileId;
     storedAssets.push({
-      id: stored.fileId,
+      id: assetId,
       record_id: recordId,
       original_name: upload.originalName,
       mime_type: upload.mimeType,
@@ -178,13 +187,14 @@ export async function createKnowledgeRecord(
       tags: JSON.stringify(tags),
       description: description || "",
       ocr_text: ocrText,
+      file_hash: fileHash,
       created_at: createdAt,
     });
   }
 
   const contentText = input.contentText?.trim() || "";
   const extractedText = extractedParts.join("\n\n");
-  const title =
+  let title =
     input.title?.trim() ||
     storedAssets[0]?.original_name ||
     contentText.slice(0, 42) ||
@@ -202,6 +212,14 @@ export async function createKnowledgeRecord(
     contextNote,
     assetNames,
   });
+
+  const titleMatchesFilename = storedAssets.some(
+    (a) => a.original_name === title,
+  );
+  if (analysis.title && (titleMatchesFilename || !input.title?.trim())) {
+    title = analysis.title;
+  }
+
   const combinedText = [contentText, extractedText, contextNote]
     .filter(Boolean)
     .join("\n\n");
@@ -238,10 +256,10 @@ export async function createKnowledgeRecord(
   const insertAsset = db.prepare(`
     INSERT INTO assets (
       id, record_id, original_name, mime_type, byte_size, storage_key,
-      tags, description, ocr_text, created_at
+      tags, description, ocr_text, file_hash, created_at
     ) VALUES (
       @id, @record_id, @original_name, @mime_type, @byte_size, @storage_key,
-      @tags, @description, @ocr_text, @created_at
+      @tags, @description, @ocr_text, @file_hash, @created_at
     )
   `);
 
@@ -294,18 +312,19 @@ export async function createKnowledgeRecord(
   return created;
 }
 
-export function listKnowledgeRecords(opts?: { limit?: number; offset?: number }) {
+export function listKnowledgeRecords(opts?: { limit?: number; offset?: number; includeDeleted?: boolean }) {
   const db = getDb();
   const limit = opts?.limit ?? 20;
   const offset = opts?.offset ?? 0;
+  const whereClause = opts?.includeDeleted ? "" : "WHERE deleted_at IS NULL";
 
   const { total } = db
-    .prepare(`SELECT count(*) as total FROM records`)
+    .prepare(`SELECT count(*) as total FROM records ${whereClause}`)
     .get() as { total: number };
 
   const rows = db
     .prepare(
-      `SELECT * FROM records ORDER BY datetime(created_at) DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM records ${whereClause} ORDER BY datetime(created_at) DESC LIMIT ? OFFSET ?`,
     )
     .all(limit, offset) as RecordRow[];
 
@@ -314,6 +333,51 @@ export function listKnowledgeRecords(opts?: { limit?: number; offset?: number })
     .filter(Boolean) as KnowledgeRecord[];
 
   return { records, total };
+}
+
+export function listDeletedRecords(opts?: { limit?: number; offset?: number }) {
+  const db = getDb();
+  const limit = opts?.limit ?? 50;
+  const offset = opts?.offset ?? 0;
+
+  const { total } = db
+    .prepare(`SELECT count(*) as total FROM records WHERE deleted_at IS NOT NULL`)
+    .get() as { total: number };
+
+  const rows = db
+    .prepare(
+      `SELECT * FROM records WHERE deleted_at IS NOT NULL ORDER BY datetime(deleted_at) DESC LIMIT ? OFFSET ?`,
+    )
+    .all(limit, offset) as RecordRow[];
+
+  const records = rows.map((row) => getKnowledgeRecord(row.id)).filter(Boolean) as KnowledgeRecord[];
+  return { records, total };
+}
+
+export function softDeleteRecord(recordId: string) {
+  const db = getDb();
+  db.prepare(`UPDATE records SET deleted_at = @deleted_at, updated_at = @updated_at WHERE id = @id`).run({
+    id: recordId,
+    deleted_at: nowIso(),
+    updated_at: nowIso(),
+  });
+}
+
+export function restoreRecord(recordId: string) {
+  const db = getDb();
+  db.prepare(`UPDATE records SET deleted_at = NULL, updated_at = @updated_at WHERE id = @id`).run({
+    id: recordId,
+    updated_at: nowIso(),
+  });
+}
+
+export function cleanupOldDeletedRecords(days = 30) {
+  const db = getDb();
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const rows = db
+    .prepare(`SELECT id FROM records WHERE deleted_at IS NOT NULL AND deleted_at < ?`)
+    .all(cutoff) as Array<{ id: string }>;
+  return rows.map((r) => r.id);
 }
 
 export function getKnowledgeRecord(recordId: string) {
@@ -360,6 +424,10 @@ export async function readAssetBuffer(
 }
 
 export async function deleteKnowledgeRecord(recordId: string) {
+  softDeleteRecord(recordId);
+}
+
+export async function hardDeleteRecord(recordId: string) {
   const db = getDb();
   const assets = db
     .prepare(`SELECT * FROM assets WHERE record_id = ?`)
@@ -373,6 +441,7 @@ export async function deleteKnowledgeRecord(recordId: string) {
   db.prepare(`DELETE FROM chunks WHERE record_id = ?`).run(recordId);
   db.prepare(`DELETE FROM sync_runs WHERE record_id = ?`).run(recordId);
   db.prepare(`DELETE FROM assets WHERE record_id = ?`).run(recordId);
+  db.prepare(`DELETE FROM favorites WHERE record_id = ?`).run(recordId);
   db.prepare(`DELETE FROM records WHERE id = ?`).run(recordId);
 }
 

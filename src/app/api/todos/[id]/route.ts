@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { deleteTodo, getTodo, updateTodo } from "@/lib/todos";
+import { deleteTodo, getTodo, hardDeleteTodo, updateTodo } from "@/lib/todos";
 import type { TodoPriority, TodoStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -18,7 +18,13 @@ export async function PATCH(
     content?: string;
     priority?: TodoPriority;
     status?: TodoStatus;
+    _hardDelete?: boolean;
   };
+
+  if (body._hardDelete) {
+    hardDeleteTodo(id);
+    return NextResponse.json({ ok: true });
+  }
 
   const todo = updateTodo(id, body);
   return NextResponse.json({ todo });
@@ -34,6 +40,6 @@ export async function DELETE(
     return NextResponse.json({ error: "待办不存在。" }, { status: 404 });
   }
 
-  deleteTodo(id);
-  return NextResponse.json({ ok: true });
+  const todo = deleteTodo(id);
+  return NextResponse.json({ ok: true, todo });
 }

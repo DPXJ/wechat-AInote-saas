@@ -4,6 +4,8 @@ export const appConfig = {
   appName: "AI 信迹",
   appDescription: "AI 知识收件箱，记录你的信息足迹。",
   baseUrl: process.env.APP_BASE_URL || "http://localhost:3000",
+  authPassword: process.env.AUTH_PASSWORD || "",
+  authSecret: process.env.AUTH_SECRET || "ai-signal-deck-default-secret-change-me",
   dataRoot:
     process.env.DATA_ROOT ||
     path.join(process.cwd(), ".local-data", "signal-deck"),

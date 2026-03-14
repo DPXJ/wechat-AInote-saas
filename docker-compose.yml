@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: ai-signal-deck
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - app-data:/app/data
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - DATA_ROOT=/app/data
+
+volumes:
+  app-data:
+    driver: local

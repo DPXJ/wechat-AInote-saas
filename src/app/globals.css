@@ -24,6 +24,12 @@
   --danger: #dc2626;
   --sidebar-bg: #ffffff;
   --sidebar-active: #f4f4f5;
+  --ai-gradient: linear-gradient(135deg, #a855f7, #6366f1, #06b6d4);
+  --ai-gradient-soft: linear-gradient(135deg, rgba(168,85,247,0.08), rgba(99,102,241,0.08), rgba(6,182,212,0.08));
+  --ai-glow-1: rgba(168, 85, 247, 0.04);
+  --ai-glow-2: rgba(6, 182, 212, 0.03);
+  --dot-color: rgba(0, 0, 0, 0.04);
+  --wave-color: rgba(168, 85, 247, 0.03);
 }
 
 [data-theme="dark"] {
@@ -44,6 +50,12 @@
   --danger: #ef4444;
   --sidebar-bg: #0f0f12;
   --sidebar-active: #1c1c1f;
+  --ai-gradient: linear-gradient(135deg, #c084fc, #818cf8, #22d3ee);
+  --ai-gradient-soft: linear-gradient(135deg, rgba(192,132,252,0.06), rgba(129,140,248,0.06), rgba(34,211,238,0.06));
+  --ai-glow-1: rgba(192, 132, 252, 0.06);
+  --ai-glow-2: rgba(34, 211, 238, 0.04);
+  --dot-color: rgba(255, 255, 255, 0.03);
+  --wave-color: rgba(129, 140, 248, 0.04);
 }
 
 @theme inline {
@@ -81,7 +93,7 @@ a {
 }
 
 ::selection {
-  background: rgba(37, 99, 235, 0.2);
+  background: rgba(139, 92, 246, 0.2);
 }
 
 button,
@@ -108,6 +120,118 @@ nextjs-portal,
 [data-next-mark],
 #__next-build-watcher {
   display: none !important;
+}
+
+/* AI gradient border utility */
+.ai-border {
+  position: relative;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+.ai-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: var(--ai-gradient);
+  z-index: -1;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+.ai-border:focus-within::before {
+  opacity: 1;
+}
+
+/* Subtle dot grid background */
+.ai-dot-bg {
+  background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* AI radial glow */
+.ai-glow-bg {
+  background:
+    radial-gradient(ellipse 60% 50% at 20% 20%, var(--ai-glow-1), transparent),
+    radial-gradient(ellipse 50% 60% at 80% 80%, var(--ai-glow-2), transparent),
+    var(--background);
+}
+
+/* Animated flowing wave lines for AI ambience */
+@keyframes ai-wave-drift {
+  0% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(-30px) translateY(8px); }
+  100% { transform: translateX(0) translateY(0); }
+}
+
+.ai-waves {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ai-waves::before,
+.ai-waves::after {
+  content: "";
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  top: -50%;
+  left: -50%;
+  border-radius: 40%;
+  opacity: 0.5;
+}
+.ai-waves::before {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 120px,
+    var(--wave-color) 120px,
+    var(--wave-color) 121px
+  );
+  animation: ai-wave-drift 20s ease-in-out infinite;
+}
+.ai-waves::after {
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 160px,
+    var(--wave-color) 160px,
+    var(--wave-color) 161px
+  );
+  animation: ai-wave-drift 28s ease-in-out infinite reverse;
+}
+
+/* Modal overlay — stronger */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+}
+
+/* Input focus bottom-border animation */
+.input-focus-bar {
+  position: relative;
+}
+.input-focus-bar::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--ai-gradient);
+  border-radius: 1px;
+  transition: width 0.25s ease, left 0.25s ease;
+}
+.input-focus-bar:focus-within::after {
+  width: 100%;
+  left: 0;
 }
 
 /* Scrollbar */

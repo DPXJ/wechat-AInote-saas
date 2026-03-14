@@ -26,6 +26,11 @@ const settingsSchema = z.object({
   visionModelApiKey: z.string().optional().default(""),
   visionModelName: z.string().optional().default(""),
   ocrEnabled: z.boolean().optional().default(false),
+  imapHost: z.string().optional().default(""),
+  imapPort: z.string().optional().default("993"),
+  imapUser: z.string().optional().default(""),
+  imapPass: z.string().optional().default(""),
+  imapSecure: z.boolean().optional().default(true),
 });
 
 export async function GET() {

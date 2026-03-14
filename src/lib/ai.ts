@@ -5,6 +5,7 @@ import type { AnalysisInput, AnalysisOutput, SearchCitation } from "@/lib/types"
 import { tokenize, trimText, unique } from "@/lib/utils";
 
 const analysisSchema = z.object({
+  title: z.string().max(30).optional(),
   summary: z.string().min(1),
   keywords: z.array(z.string()).max(8),
   actionItems: z.array(z.string()).max(6),
@@ -75,7 +76,7 @@ export async function analyzeRecord(input: AnalysisInput): Promise<AnalysisOutpu
       {
         role: "system",
         content:
-          "你是资料整理助手。请输出 JSON，字段为 summary, keywords, actionItems, suggestedTargets。summary 要简洁且适合搜索回显；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。",
+          "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；keywords 固定 5 个关键词；summary 要简洁且适合搜索回显；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。",
       },
       {
         role: "user",
@@ -118,6 +119,7 @@ export async function createEmbeddings(texts: string[]) {
 export async function answerWithContext(input: {
   question: string;
   citations: SearchCitation[];
+  history?: Array<{ role: string; content: string }>;
 }) {
   if (!openaiClient || !appConfig.openAiTextModel) {
     const topCitation = input.citations[0];
@@ -135,20 +137,29 @@ export async function answerWithContext(input: {
     )
     .join("\n\n");
 
+  const historyMessages: Array<{ role: "user" | "assistant"; content: string }> =
+    (input.history || [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-6)
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+  const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    {
+      role: "system",
+      content:
+        "你是企业资料检索助手。根据引用资料回答问题，必须明确提到信息出自哪条资料以及核心上下文；如果证据不足，直接说明。支持多轮对话，参考对话历史保持上下文连贯。",
+    },
+    ...historyMessages,
+    {
+      role: "user",
+      content: `问题: ${input.question}\n\n资料:\n${sourceBlock}`,
+    },
+  ];
+
   const response = await openaiClient.chat.completions.create({
     model: appConfig.openAiTextModel,
     temperature: 0.1,
-    messages: [
-      {
-        role: "system",
-        content:
-          "你是企业资料检索助手。根据引用资料回答问题，必须明确提到信息出自哪条资料以及核心上下文；如果证据不足，直接说明。",
-      },
-      {
-        role: "user",
-        content: `问题: ${input.question}\n\n资料:\n${sourceBlock}`,
-      },
-    ],
+    messages,
   });
 
   return (

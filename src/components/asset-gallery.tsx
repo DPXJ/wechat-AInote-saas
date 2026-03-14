@@ -202,9 +202,16 @@ function ImageCard({
         </div>
       </button>
       <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-        <span className="min-w-0 truncate text-[13px] text-[var(--muted-strong)]">
-          {asset.originalName}
-        </span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate text-[13px] text-[var(--muted-strong)]">
+            {asset.originalName}
+          </span>
+          {asset.ocrText ? (
+            <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">OCR</span>
+          ) : (
+            <span className="shrink-0 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">OCR</span>
+          )}
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs text-[var(--muted)]">
             {formatSize(asset.byteSize)}

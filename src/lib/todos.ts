@@ -11,6 +11,8 @@ type TodoRow = {
   created_at: string;
   completed_at: string | null;
   updated_at: string;
+  deleted_at: string | null;
+  synced_at: string | null;
 };
 
 function mapTodo(row: TodoRow): Todo {
@@ -23,6 +25,8 @@ function mapTodo(row: TodoRow): Todo {
     createdAt: row.created_at,
     completedAt: row.completed_at,
     updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    syncedAt: row.synced_at,
   };
 }
 
@@ -66,10 +70,16 @@ export function listTodos(opts?: {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  if (opts?.status) {
+  if (opts?.status === "deleted") {
+    conditions.push("status = 'deleted'");
+  } else if (opts?.status) {
     conditions.push("status = ?");
+    conditions.push("status != 'deleted'");
     params.push(opts.status);
+  } else {
+    conditions.push("status != 'deleted'");
   }
+
   if (opts?.priority) {
     conditions.push("priority = ?");
     params.push(opts.priority);
@@ -99,7 +109,7 @@ export function listTodos(opts?: {
 
 export function updateTodo(
   id: string,
-  fields: { content?: string; priority?: TodoPriority; status?: TodoStatus },
+  fields: { content?: string; priority?: TodoPriority; status?: TodoStatus; syncedAt?: string },
 ) {
   const db = getDb();
   const sets: string[] = ["updated_at = @updated_at"];
@@ -116,14 +126,22 @@ export function updateTodo(
     sets.push("priority = @priority");
     values.priority = fields.priority;
   }
+  if (fields.syncedAt !== undefined) {
+    sets.push("synced_at = @synced_at");
+    values.synced_at = fields.syncedAt;
+  }
   if (fields.status !== undefined) {
     sets.push("status = @status");
     values.status = fields.status;
     if (fields.status === "done") {
       sets.push("completed_at = @completed_at");
       values.completed_at = nowIso();
-    } else {
+    } else if (fields.status === "pending") {
       sets.push("completed_at = NULL");
+      sets.push("deleted_at = NULL");
+    } else if (fields.status === "deleted") {
+      sets.push("deleted_at = @deleted_at");
+      values.deleted_at = nowIso();
     }
   }
 
@@ -132,8 +150,15 @@ export function updateTodo(
 }
 
 export function deleteTodo(id: string) {
-  const db = getDb();
-  db.prepare(`DELETE FROM todos WHERE id = ?`).run(id);
+  return updateTodo(id, { status: "deleted" });
+}
+
+export function hardDeleteTodo(id: string) {
+  getDb().prepare("DELETE FROM todos WHERE id = ?").run(id);
+}
+
+export function restoreTodo(id: string) {
+  return updateTodo(id, { status: "pending" });
 }
 
 export function extractTodosFromRecord(record: KnowledgeRecord) {
@@ -152,13 +177,13 @@ export function getTodoStats() {
   const today = new Date().toISOString().slice(0, 10);
 
   const { total } = db
-    .prepare(`SELECT count(*) as total FROM todos`)
+    .prepare(`SELECT count(*) as total FROM todos WHERE status != 'deleted'`)
     .get() as { total: number };
   const { pending } = db
     .prepare(`SELECT count(*) as pending FROM todos WHERE status = 'pending'`)
     .get() as { pending: number };
   const { todayCount } = db
-    .prepare(`SELECT count(*) as todayCount FROM todos WHERE date(created_at) = ?`)
+    .prepare(`SELECT count(*) as todayCount FROM todos WHERE date(created_at) = ? AND status != 'deleted'`)
     .get(today) as { todayCount: number };
   const { urgentCount } = db
     .prepare(`SELECT count(*) as urgentCount FROM todos WHERE status = 'pending' AND priority = 'urgent'`)

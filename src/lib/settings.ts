@@ -25,6 +25,11 @@ const settingKeys = [
   "visionModelApiKey",
   "visionModelName",
   "ocrEnabled",
+  "imapHost",
+  "imapPort",
+  "imapUser",
+  "imapPass",
+  "imapSecure",
 ] as const;
 
 type SettingKey = (typeof settingKeys)[number];
@@ -51,6 +56,11 @@ const envDefaults: IntegrationSettings = {
   visionModelApiKey: "",
   visionModelName: "",
   ocrEnabled: false,
+  imapHost: "",
+  imapPort: "993",
+  imapUser: "",
+  imapPass: "",
+  imapSecure: true,
 };
 
 function normalizeBoolean(value: string | boolean | null | undefined) {
@@ -105,6 +115,13 @@ export function getIntegrationSettings(): IntegrationSettings {
       stored.get("visionModelName") ?? envDefaults.visionModelName,
     ocrEnabled: normalizeBoolean(
       stored.get("ocrEnabled") ?? String(envDefaults.ocrEnabled),
+    ),
+    imapHost: stored.get("imapHost") ?? envDefaults.imapHost,
+    imapPort: stored.get("imapPort") ?? envDefaults.imapPort,
+    imapUser: stored.get("imapUser") ?? envDefaults.imapUser,
+    imapPass: stored.get("imapPass") ?? envDefaults.imapPass,
+    imapSecure: normalizeBoolean(
+      stored.get("imapSecure") ?? String(envDefaults.imapSecure),
     ),
   };
 }
@@ -224,6 +241,31 @@ export function saveIntegrationSettings(input: IntegrationSettings) {
     statement.run({
       key: "ocrEnabled",
       value: String(input.ocrEnabled),
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "imapHost",
+      value: (input.imapHost || "").trim(),
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "imapPort",
+      value: (input.imapPort || "993").trim(),
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "imapUser",
+      value: (input.imapUser || "").trim(),
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "imapPass",
+      value: input.imapPass || "",
+      updated_at: updatedAt,
+    });
+    statement.run({
+      key: "imapSecure",
+      value: String(input.imapSecure ?? true),
       updated_at: updatedAt,
     });
   });

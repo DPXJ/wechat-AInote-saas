@@ -29,13 +29,30 @@ function createOssClient() {
   });
 }
 
-function buildObjectKey(fileId: string, originalName: string) {
+function mimeToFolder(mimeType?: string): string {
+  if (!mimeType) return "others";
+  if (mimeType.startsWith("image/")) return "images";
+  if (mimeType.startsWith("video/")) return "videos";
+  if (mimeType.startsWith("audio/")) return "audios";
+  if (
+    mimeType.startsWith("application/pdf") ||
+    mimeType.startsWith("application/msword") ||
+    mimeType.startsWith("application/vnd.openxmlformats") ||
+    mimeType.startsWith("application/vnd.ms-") ||
+    mimeType.startsWith("text/")
+  )
+    return "documents";
+  return "others";
+}
+
+function buildObjectKey(fileId: string, originalName: string, mimeType?: string) {
   const settings = getIntegrationSettings();
   const safeName = sanitizeFileName(originalName || "upload.bin") || "upload.bin";
   const datePrefix = new Date().toISOString().slice(0, 10);
   const prefix = settings.ossPathPrefix.trim().replace(/^\/+|\/+$/g, "");
+  const typeFolder = mimeToFolder(mimeType);
 
-  return [prefix, datePrefix, `${fileId}-${safeName}`].filter(Boolean).join("/");
+  return [prefix, typeFolder, datePrefix, `${fileId}-${safeName}`].filter(Boolean).join("/");
 }
 
 function joinUrl(base: string, key: string) {
@@ -48,7 +65,7 @@ export async function storeUpload(
   mimeType?: string,
 ) {
   const fileId = createId("asset");
-  const objectKey = buildObjectKey(fileId, originalName);
+  const objectKey = buildObjectKey(fileId, originalName, mimeType);
 
   if (hasOssSettings()) {
     const client = createOssClient();

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RecordType, SyncTarget } from "@/lib/types";
 
-type RecordComposerType = Exclude<RecordType, "mixed" | "pdf"> | "pdf";
+type RecordComposerType = "text" | "attachment";
 type StatusTone = "info" | "success" | "error";
 
 const typeConfig: Record<
@@ -22,15 +22,11 @@ const typeConfig: Record<
     icon: "📝",
     placeholder: "把微信里的文本直接粘贴到这里，支持自动整理和识别待办。",
   },
-  image: { label: "图片", icon: "📷", accept: "image/*" },
-  video: { label: "视频", icon: "🎬", accept: "video/*" },
-  audio: { label: "音频", icon: "🎵", accept: "audio/*" },
-  document: {
-    label: "文档",
-    icon: "📋",
-    accept: ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.csv,.json,application/pdf",
+  attachment: {
+    label: "附件",
+    icon: "📎",
+    accept: "image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.csv,.json,application/pdf",
   },
-  pdf: { label: "PDF", icon: "📄", accept: ".pdf,application/pdf" },
 };
 
 function fileKey(file: File) {
@@ -64,7 +60,7 @@ function buildAutoSyncSummary(
   return parts.join("，") || "系统已完成基础分析。";
 }
 
-export function InboxForm({ onCreated }: { onCreated?: (recordId: string) => void }) {
+export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (recordId: string) => void; onSwitchToSearch?: () => void }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [activeType, setActiveType] = useState<RecordComposerType>("text");
@@ -82,7 +78,7 @@ export function InboxForm({ onCreated }: { onCreated?: (recordId: string) => voi
 
   const currentType = typeConfig[activeType];
   const isTextMode = activeType === "text";
-  const dropzoneTitle = useMemo(() => `上传${currentType.label}文件`, [currentType.label]);
+  const dropzoneTitle = useMemo(() => isTextMode ? "" : "上传附件（图片、视频、音频、文档等）", [isTextMode]);
 
   useEffect(() => {
     if (!status || statusTone === "error") return;
@@ -149,7 +145,7 @@ export function InboxForm({ onCreated }: { onCreated?: (recordId: string) => voi
       return;
     }
     if (!isTextMode && files.length === 0) {
-      updateStatus(`请先上传${currentType.label}文件。`, "error");
+      updateStatus("请先上传附件文件。", "error");
       return;
     }
 
@@ -161,7 +157,7 @@ export function InboxForm({ onCreated }: { onCreated?: (recordId: string) => voi
     formData.set("sourceLabel", sourceLabel);
     formData.set("contentText", isTextMode ? contentText : "");
     formData.set("contextNote", contextNote);
-    formData.set("recordTypeHint", activeType === "pdf" ? "pdf" : activeType);
+    formData.set("recordTypeHint", activeType === "text" ? "text" : "");
     files.forEach((file, idx) => {
       formData.append("files", file);
       const fk = fileKey(file);
@@ -213,11 +209,24 @@ export function InboxForm({ onCreated }: { onCreated?: (recordId: string) => voi
             </button>
           );
         })}
+
+        {onSwitchToSearch && (
+          <button
+            type="button"
+            onClick={onSwitchToSearch}
+            className="ai-border ml-auto flex items-center gap-2 rounded-lg bg-[var(--card)] px-3 py-2 text-left transition"
+          >
+            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
+              <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
+            </svg>
+            <span className="text-xs text-[var(--muted)]">AI 搜索</span>
+          </button>
+        )}
       </div>
 
       {/* Text mode */}
       {isTextMode ? (
-        <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-sm">
+        <div className="input-focus-bar overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-sm">
           <textarea
             value={contentText}
             onChange={(e) => setContentText(e.target.value)}
@@ -269,13 +278,19 @@ export function InboxForm({ onCreated }: { onCreated?: (recordId: string) => voi
               onChange={handleFileInputChange}
               className="hidden"
             />
-            <div className="text-4xl">{currentType.icon}</div>
+            <div className="text-4xl">📎</div>
             <p className="mt-3 text-base font-medium text-[var(--foreground)]">
               {dropzoneTitle}
             </p>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              拖拽上传或点击选择，图片可直接粘贴
+            <p className="mt-1.5 text-sm text-[var(--muted)]">
+              拖拽或点击选择文件，支持图片、视频、音频、文档等
             </p>
+            <div className="mx-auto mt-4 max-w-md space-y-1 text-[11px] leading-relaxed text-[var(--muted)]">
+              <p>📷 图片：JPG / PNG / GIF / WebP / SVG</p>
+              <p>🎬 视频：MP4 / MOV / WebM / AVI（建议 &lt; 100MB）</p>
+              <p>🎵 音频：MP3 / WAV / AAC / OGG</p>
+              <p>📋 文档：PDF / Word / Excel / PPT / Markdown / TXT / CSV</p>
+            </div>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -337,30 +352,36 @@ export function InboxForm({ onCreated }: { onCreated?: (recordId: string) => voi
         <div className="grid gap-4 border-t border-[var(--line)] px-5 py-4 lg:grid-cols-2">
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-[var(--foreground)]">标题</span>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="例如：客户报价截图"
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-            />
+            <div className="input-focus-bar">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="例如：客户报价截图"
+                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              />
+            </div>
           </label>
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-[var(--foreground)]">来源</span>
-            <input
-              value={sourceLabel}
-              onChange={(e) => setSourceLabel(e.target.value)}
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-            />
+            <div className="input-focus-bar">
+              <input
+                value={sourceLabel}
+                onChange={(e) => setSourceLabel(e.target.value)}
+                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              />
+            </div>
           </label>
           <label className="block space-y-1.5 lg:col-span-2">
             <span className="text-sm font-medium text-[var(--foreground)]">备注</span>
-            <textarea
-              value={contextNote}
-              onChange={(e) => setContextNote(e.target.value)}
-              rows={3}
-              placeholder="例如：客户群里发的内容，担心漏掉截止时间。"
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-            />
+            <div className="input-focus-bar">
+              <textarea
+                value={contextNote}
+                onChange={(e) => setContextNote(e.target.value)}
+                rows={3}
+                placeholder="例如：客户群里发的内容，担心漏掉截止时间。"
+                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              />
+            </div>
           </label>
         </div>
       </details>

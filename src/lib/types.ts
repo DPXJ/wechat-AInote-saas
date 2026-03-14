@@ -81,6 +81,7 @@ export interface AnalysisInput {
 }
 
 export interface AnalysisOutput {
+  title?: string;
   summary: string;
   keywords: string[];
   actionItems: string[];
@@ -102,7 +103,7 @@ export interface SearchResponse {
 }
 
 export type TodoPriority = "low" | "medium" | "high" | "urgent";
-export type TodoStatus = "pending" | "done";
+export type TodoStatus = "pending" | "done" | "deleted";
 
 export interface Todo {
   id: string;
@@ -113,6 +114,8 @@ export interface Todo {
   createdAt: string;
   completedAt: string | null;
   updatedAt: string;
+  deletedAt: string | null;
+  syncedAt: string | null;
 }
 
 export interface StatsData {
@@ -150,6 +153,11 @@ export interface IntegrationSettings {
   visionModelApiKey: string;
   visionModelName: string;
   ocrEnabled: boolean;
+  imapHost: string;
+  imapPort: string;
+  imapUser: string;
+  imapPass: string;
+  imapSecure: boolean;
 }
 
 export interface IntegrationStatusItem {

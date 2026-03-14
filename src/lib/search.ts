@@ -32,7 +32,10 @@ function buildFtsQuery(query: string) {
     .join(" OR ");
 }
 
-export async function searchKnowledge(query: string): Promise<SearchResponse> {
+export async function searchKnowledge(
+  query: string,
+  history?: Array<{ role: string; content: string }>,
+): Promise<SearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) {
     return {
@@ -111,6 +114,26 @@ export async function searchKnowledge(query: string): Promise<SearchResponse> {
     });
   }
 
+  type TodoMatch = { id: string; content: string; priority: string; status: string; created_at: string; record_id: string | null };
+  const todoLike = `%${trimmed}%`;
+  const todoMatches = db
+    .prepare(
+      `SELECT id, content, priority, status, created_at, record_id FROM todos WHERE content LIKE ? AND status != 'deleted' ORDER BY datetime(created_at) DESC LIMIT 5`,
+    )
+    .all(todoLike) as TodoMatch[];
+
+  for (const t of todoMatches) {
+    const pLabel = { urgent: "紧急", high: "高", medium: "中", low: "低" }[t.priority] || t.priority;
+    merged.set(`todo-${t.id}`, {
+      recordId: t.record_id || "",
+      title: `[待办] ${trimText(t.content, 40)}`,
+      sourceLabel: `待办 · ${pLabel} · ${t.status === "done" ? "已完成" : "待进行"}`,
+      snippet: t.content,
+      reason: "匹配待办事项",
+      score: 0.8,
+    });
+  }
+
   if (isAiConfigured()) {
     const embeddingRows = db
       .prepare(
@@ -159,7 +182,7 @@ export async function searchKnowledge(query: string): Promise<SearchResponse> {
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
-  const answer = await answerWithContext({ question: trimmed, citations });
+  const answer = await answerWithContext({ question: trimmed, citations, history });
 
   return { answer, citations };
 }

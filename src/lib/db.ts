@@ -87,20 +87,50 @@ function initialize(db: Database.Database) {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS favorites (
+      id TEXT PRIMARY KEY,
+      record_id TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(record_id) REFERENCES records(id) ON DELETE CASCADE
+    );
+  `);
+
   migrate(db);
 }
 
 function migrate(db: Database.Database) {
-  const cols = db.prepare("PRAGMA table_info(assets)").all() as Array<{ name: string }>;
-  const colNames = new Set(cols.map((c) => c.name));
-  if (!colNames.has("tags")) {
+  const assetCols = db.prepare("PRAGMA table_info(assets)").all() as Array<{ name: string }>;
+  const assetColNames = new Set(assetCols.map((c) => c.name));
+  if (!assetColNames.has("tags")) {
     db.exec(`ALTER TABLE assets ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`);
   }
-  if (!colNames.has("description")) {
+  if (!assetColNames.has("description")) {
     db.exec(`ALTER TABLE assets ADD COLUMN description TEXT NOT NULL DEFAULT ''`);
   }
-  if (!colNames.has("ocr_text")) {
+  if (!assetColNames.has("ocr_text")) {
     db.exec(`ALTER TABLE assets ADD COLUMN ocr_text TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!assetColNames.has("file_hash")) {
+    db.exec(`ALTER TABLE assets ADD COLUMN file_hash TEXT NOT NULL DEFAULT ''`);
+  }
+
+  const recordCols = db.prepare("PRAGMA table_info(records)").all() as Array<{ name: string }>;
+  const recordColNames = new Set(recordCols.map((c) => c.name));
+  if (!recordColNames.has("deleted_at")) {
+    db.exec(`ALTER TABLE records ADD COLUMN deleted_at TEXT`);
+  }
+
+  const todoCols = db.prepare("PRAGMA table_info(todos)").all() as Array<{ name: string }>;
+  const todoColNames = new Set(todoCols.map((c) => c.name));
+  if (!todoColNames.has("deleted_at")) {
+    db.exec(`ALTER TABLE todos ADD COLUMN deleted_at TEXT`);
+  }
+  if (!todoColNames.has("synced_at")) {
+    db.exec(`ALTER TABLE todos ADD COLUMN synced_at TEXT`);
+  }
+  if (!todoColNames.has("sort_order")) {
+    db.exec(`ALTER TABLE todos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
   }
 }
 

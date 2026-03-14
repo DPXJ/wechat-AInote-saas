@@ -229,7 +229,7 @@ export default function RecordDetailPage({
               {record.keywords.map((kw) => (
                 <span
                   key={kw}
-                  className="rounded-md bg-[var(--accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]"
+                  className="rounded-md bg-[var(--surface)] px-2.5 py-0.5 text-xs font-medium text-[var(--muted-strong)]"
                 >
                   {kw}
                 </span>
@@ -252,7 +252,7 @@ export default function RecordDetailPage({
             <ul className="space-y-2">
               {record.actionItems.map((item, i) => (
                 <li key={i} className="flex items-start gap-2 text-[15px] text-[var(--foreground)]">
-                  <span className="mt-0.5 text-[var(--accent)]">•</span>
+                  <span className="mt-0.5 text-[var(--muted-strong)]">•</span>
                   {item}
                 </li>
               ))}
@@ -439,7 +439,7 @@ function AssetMetaCard({ asset, onOcrDone }: { asset: RecordAsset; onOcrDone: ()
           {asset.tags.map((tag) => (
             <span
               key={tag}
-              className="rounded-md bg-[var(--accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]"
+              className="rounded-md bg-[var(--surface-strong)] px-2 py-0.5 text-xs text-[var(--muted-strong)]"
             >
               {tag}
             </span>
