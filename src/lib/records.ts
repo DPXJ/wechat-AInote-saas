@@ -181,6 +181,8 @@ export async function createKnowledgeRecord(
     title = analysis.title;
   }
 
+  const userTags = input.userTags ?? [];
+
   const combinedText = [contentText, extractedText, contextNote].filter(Boolean).join("\n\n");
 
   await supabase.from("records").insert({
@@ -194,7 +196,7 @@ export async function createKnowledgeRecord(
     extracted_text: extractedText,
     summary: analysis.summary,
     context_note: contextNote,
-    keywords: analysis.keywords,
+    keywords: userTags,
     action_items: analysis.actionItems,
     suggested_targets: analysis.suggestedTargets,
     created_at: createdAt,
@@ -225,15 +227,40 @@ export async function createKnowledgeRecord(
     await supabase.from("chunks").insert(chunkRows);
   }
 
-  const created = await getKnowledgeRecord(userId, recordId);
-  if (created) {
-    try {
-      const { extractTodosFromRecord } = await import("@/lib/todos");
-      await extractTodosFromRecord(userId, created);
-    } catch {
-      // non-critical
-    }
-  }
+  const created: KnowledgeRecord = {
+    id: recordId,
+    title,
+    sourceLabel,
+    sourceChannel: "manual-web",
+    recordType: recordType as RecordType,
+    contentText,
+    extractedText,
+    summary: analysis.summary,
+    contextNote,
+    keywords: userTags,
+    actionItems: analysis.actionItems,
+    suggestedTargets: analysis.suggestedTargets,
+    createdAt: createdAt,
+    updatedAt: createdAt,
+    assets: storedAssets.map((a) => ({
+      id: a.id,
+      recordId: a.record_id,
+      originalName: a.original_name as string,
+      mimeType: a.mime_type as string,
+      byteSize: Number(a.byte_size),
+      storageKey: a.storage_key as string,
+      tags: (a.tags as string[]) || [],
+      description: (a.description as string) || "",
+      ocrText: (a.ocr_text as string) || "",
+      createdAt: a.created_at as string,
+    })),
+    syncRuns: [],
+  };
+
+  import("@/lib/todos")
+    .then(({ extractTodosFromRecord }) => extractTodosFromRecord(userId, created))
+    .catch(() => {});
+
   return created;
 }
 
@@ -252,7 +279,6 @@ export async function listKnowledgeRecords(
   if (!opts?.includeDeleted) {
     countQuery = countQuery.is("deleted_at", null);
   }
-  const { count: total } = await countQuery;
 
   let query = supabase
     .from("records")
@@ -263,13 +289,34 @@ export async function listKnowledgeRecords(
   if (!opts?.includeDeleted) {
     query = query.is("deleted_at", null);
   }
-  const { data: rows } = await query;
 
-  const records: KnowledgeRecord[] = [];
-  for (const row of (rows || []) as RecordRow[]) {
-    const rec = await getKnowledgeRecord(userId, row.id);
-    if (rec) records.push(rec);
+  const [{ count: total }, { data: rows }] = await Promise.all([countQuery, query]);
+
+  const recordIds = ((rows || []) as RecordRow[]).map((r) => r.id);
+  if (recordIds.length === 0) return { records: [], total: total ?? 0 };
+
+  const [{ data: allAssets }, { data: allSyncRuns }] = await Promise.all([
+    supabase.from("assets").select("*").in("record_id", recordIds).order("created_at", { ascending: true }),
+    supabase.from("sync_runs").select("*").in("record_id", recordIds).order("created_at", { ascending: false }),
+  ]);
+
+  const assetsByRecord = new Map<string, AssetRow[]>();
+  for (const a of (allAssets || []) as AssetRow[]) {
+    const list = assetsByRecord.get(a.record_id) || [];
+    list.push(a);
+    assetsByRecord.set(a.record_id, list);
   }
+
+  const syncsByRecord = new Map<string, SyncRow[]>();
+  for (const s of (allSyncRuns || []) as SyncRow[]) {
+    const list = syncsByRecord.get(s.record_id) || [];
+    list.push(s);
+    syncsByRecord.set(s.record_id, list);
+  }
+
+  const records = ((rows || []) as RecordRow[]).map((row) =>
+    mapRecord(row, assetsByRecord.get(row.id) || [], syncsByRecord.get(row.id) || []),
+  );
 
   return { records, total: total ?? 0 };
 }
@@ -282,25 +329,36 @@ export async function listDeletedRecords(
   const limit = opts?.limit ?? 50;
   const offset = opts?.offset ?? 0;
 
-  const { count: total } = await supabase
-    .from("records")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .not("deleted_at", "is", null);
+  const [{ count: total }, { data: rows }] = await Promise.all([
+    supabase.from("records").select("id", { count: "exact", head: true }).eq("user_id", userId).not("deleted_at", "is", null),
+    supabase.from("records").select("*").eq("user_id", userId).not("deleted_at", "is", null).order("deleted_at", { ascending: false }).range(offset, offset + limit - 1),
+  ]);
 
-  const { data: rows } = await supabase
-    .from("records")
-    .select("*")
-    .eq("user_id", userId)
-    .not("deleted_at", "is", null)
-    .order("deleted_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+  const recordIds = ((rows || []) as RecordRow[]).map((r) => r.id);
+  if (recordIds.length === 0) return { records: [], total: total ?? 0 };
 
-  const records: KnowledgeRecord[] = [];
-  for (const row of (rows || []) as RecordRow[]) {
-    const rec = await getKnowledgeRecord(userId, row.id);
-    if (rec) records.push(rec);
+  const [{ data: allAssets }, { data: allSyncRuns }] = await Promise.all([
+    supabase.from("assets").select("*").in("record_id", recordIds).order("created_at", { ascending: true }),
+    supabase.from("sync_runs").select("*").in("record_id", recordIds).order("created_at", { ascending: false }),
+  ]);
+
+  const assetsByRecord = new Map<string, AssetRow[]>();
+  for (const a of (allAssets || []) as AssetRow[]) {
+    const list = assetsByRecord.get(a.record_id) || [];
+    list.push(a);
+    assetsByRecord.set(a.record_id, list);
   }
+
+  const syncsByRecord = new Map<string, SyncRow[]>();
+  for (const s of (allSyncRuns || []) as SyncRow[]) {
+    const list = syncsByRecord.get(s.record_id) || [];
+    list.push(s);
+    syncsByRecord.set(s.record_id, list);
+  }
+
+  const records = ((rows || []) as RecordRow[]).map((row) =>
+    mapRecord(row, assetsByRecord.get(row.id) || [], syncsByRecord.get(row.id) || []),
+  );
   return { records, total: total ?? 0 };
 }
 

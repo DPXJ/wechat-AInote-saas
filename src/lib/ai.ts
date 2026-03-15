@@ -42,7 +42,7 @@ function buildFallbackAnalysis(input: AnalysisInput): AnalysisOutput {
 
   return {
     summary:
-      trimText(sourceText, 220) ||
+      trimText(sourceText, 50) ||
       `已收录一条${input.recordType === "text" ? "文本" : "资料"}信息。`,
     keywords,
     actionItems: actionHints,
@@ -76,7 +76,7 @@ export async function analyzeRecord(input: AnalysisInput): Promise<AnalysisOutpu
       {
         role: "system",
         content:
-          "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；keywords 固定 5 个关键词；summary 要简洁且适合搜索回显；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。",
+          "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；summary 为 30-50 字的精炼摘要，概括核心要点，适合搜索回显；keywords 固定 5 个关键词（仅供搜索索引）；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。",
       },
       {
         role: "user",

@@ -61,6 +61,7 @@ export interface RecordInput {
   contextNote?: string;
   contentText?: string;
   recordTypeHint?: RecordType;
+  userTags?: string[];
 }
 
 export interface StoredUpload {

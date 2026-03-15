@@ -6,9 +6,11 @@ import { requireUserId } from "@/lib/supabase/server";
 
 export default async function Home() {
   const userId = await requireUserId();
-  const { records, total } = await listKnowledgeRecords(userId, { limit: 20, offset: 0 });
-  const integrationStatus = await getIntegrationStatus(userId);
-  const integrationSettings = await getIntegrationSettings(userId);
+  const [{ records, total }, integrationStatus, integrationSettings] = await Promise.all([
+    listKnowledgeRecords(userId, { limit: 20, offset: 0 }),
+    getIntegrationStatus(userId),
+    getIntegrationSettings(userId),
+  ]);
 
   return (
     <HomeWorkspace

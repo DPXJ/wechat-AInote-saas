@@ -52,6 +52,24 @@ function shouldAutoSyncTickTick(record: {
   );
 }
 
+async function runBackgroundSync(
+  userId: string,
+  record: { id: string; contentText: string; extractedText: string; contextNote: string; actionItems: string[] },
+) {
+  try {
+    if (await canAutoSyncNotion(userId)) {
+      await runAutoSync(userId, record.id, "notion");
+    }
+    if (await canAutoSyncTickTick(userId)) {
+      if (shouldAutoSyncTickTick(record)) {
+        await runAutoSync(userId, record.id, "ticktick-email");
+      }
+    }
+  } catch {
+    // background sync failures are non-critical
+  }
+}
+
 async function runAutoSync(userId: string, recordId: string, target: SyncTarget) {
   try {
     await syncRecord(userId, recordId, target);
@@ -98,6 +116,11 @@ export async function POST(request: Request) {
     const contextNote = String(formData.get("contextNote") || "");
     const contentText = String(formData.get("contentText") || "");
     const recordTypeHint = String(formData.get("recordTypeHint") || "") as RecordType | "";
+    const userTagsRaw = String(formData.get("userTags") || "");
+    const userTags = userTagsRaw
+      .split(/[,，]/)
+      .map((t) => t.trim())
+      .filter(Boolean);
     const fileEntries = formData
       .getAll("files")
       .filter((entry): entry is File => entry instanceof File && entry.size > 0);
@@ -136,34 +159,17 @@ export async function POST(request: Request) {
         contextNote,
         contentText,
         recordTypeHint: recordTypeHint || undefined,
+        userTags,
       },
       uploads,
       fileMeta,
     );
 
-    const autoSync: Array<{
-      target: SyncTarget;
-      status: "synced" | "failed" | "skipped";
-      message: string;
-    }> = [];
-
-    if (record && (await canAutoSyncNotion(userId))) {
-      autoSync.push(await runAutoSync(userId, record.id, "notion"));
+    if (record) {
+      runBackgroundSync(userId, record).catch(() => {});
     }
 
-    if (record && (await canAutoSyncTickTick(userId))) {
-      if (shouldAutoSyncTickTick(record)) {
-        autoSync.push(await runAutoSync(userId, record.id, "ticktick-email"));
-      } else {
-        autoSync.push({
-          target: "ticktick-email",
-          status: "skipped",
-          message: "未识别出明确时间，本次未自动生成滴答待办。",
-        });
-      }
-    }
-
-    return NextResponse.json({ record, autoSync });
+    return NextResponse.json({ record, autoSync: [] });
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

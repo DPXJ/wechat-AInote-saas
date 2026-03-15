@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 import { AssetGallery } from "@/components/asset-gallery";
 import { InboxForm } from "@/components/inbox-form";
 import { IntegrationsPanel } from "@/components/integrations-panel";
@@ -71,6 +72,31 @@ const docSubFilters: Array<{ id: DocSubFilter; label: string }> = [
   { id: "excel", label: "Excel" },
   { id: "md", label: "MD" },
 ];
+
+function RefreshButton({ onClick }: { onClick: () => Promise<void> | void }) {
+  const [spinning, setSpinning] = useState(false);
+  const handleClick = async () => {
+    setSpinning(true);
+    try { await onClick(); } finally { setTimeout(() => setSpinning(false), 600); }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={spinning}
+      title="刷新"
+      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:opacity-50"
+    >
+      <svg
+        width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        className={spinning ? "animate-spin" : ""}
+      >
+        <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+      </svg>
+      刷新
+    </button>
+  );
+}
 
 export function HomeWorkspace({
   initialRecords,
@@ -424,10 +450,21 @@ export function HomeWorkspace({
 
             <div className="content-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--card)]/80 p-5 shadow-sm backdrop-blur-sm lg:p-6">
               {activeTab === "record" && (
-                <InboxForm
-                  onCreated={async (id) => { setSelectedRecordId(id); await refreshRecords(); }}
-                  onSwitchToSearch={() => setActiveTab("history")}
-                />
+                <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-sm font-medium text-[var(--foreground)]">新建文档</h2>
+                    <RefreshButton onClick={refreshRecords} />
+                  </div>
+                  <InboxForm
+                    onCreated={async (id) => {
+                      setSelectedRecordId(id);
+                      await refreshRecords();
+                      setTimeout(() => refreshRecords(), 5000);
+                      setTimeout(() => refreshRecords(), 12000);
+                    }}
+                    onSwitchToSearch={() => setActiveTab("history")}
+                  />
+                </div>
               )}
 
               {activeTab === "history" && (
@@ -446,6 +483,7 @@ export function HomeWorkspace({
                   onDelete={handleDelete}
                   onUpdate={handleUpdate}
                   onOpenDetail={setDetailModalId}
+                  onRefresh={refreshRecords}
                 />
               )}
 
@@ -503,6 +541,7 @@ function HistoryTab({
   onDelete,
   onUpdate,
   onOpenDetail,
+  onRefresh,
 }: {
   records: KnowledgeRecord[];
   total: number;
@@ -518,6 +557,7 @@ function HistoryTab({
   onDelete: (id: string) => void;
   onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => void;
   onOpenDetail: (id: string) => void;
+  onRefresh: () => Promise<void>;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -613,6 +653,7 @@ function HistoryTab({
         })}
 
         {!searchActive && <span className="text-xs text-[var(--muted)]">{total} 条</span>}
+        {!searchActive && <RefreshButton onClick={onRefresh} />}
 
         {searchActive ? (
           <div className="ai-border flex flex-1 items-center gap-2 rounded-xl bg-[var(--card)] p-1">
@@ -1021,6 +1062,19 @@ function RecordPane({
     }
   };
 
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    const text = record.contentText || record.summary;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
+  }, [record.contentText, record.summary]);
+
+  useEffect(() => { setCopied(false); }, [record.id]);
+
   return (
     <div className="flex h-full flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)]">
       {/* Scrollable content */}
@@ -1060,9 +1114,54 @@ function RecordPane({
           </h2>
         )}
 
+        {/* AI 摘要 */}
+        {record.summary && (
+          <div className="mt-3 rounded-lg bg-[var(--surface)] px-3.5 py-2.5">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">AI 摘要</p>
+            <p className="text-[13px] leading-6 text-[var(--muted-strong)]">{record.summary}</p>
+          </div>
+        )}
+
         <div className="my-5 border-t border-dashed border-[var(--line)]" />
 
-        <p className="text-[15px] leading-8 text-[var(--muted-strong)]">{record.summary}</p>
+        {/* Content text with Markdown */}
+        {record.contentText ? (
+          <div className="prose-custom text-[15px] leading-8 text-[var(--foreground)]">
+            <ReactMarkdown>{record.contentText}</ReactMarkdown>
+          </div>
+        ) : record.extractedText ? (
+          <div className="prose-custom text-[15px] leading-8 text-[var(--foreground)]">
+            <ReactMarkdown>{record.extractedText}</ReactMarkdown>
+          </div>
+        ) : null}
+
+        {/* Copy button */}
+        {(record.contentText || record.extractedText) && (
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={[
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                copied
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "bg-[var(--surface)] text-[var(--muted-strong)] hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]",
+              ].join(" ")}
+            >
+              {copied ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                  已复制
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                  复制内容
+                </>
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Show OCR/description for image records */}
         {record.assets.some((a) => a.ocrText || a.description) && (
@@ -1093,15 +1192,19 @@ function RecordPane({
           </div>
         )}
 
+        {/* Manual tags */}
         {record.keywords.length > 0 && (
           <>
             <div className="my-5 border-t border-dashed border-[var(--line)]" />
-            <div className="flex flex-wrap gap-2">
-              {record.keywords.map((kw) => (
-                <span key={kw} className="rounded-md bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted-strong)]">
-                  {kw}
-                </span>
-              ))}
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">标签</p>
+              <div className="flex flex-wrap gap-2">
+                {record.keywords.map((kw) => (
+                  <span key={kw} className="rounded-md bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted-strong)]">
+                    {kw}
+                  </span>
+                ))}
+              </div>
             </div>
           </>
         )}

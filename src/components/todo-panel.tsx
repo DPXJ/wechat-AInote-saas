@@ -74,7 +74,7 @@ function groupByDate(todos: Todo[]): Array<{ dateKey: string; label: string; ite
 export function TodoPanel() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [total, setTotal] = useState(0);
-  const [filter, setFilter] = useState<TodoFilter>("all");
+  const [filter, setFilter] = useState<TodoFilter>("pending");
   const [dateFilter, setDateFilter] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newPriority, setNewPriority] = useState<TodoPriority>("medium");
@@ -82,14 +82,22 @@ export function TodoPanel() {
   const [detailTodo, setDetailTodo] = useState<Todo | null>(null);
 
   const fetchTodos = useCallback(async () => {
-    const statusParam = filter === "all" ? "" : `&status=${filter}`;
-    const res = await fetch(`/api/todos?limit=200${statusParam}`);
+    const res = await fetch(`/api/todos?limit=200`);
     const data = await res.json();
     setTodos(data.todos);
     setTotal(data.total);
-  }, [filter]);
+  }, []);
 
-  useEffect(() => { fetchTodos(); }, [fetchTodos]);
+  useEffect(() => {
+    void fetchTodos();
+    const timer = window.setInterval(() => { void fetchTodos(); }, 30000);
+    const onFocus = () => { void fetchTodos(); };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [fetchTodos]);
 
   const handleCreate = async () => {
     if (!newContent.trim() || creating) return;
@@ -102,6 +110,8 @@ export function TodoPanel() {
       });
       setNewContent("");
       setNewPriority("medium");
+      setFilter("pending");
+      setDateFilter("");
       await fetchTodos();
     } finally { setCreating(false); }
   };
@@ -116,13 +126,11 @@ export function TodoPanel() {
     await fetchTodos();
   };
 
-  const cyclePriority = async (todo: Todo) => {
-    const idx = priorities.indexOf(todo.priority);
-    const next = priorities[(idx + 1) % priorities.length];
+  const updatePriority = async (todo: Todo, priority: TodoPriority) => {
     await fetch(`/api/todos/${todo.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ priority: next }),
+      body: JSON.stringify({ priority }),
     });
     await fetchTodos();
   };
@@ -152,9 +160,15 @@ export function TodoPanel() {
   };
 
   const filteredTodos = useMemo(() => {
-    if (!dateFilter) return todos;
-    return todos.filter((t) => getDateKey(t.createdAt) === dateFilter);
-  }, [todos, dateFilter]);
+    let base = todos;
+    if (filter !== "all") {
+      base = base.filter((t) => t.status === filter);
+    }
+    if (dateFilter) {
+      base = base.filter((t) => getDateKey(t.createdAt) === dateFilter);
+    }
+    return base;
+  }, [todos, filter, dateFilter]);
 
   const groups = useMemo(() => groupByDate(filteredTodos), [filteredTodos]);
 
@@ -214,7 +228,7 @@ export function TodoPanel() {
               type="button"
               onClick={() => setFilter(f.id)}
               className={[
-                "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                "rounded-lg px-3 py-1.5 text-xs font-medium transition",
                 filter === f.id
                   ? "bg-[var(--foreground)] text-[var(--background)]"
                   : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
@@ -235,7 +249,7 @@ export function TodoPanel() {
             ))}
           </select>
 
-          <span className="text-sm text-[var(--muted)]">{filteredTodos.length} 条</span>
+          <span className="text-xs text-[var(--muted)] ml-1">{filteredTodos.length} 条</span>
         </div>
       </div>
 
@@ -295,7 +309,7 @@ export function TodoPanel() {
 function TodoCard({
   todo,
   onToggleStatus,
-  onCyclePriority,
+  onChangePriority,
   onSoftDelete,
   onHardDelete,
   onRestore,
@@ -304,7 +318,7 @@ function TodoCard({
 }: {
   todo: Todo;
   onToggleStatus: () => void;
-  onCyclePriority: () => void;
+  onChangePriority: (priority: TodoPriority) => void;
   onSoftDelete: () => void;
   onHardDelete: () => void;
   onRestore: () => void;
@@ -315,119 +329,157 @@ function TodoCard({
   const isDeleted = todo.status === "deleted";
   const timeHint = extractTimeHint(todo.content);
   const needsResync = todo.syncedAt && todo.updatedAt > todo.syncedAt;
+  const [priorityOpen, setPriorityOpen] = useState(false);
 
   return (
     <div
       className={[
-        "rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-4 transition",
+        "rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3 transition",
         isDeleted ? "opacity-50" : "hover:border-[var(--line-strong)] hover:shadow-sm cursor-pointer",
         todo.status === "done" && !isDeleted ? "opacity-60" : "",
       ].join(" ")}
       onClick={() => !isDeleted && onOpenDetail()}
     >
-      <div className="flex items-start gap-3">
-        {!isDeleted && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onToggleStatus(); }}
-            className={[
-              "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition",
-              todo.status === "done"
-                ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
-                : "border-[var(--line-strong)] hover:border-[var(--foreground)]",
-            ].join(" ")}
-          >
-            {todo.status === "done" && (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </button>
-        )}
+      <div className="grid grid-cols-[minmax(0,1fr)_180px] items-stretch gap-3">
+        {/* 左侧：内容卡片 */}
+        <div className="flex items-start gap-3 pr-2 border-r border-dashed border-[var(--line)]">
+          {!isDeleted && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onToggleStatus(); }}
+              className={[
+                "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition",
+                todo.status === "done"
+                  ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
+                  : "border-[var(--line-strong)] hover:border-[var(--foreground)]",
+              ].join(" ")}
+            >
+              {todo.status === "done" && (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </button>
+          )}
 
-        <div className="min-w-0 flex-1">
-          <p className={[
-            "text-[15px] leading-relaxed font-medium",
-            todo.status === "done" ? "text-[var(--muted)] line-through" : "text-[var(--foreground)]",
-          ].join(" ")}>
-            {todo.content}
-          </p>
+          <div className="min-w-0 flex-1" onClick={() => !isDeleted && onOpenDetail()}>
+            <p className={[
+              "truncate text-[15px] leading-relaxed font-medium",
+              todo.status === "done" ? "text-[var(--muted)] line-through" : "text-[var(--foreground)]",
+            ].join(" ")}>
+              {todo.content}
+            </p>
 
-          {/* Second row: time hint + created time */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
-            {timeHint && (
-              <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-600">
-                🕐 {timeHint}
-              </span>
-            )}
-            <span>{formatBeijingTime(todo.createdAt)}</span>
+            {/* Second row: time hint + created time */}
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
+              {timeHint && (
+                <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-600">
+                  🕐 {timeHint}
+                </span>
+              )}
+              <span>{formatBeijingTime(todo.createdAt)}</span>
+            </div>
           </div>
         </div>
 
-        {!isDeleted && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onCyclePriority(); }}
-            title={`优先级: ${pc.label}（点击切换）`}
-            className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${pc.bg}`}
-          >
-            {pc.label}
-          </button>
-        )}
-
-        {isDeleted ? (
-          <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={onRestore}
-              className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface)]"
-            >
-              恢复
-            </button>
-            <button
-              type="button"
-              onClick={onHardDelete}
-              className="rounded-md px-2 py-0.5 text-xs text-rose-500 transition hover:bg-rose-500/10"
-            >
-              彻底删除
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onSoftDelete(); }}
-            className="shrink-0 text-sm text-[var(--muted)] transition hover:text-rose-500"
-            title="删除"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-
-      {/* Bottom action row */}
-      {!isDeleted && (
-        <div className="mt-3 flex items-center justify-end gap-2 border-t border-[var(--line)] pt-2.5">
-          {todo.recordId && (
-            <a
-              href={`/records/${todo.recordId}`}
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 rounded-md border border-purple-400/40 px-2.5 py-1 text-[11px] font-medium text-purple-500 transition hover:border-purple-400 hover:bg-purple-500/5"
-            >
-              来源
-            </a>
+        {/* 右侧：操作卡片 */}
+        <div className="flex flex-col items-end gap-2">
+          {!isDeleted && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setPriorityOpen((v) => !v); }}
+                title={`优先级: ${pc.label}`}
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${pc.bg}`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
+                {pc.label}
+              </button>
+              {priorityOpen && (
+                <div
+                  className="absolute right-0 z-20 mt-1 w-28 rounded-lg border border-[var(--line)] bg-[var(--card)] p-1 shadow-lg"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {priorities.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => { onChangePriority(p); setPriorityOpen(false); }}
+                      className={[
+                        "flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition",
+                        todo.priority === p
+                          ? priorityConfig[p].bg
+                          : "text-[var(--muted-strong)] hover:bg-[var(--surface)]",
+                      ].join(" ")}
+                    >
+                      <span>{priorityConfig[p].label}</span>
+                      {todo.priority === p && (
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-          {todo.syncedAt && !needsResync ? (
-            <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/5 px-2.5 py-1 text-[11px] font-medium text-emerald-500">
-              <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              已同步滴答
-            </span>
-          ) : needsResync ? (
-            <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="重新同步" />
+
+          {isDeleted ? (
+            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={onRestore}
+                className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface)]"
+              >
+                恢复
+              </button>
+              <button
+                type="button"
+                onClick={onHardDelete}
+                className="rounded-md px-2 py-0.5 text-xs text-rose-500 transition hover:bg-rose-500/10"
+              >
+                彻底删除
+              </button>
+            </div>
           ) : (
-            <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="同步滴答" />
+            <div className="flex items-center gap-2">
+              {todo.recordId && (
+                <a
+                  href={`/records/${todo.recordId}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 rounded-md border border-purple-400/40 px-2.5 py-1 text-[11px] font-medium text-purple-500 transition hover:border-purple-400 hover:bg-purple-500/5"
+                >
+                  来源
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onSoftDelete(); }}
+                className="shrink-0 text-xs text-[var(--muted)] transition hover:text-rose-500"
+                title="删除"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {!isDeleted && (
+            <div className="mt-1 flex items-center gap-2">
+              {todo.syncedAt && !needsResync ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/5 px-2.5 py-1 text-[11px] font-medium text-emerald-500">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  已同步滴答
+                </span>
+              ) : needsResync ? (
+                <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="重新同步" />
+              ) : (
+                <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="同步滴答" />
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

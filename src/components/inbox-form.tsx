@@ -6,28 +6,12 @@ import type {
   DragEvent as ReactDragEvent,
   FormEvent,
 } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RecordType, SyncTarget } from "@/lib/types";
 
-type RecordComposerType = "text" | "attachment";
+type RecordComposerType = "doc" | "attachment";
 type StatusTone = "info" | "success" | "error";
-
-const typeConfig: Record<
-  RecordComposerType,
-  { label: string; icon: string; placeholder?: string; accept?: string }
-> = {
-  text: {
-    label: "文本",
-    icon: "📝",
-    placeholder: "把微信里的文本直接粘贴到这里，支持自动整理和识别待办。",
-  },
-  attachment: {
-    label: "附件",
-    icon: "📎",
-    accept: "image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.csv,.json,application/pdf",
-  },
-};
 
 function fileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}-${file.type}`;
@@ -39,31 +23,10 @@ function mergeFiles(current: File[], incoming: File[]) {
   return Array.from(next.values());
 }
 
-function buildAutoSyncSummary(
-  items:
-    | Array<{
-        target: SyncTarget;
-        status: "synced" | "failed" | "skipped";
-        message: string;
-      }>
-    | undefined,
-) {
-  if (!items || items.length === 0) return "系统已完成基础分析。";
-  const parts: string[] = [];
-  const notion = items.find((i) => i.target === "notion");
-  const ticktick = items.find((i) => i.target === "ticktick-email");
-  if (notion?.status === "synced") parts.push("Notion 已同步");
-  else if (notion?.status === "failed") parts.push("Notion 同步失败");
-  if (ticktick?.status === "synced") parts.push("已生成滴答待办");
-  else if (ticktick?.status === "skipped") parts.push("未生成滴答待办");
-  else if (ticktick?.status === "failed") parts.push("滴答待办创建失败");
-  return parts.join("，") || "系统已完成基础分析。";
-}
-
 export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (recordId: string) => void; onSwitchToSearch?: () => void }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [activeType, setActiveType] = useState<RecordComposerType>("text");
+  const [activeType, setActiveType] = useState<RecordComposerType>("doc");
   const [title, setTitle] = useState("");
   const [sourceLabel, setSourceLabel] = useState("微信手动同步");
   const [contentText, setContentText] = useState("");
@@ -75,10 +38,10 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   const [files, setFiles] = useState<File[]>([]);
   const [fileTags, setFileTags] = useState<Record<string, string>>({});
   const [fileDescs, setFileDescs] = useState<Record<string, string>>({});
+  const [userTags, setUserTags] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
 
-  const currentType = typeConfig[activeType];
-  const isTextMode = activeType === "text";
-  const dropzoneTitle = useMemo(() => isTextMode ? "" : "上传附件（图片、视频、音频、文档等）", [isTextMode]);
+  const isDocMode = activeType === "doc";
 
   useEffect(() => {
     if (!status || statusTone === "error") return;
@@ -94,7 +57,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   function attachFiles(incoming: File[], sourceText: string) {
     if (incoming.length === 0) return;
     setFiles((current) => mergeFiles(current, incoming));
-    updateStatus(`${sourceText}已添加 ${incoming.length} 个附件。`);
+    updateStatus(`${sourceText}已添加 ${incoming.length} 个文件。`);
   }
 
   function removeFile(target: File) {
@@ -110,18 +73,30 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   function handleDrop(event: ReactDragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
-    attachFiles(Array.from(event.dataTransfer.files || []), "拖拽区");
+    const dropped = Array.from(event.dataTransfer.files || []);
+    if (isDocMode) {
+      const images = dropped.filter((f) => f.type.startsWith("image/"));
+      if (images.length > 0) attachFiles(images, "拖拽");
+    } else {
+      attachFiles(dropped, "拖拽区");
+    }
   }
 
   function handlePaste(event: ReactClipboardEvent<HTMLFormElement>) {
-    if (isTextMode) return;
     const pastedFiles = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file")
       .map((item) => item.getAsFile())
       .filter((file): file is File => Boolean(file));
     if (pastedFiles.length === 0) return;
-    event.preventDefault();
-    attachFiles(pastedFiles, "剪贴板");
+    if (isDocMode) {
+      const images = pastedFiles.filter((f) => f.type.startsWith("image/"));
+      if (images.length > 0) {
+        attachFiles(images, "剪贴板");
+      }
+    } else {
+      event.preventDefault();
+      attachFiles(pastedFiles, "剪贴板");
+    }
   }
 
   async function readClipboardText() {
@@ -140,24 +115,25 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isTextMode && !contentText.trim()) {
-      updateStatus("请先粘贴需要记录的文本。", "error");
+    if (isDocMode && !contentText.trim() && files.length === 0) {
+      updateStatus("请输入文本或粘贴图片。", "error");
       return;
     }
-    if (!isTextMode && files.length === 0) {
+    if (!isDocMode && files.length === 0) {
       updateStatus("请先上传附件文件。", "error");
       return;
     }
 
     setSubmitting(true);
-    updateStatus("正在收录并执行自动同步...", "info");
+    updateStatus("正在收录...", "info");
 
     const formData = new FormData();
     formData.set("title", title);
     formData.set("sourceLabel", sourceLabel);
-    formData.set("contentText", isTextMode ? contentText : "");
+    formData.set("contentText", isDocMode ? contentText : "");
     formData.set("contextNote", contextNote);
-    formData.set("recordTypeHint", activeType === "text" ? "text" : "");
+    formData.set("recordTypeHint", isDocMode && files.length === 0 ? "text" : "");
+    formData.set("userTags", userTags);
     files.forEach((file, idx) => {
       formData.append("files", file);
       const fk = fileKey(file);
@@ -174,10 +150,11 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       return;
     }
 
-    updateStatus(`记录成功。${buildAutoSyncSummary(payload.autoSync)}`, "success");
+    updateStatus("收录成功！同步将在后台自动完成。", "success");
     setTitle("");
     setContentText("");
     setContextNote("");
+    setUserTags("");
     setFiles([]);
     setFileTags({});
     setFileDescs({});
@@ -186,29 +163,38 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
     router.refresh();
   }
 
+  const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+
   return (
     <form onSubmit={onSubmit} onPasteCapture={handlePaste} className="space-y-5">
-      {/* Type selector — large, prominent */}
+      {/* Type selector */}
       <div className="flex flex-wrap items-center gap-2">
-        {Object.entries(typeConfig).map(([key, cfg]) => {
-          const active = activeType === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setActiveType(key as RecordComposerType)}
-              className={[
-                "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-medium transition",
-                active
-                  ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
-                  : "bg-[var(--surface)] text-[var(--muted-strong)] hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]",
-              ].join(" ")}
-            >
-              <span>{cfg.icon}</span>
-              <span>{cfg.label}</span>
-            </button>
-          );
-        })}
+        <button
+          type="button"
+          onClick={() => setActiveType("doc")}
+          className={[
+            "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-medium transition",
+            isDocMode
+              ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
+              : "bg-[var(--surface)] text-[var(--muted-strong)] hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]",
+          ].join(" ")}
+        >
+          <span>📝</span>
+          <span>文档</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveType("attachment")}
+          className={[
+            "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-medium transition",
+            !isDocMode
+              ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
+              : "bg-[var(--surface)] text-[var(--muted-strong)] hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]",
+          ].join(" ")}
+        >
+          <span>📎</span>
+          <span>附件</span>
+        </button>
 
         {onSwitchToSearch && (
           <button
@@ -224,35 +210,85 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         )}
       </div>
 
-      {/* Text mode */}
-      {isTextMode ? (
-        <div className="input-focus-bar overflow-hidden rounded-3xl border border-[var(--line-strong)] bg-[var(--surface)] shadow-sm">
-          <textarea
-            value={contentText}
-            onChange={(e) => setContentText(e.target.value)}
-            rows={10}
-            placeholder={currentType.placeholder}
-            className="min-h-[280px] max-h-[500px] w-full resize-none border-none bg-transparent px-6 py-5 text-[15px] leading-8 text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-          />
-          <div className="flex items-center justify-between border-t border-[var(--line)] bg-[var(--surface)] px-5 py-3">
-            <button
-              type="button"
-              onClick={readClipboardText}
-              className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
-            >
-              📋 粘贴剪贴板
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-xl bg-[var(--foreground)] px-6 py-2.5 text-sm font-semibold text-[var(--background)] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? "收录中..." : "确认收录"}
-            </button>
+      {/* Document mode */}
+      {isDocMode ? (
+        <div>
+          <div
+            onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              setDragging(false);
+            }}
+            onDrop={handleDrop}
+            className={[
+              "input-focus-bar overflow-hidden rounded-3xl border shadow-sm transition",
+              dragging
+                ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                : "border-[var(--line-strong)] bg-[var(--surface)]",
+            ].join(" ")}
+          >
+            <textarea
+              value={contentText}
+              onChange={(e) => setContentText(e.target.value)}
+              rows={10}
+              placeholder="输入文本或 Markdown，支持直接粘贴截图…"
+              className="min-h-[240px] max-h-[500px] w-full resize-none border-none bg-transparent px-6 py-5 text-[15px] leading-8 text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+            />
+
+            {/* Inline image previews */}
+            {imageFiles.length > 0 && (
+              <div className="border-t border-[var(--line)] bg-[var(--surface)] px-5 py-3">
+                <p className="mb-2 text-[11px] font-medium text-[var(--muted)]">{imageFiles.length} 张图片</p>
+                <div className="flex flex-wrap gap-2">
+                  {imageFiles.map((file) => (
+                    <InlineImagePreview key={fileKey(file)} file={file} onRemove={() => removeFile(file)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t border-[var(--line)] bg-[var(--surface)] px-5 py-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={readClipboardText}
+                  className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
+                >
+                  📋 粘贴文本
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
+                >
+                  🖼 插入图片
+                </button>
+              </div>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-xl bg-[var(--foreground)] px-6 py-2.5 text-sm font-semibold text-[var(--background)] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? "收录中..." : "确认收录"}
+              </button>
+            </div>
           </div>
+          {dragging && (
+            <p className="mt-2 text-center text-sm text-[var(--accent)]">松开以添加图片</p>
+          )}
         </div>
       ) : (
-        /* File mode */
+        /* Attachment mode */
         <div className="space-y-4">
           <div
             onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
@@ -271,16 +307,16 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             ].join(" ")}
           >
             <input
-              ref={fileInputRef}
+              ref={isDocMode ? undefined : fileInputRef}
               type="file"
               multiple
-              accept={currentType.accept}
+              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.csv,.json,application/pdf"
               onChange={handleFileInputChange}
               className="hidden"
             />
             <div className="text-4xl">📎</div>
             <p className="mt-3 text-base font-medium text-[var(--foreground)]">
-              {dropzoneTitle}
+              上传附件（图片、视频、音频、文档等）
             </p>
             <p className="mt-1.5 text-sm text-[var(--muted)]">
               拖拽或点击选择文件，支持图片、视频、音频、文档等
@@ -300,7 +336,6 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             </button>
           </div>
 
-          {/* File previews */}
           {files.length > 0 && (
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
               {files.map((file) => {
@@ -344,47 +379,80 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       )}
 
       {/* Optional fields */}
-      <details className="rounded-3xl border border-[var(--line)] bg-[var(--card)]">
-        <summary className="cursor-pointer list-none px-5 py-3.5 text-sm text-[var(--muted-strong)]">
-          更多信息
-          <span className="ml-2 text-xs text-[var(--muted)]">标题、来源、备注</span>
-        </summary>
-        <div className="grid gap-4 border-t border-[var(--line)] px-5 py-4 lg:grid-cols-2">
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-[var(--foreground)]">标题</span>
-            <div className="input-focus-bar">
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="例如：客户报价截图"
-                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-              />
-            </div>
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-[var(--foreground)]">来源</span>
-            <div className="input-focus-bar">
-              <input
-                value={sourceLabel}
-                onChange={(e) => setSourceLabel(e.target.value)}
-                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-              />
-            </div>
-          </label>
-          <label className="block space-y-1.5 lg:col-span-2">
-            <span className="text-sm font-medium text-[var(--foreground)]">备注</span>
-            <div className="input-focus-bar">
-              <textarea
-                value={contextNote}
-                onChange={(e) => setContextNote(e.target.value)}
-                rows={3}
-                placeholder="例如：客户群里发的内容，担心漏掉截止时间。"
-                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-              />
-            </div>
-          </label>
-        </div>
-      </details>
+      <div className="rounded-3xl border border-[var(--line)] bg-[var(--card)]">
+        <button
+          type="button"
+          onClick={() => setMoreOpen((v) => !v)}
+          className="flex w-full items-center justify-between px-5 py-3.5 text-sm text-[var(--muted-strong)] transition hover:text-[var(--foreground)]"
+        >
+          <span>
+            更多信息
+            <span className="ml-2 text-xs text-[var(--muted)]">标题、来源、标签、备注</span>
+          </span>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-transform ${moreOpen ? "rotate-180" : ""}`}
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
+        {moreOpen && (
+          <div className="grid gap-4 border-t border-[var(--line)] px-5 py-4 lg:grid-cols-2">
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-[var(--foreground)]">标题</span>
+              <div className="input-focus-bar">
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="例如：客户报价截图"
+                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-[var(--foreground)]">来源</span>
+              <div className="input-focus-bar">
+                <input
+                  value={sourceLabel}
+                  onChange={(e) => setSourceLabel(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+            </label>
+            <label className="block space-y-1.5 lg:col-span-2">
+              <span className="text-sm font-medium text-[var(--foreground)]">标签</span>
+              <div className="input-focus-bar">
+                <input
+                  value={userTags}
+                  onChange={(e) => setUserTags(e.target.value)}
+                  placeholder="用逗号分隔，例如：工作,客户,报价"
+                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+              <p className="text-xs text-[var(--muted)]">自定义标签，方便后续筛选和搜索</p>
+            </label>
+            <label className="block space-y-1.5 lg:col-span-2">
+              <span className="text-sm font-medium text-[var(--foreground)]">备注</span>
+              <div className="input-focus-bar">
+                <textarea
+                  value={contextNote}
+                  onChange={(e) => setContextNote(e.target.value)}
+                  rows={3}
+                  placeholder="例如：客户群里发的内容，担心漏掉截止时间。"
+                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+            </label>
+          </div>
+        )}
+      </div>
 
       {/* Status toast */}
       {status && (
@@ -411,6 +479,32 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         </div>
       )}
     </form>
+  );
+}
+
+function InlineImagePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  return (
+    <div className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[var(--line)]">
+      {src && (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img src={src} alt={file.name} className="h-full w-full object-cover" />
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs text-white opacity-0 transition group-hover:opacity-100"
+      >
+        ✕
+      </button>
+    </div>
   );
 }
 
