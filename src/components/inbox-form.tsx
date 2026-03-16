@@ -5,10 +5,16 @@ import type {
   ClipboardEvent as ReactClipboardEvent,
   DragEvent as ReactDragEvent,
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { RecordType, SyncTarget } from "@/lib/types";
+import type { RecordType } from "@/lib/types";
+import {
+  addPendingRecord,
+  syncPendingRecordsToCloud,
+  type PendingRecordPayload,
+} from "@/lib/local-record-store";
 
 type RecordComposerType = "doc" | "attachment";
 type StatusTone = "info" | "success" | "error";
@@ -25,6 +31,7 @@ function mergeFiles(current: File[], incoming: File[]) {
 
 export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (recordId: string) => void; onSwitchToSearch?: () => void }) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [activeType, setActiveType] = useState<RecordComposerType>("doc");
   const [title, setTitle] = useState("");
@@ -127,46 +134,65 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
     setSubmitting(true);
     updateStatus("正在收录...", "info");
 
-    const formData = new FormData();
-    formData.set("title", title);
-    formData.set("sourceLabel", sourceLabel);
-    formData.set("contentText", isDocMode ? contentText : "");
-    formData.set("contextNote", contextNote);
-    formData.set("recordTypeHint", isDocMode && files.length === 0 ? "text" : "");
-    formData.set("userTags", userTags);
-    files.forEach((file, idx) => {
-      formData.append("files", file);
-      const fk = fileKey(file);
-      formData.set(`fileTags_${idx}`, fileTags[fk] || "");
-      formData.set(`fileDesc_${idx}`, fileDescs[fk] || "");
-    });
+    try {
+      const filePayloads = await Promise.all(
+        files.map(async (f) => ({
+          name: f.name,
+          type: f.type || "application/octet-stream",
+          lastModified: f.lastModified,
+          content: await f.arrayBuffer(),
+        })),
+      );
+      const payload: PendingRecordPayload = {
+        title,
+        sourceLabel,
+        contentText: isDocMode ? contentText : "",
+        contextNote,
+        userTags,
+        recordTypeHint: isDocMode && files.length === 0 ? "text" : "",
+        files: filePayloads,
+        fileTags: { ...fileTags },
+        fileDescs: { ...fileDescs },
+      };
 
-    const response = await fetch("/api/records", { method: "POST", body: formData });
-    const payload = await response.json();
-
-    if (!response.ok) {
-      updateStatus(payload.error || "记录失败，请稍后再试。", "error");
+      await addPendingRecord(payload);
+      setTitle("");
+      setContentText("");
+      setContextNote("");
+      setUserTags("");
+      setFiles([]);
+      setFileTags({});
+      setFileDescs({});
       setSubmitting(false);
-      return;
-    }
+      updateStatus("已收录，等待同步到云端", "success");
 
-    updateStatus("收录成功！同步将在后台自动完成。", "success");
-    setTitle("");
-    setContentText("");
-    setContextNote("");
-    setUserTags("");
-    setFiles([]);
-    setFileTags({});
-    setFileDescs({});
-    setSubmitting(false);
-    onCreated?.(payload.record.id);
-    router.refresh();
+      syncPendingRecordsToCloud()
+        .then(({ synced, failed }) => {
+          if (synced > 0) {
+            updateStatus(`收录已同步到云端（${synced} 条）`, "success");
+            onCreated?.("");
+            router.refresh();
+          }
+          if (failed > 0) updateStatus(`${failed} 条同步失败，可点击右上角云图标重试`, "error");
+        })
+        .catch(() => updateStatus("同步异常，可稍后点击云图标重试", "error"));
+    } catch (e) {
+      setSubmitting(false);
+      updateStatus(e instanceof Error ? e.message : "收录失败，请重试", "error");
+    }
   }
 
   const imageFiles = files.filter((f) => f.type.startsWith("image/"));
 
+  function handleTextareaKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== "Enter") return;
+    if (e.shiftKey) return;
+    e.preventDefault();
+    formRef.current?.requestSubmit();
+  }
+
   return (
-    <form onSubmit={onSubmit} onPasteCapture={handlePaste} className="space-y-5">
+    <form ref={formRef} onSubmit={onSubmit} onPasteCapture={handlePaste} className="space-y-5">
       {/* Type selector */}
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -232,8 +258,9 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             <textarea
               value={contentText}
               onChange={(e) => setContentText(e.target.value)}
+              onKeyDown={handleTextareaKeyDown}
               rows={10}
-              placeholder="输入文本或 Markdown，支持直接粘贴截图…"
+              placeholder="输入文本或 Markdown，支持直接粘贴截图…（Enter 提交，Shift+Enter 换行）"
               className="min-h-[240px] max-h-[500px] w-full resize-none border-none bg-transparent px-6 py-5 text-[15px] leading-8 text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
             />
 
@@ -454,24 +481,40 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         )}
       </div>
 
-      {/* Status toast */}
+      {/* Status toast - 页面居中上方 */}
       {status && (
-        <div className="pointer-events-none fixed bottom-5 right-5 z-50">
+        <div
+          className="pointer-events-none fixed left-1/2 top-6 z-50 -translate-x-1/2"
+          role="status"
+          aria-live="polite"
+        >
           <div
             className={[
-              "pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm shadow-lg backdrop-blur",
+              "pointer-events-auto flex animate-toast-in items-center gap-3 rounded-2xl border px-5 py-3.5 text-sm font-medium shadow-xl backdrop-blur-md",
               statusTone === "success"
-                ? "bg-emerald-50 text-emerald-800"
+                ? "border-emerald-500/30 bg-emerald-500/95 text-white dark:bg-emerald-600/95"
                 : statusTone === "error"
-                  ? "bg-rose-50 text-rose-800"
-                  : "bg-[var(--card)] text-[var(--foreground)]",
+                  ? "border-rose-500/30 bg-rose-500/95 text-white dark:bg-rose-600/95"
+                  : "border-[var(--line-strong)] bg-[var(--card)]/95 text-[var(--foreground)]",
             ].join(" ")}
           >
+            {statusTone === "info" && (
+              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            )}
+            {statusTone === "success" && (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            )}
+            {statusTone === "error" && (
+              <span className="shrink-0 text-base leading-none">!</span>
+            )}
             <span className="min-w-0 flex-1">{status}</span>
             <button
               type="button"
               onClick={() => setStatus("")}
-              className="text-xs opacity-40 transition hover:opacity-100"
+              className="-mr-1 rounded-lg p-1 opacity-70 transition hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/50"
+              aria-label="关闭"
             >
               ✕
             </button>

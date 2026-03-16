@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type ReportData = {
+export type ReportData = {
   period: string;
   startDate: string;
   newRecords: number;
@@ -23,10 +23,16 @@ const typeLabels: Record<string, string> = {
   mixed: "混合",
 };
 
-export function ReportPanel() {
-  const [period, setPeriod] = useState<"week" | "month">("week");
-  const [data, setData] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(true);
+export function ReportPanel({
+  initialData = null,
+  initialPeriod = "week",
+}: {
+  initialData?: ReportData | null;
+  initialPeriod?: "week" | "month";
+} = {}) {
+  const [period, setPeriod] = useState<"week" | "month">(initialPeriod);
+  const [data, setData] = useState<ReportData | null>(initialData);
+  const [loading, setLoading] = useState(!initialData);
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
@@ -64,7 +70,7 @@ export function ReportPanel() {
         </div>
       </div>
 
-      {loading ? (
+      {loading && !data ? (
         <div className="flex items-center justify-center py-20 text-sm text-[var(--muted)]">
           <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--foreground)]" />
           加载中...

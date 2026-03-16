@@ -11,14 +11,22 @@ import { TodoPanel } from "@/components/todo-panel";
 import { RecordDetailModal } from "@/components/record-detail-modal";
 import { ReportPanel } from "@/components/report-panel";
 import { TagManager } from "@/components/tag-manager";
+import { SyncIndicator } from "@/components/sync-indicator";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import {
+  getPendingRecordsForDisplay,
+  pendingToRecordLike,
+  subscribeSyncStatus,
+} from "@/lib/local-record-store";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import type {
   IntegrationSettings,
   IntegrationStatus,
   KnowledgeRecord,
   RecordType,
+  Todo,
 } from "@/lib/types";
+import type { ReportData } from "@/components/report-panel";
 import { formatDateTime, formatDateOnly, formatTime } from "@/lib/utils";
 
 type WorkspaceTab = "record" | "history" | "favorites" | "todos" | "reports" | "tags" | "settings";
@@ -123,6 +131,46 @@ export function HomeWorkspace({
   const [detailModalId, setDetailModalId] = useState<string | null>(null);
   const [pendingTodoCount, setPendingTodoCount] = useState(0);
   const [userEmail, setUserEmail] = useState("");
+  const [prefetchedTodos, setPrefetchedTodos] = useState<{ todos: Todo[]; total: number } | null>(null);
+  const [prefetchedFavorites, setPrefetchedFavorites] = useState<KnowledgeRecord[] | null>(null);
+  const [prefetchedReport, setPrefetchedReport] = useState<ReportData | null>(null);
+  const [prefetchedTags, setPrefetchedTags] = useState<Array<{ tag: string; count: number }> | null>(null);
+  const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const refreshPending = () => {
+      getPendingRecordsForDisplay()
+        .then((list) => setLocalPendingRecords(list.map((p) => pendingToRecordLike(p) as KnowledgeRecord)))
+        .catch(() => setLocalPendingRecords([]));
+    };
+    refreshPending();
+    const unsub = subscribeSyncStatus(() => refreshPending());
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    Promise.all([
+      fetch("/api/todos?limit=200", { signal: abort.signal })
+        .then((r) => r.json())
+        .then((d) => setPrefetchedTodos({ todos: d.todos || [], total: d.total ?? 0 }))
+        .catch(() => {}),
+      fetch("/api/favorites", { signal: abort.signal })
+        .then((r) => r.json())
+        .then((d) => setPrefetchedFavorites(d.records || []))
+        .catch(() => {}),
+      fetch("/api/reports?period=week", { signal: abort.signal })
+        .then((r) => r.json())
+        .then((d) => setPrefetchedReport(d?.period ? d : null))
+        .catch(() => {}),
+      fetch("/api/tags", { signal: abort.signal })
+        .then((r) => r.json())
+        .then((d) => setPrefetchedTags(d.tags || []))
+        .catch(() => {}),
+    ]);
+    return () => abort.abort();
+  }, []);
 
   useEffect(() => {
     const supabase = createSupabaseBrowser();
@@ -199,17 +247,29 @@ export function HomeWorkspace({
     }
   }, [loadingMore, records.length, total]);
 
-  const handleDelete = useCallback(
+  const performDelete = useCallback(
     async (id: string) => {
-      const ok = window.confirm("确定删除此条记录？记录将移至回收站（30天后自动清理）。");
-      if (!ok) return;
       await fetch(`/api/records/${id}`, { method: "DELETE" });
       setRecords((prev) => prev.filter((r) => r.id !== id));
       setTotal((prev) => prev - 1);
       if (selectedRecordId === id) setSelectedRecordId("");
+      if (detailModalId === id) setDetailModalId(null);
     },
-    [selectedRecordId],
+    [selectedRecordId, detailModalId],
   );
+
+  const handleDeleteRequest = useCallback((id: string) => {
+    setDeleteConfirmId(id);
+  }, []);
+
+  useEffect(() => {
+    if (!deleteConfirmId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDeleteConfirmId(null);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [deleteConfirmId]);
 
   const handleUpdate = useCallback(
     async (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => {
@@ -231,7 +291,7 @@ export function HomeWorkspace({
     if (f !== "document") setDocSubFilter("");
   }, []);
 
-  const filteredRecords = useMemo(() => {
+  const filteredRecordsBase = useMemo(() => {
     return records.filter((r) => {
       if (historyFilter === "synced") return r.syncRuns.some((run) => run.status === "synced");
       if (historyFilter === "all") return true;
@@ -247,6 +307,11 @@ export function HomeWorkspace({
       return r.recordType === historyFilter;
     });
   }, [historyFilter, docSubFilter, records]);
+
+  const filteredRecords = useMemo(
+    () => [...localPendingRecords, ...filteredRecordsBase],
+    [localPendingRecords, filteredRecordsBase],
+  );
 
   const selectedRecord = useMemo(
     () => filteredRecords.find((r) => r.id === selectedRecordId) || filteredRecords[0] || null,
@@ -445,13 +510,16 @@ export function HomeWorkspace({
 
           <div className="flex h-screen flex-col p-4 pb-24 lg:px-6 lg:pb-[24px] lg:pt-[24px]">
             {(activeTab === "record" || activeTab === "history") && (
-              <StatsBar onNavigateToTodos={() => setActiveTab("todos")} />
+              <div className="flex items-center justify-between gap-2">
+                <StatsBar onNavigateToTodos={() => setActiveTab("todos")} />
+                <SyncIndicator />
+              </div>
             )}
 
             <div className="content-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--card)]/80 p-5 shadow-sm backdrop-blur-sm lg:p-6">
               {activeTab === "record" && (
                 <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
-                  <div className="mb-4 flex items-center justify-between">
+                  <div className="mb-4 flex items-center justify-between gap-2">
                     <h2 className="text-sm font-medium text-[var(--foreground)]">新建文档</h2>
                     <RefreshButton onClick={refreshRecords} />
                   </div>
@@ -480,7 +548,7 @@ export function HomeWorkspace({
                   onDocSubFilterChange={setDocSubFilter}
                   onSelectRecord={setSelectedRecordId}
                   onLoadMore={loadMore}
-                  onDelete={handleDelete}
+                  onDelete={handleDeleteRequest}
                   onUpdate={handleUpdate}
                   onOpenDetail={setDetailModalId}
                   onRefresh={refreshRecords}
@@ -489,15 +557,23 @@ export function HomeWorkspace({
 
               {activeTab === "favorites" && (
                 <FavoritesTab
-                  onDelete={handleDelete}
+                  initialRecords={prefetchedFavorites}
+                  onDelete={handleDeleteRequest}
                   onUpdate={handleUpdate}
                   onOpenDetail={setDetailModalId}
                 />
               )}
 
-              {activeTab === "todos" && <TodoPanel />}
-              {activeTab === "reports" && <ReportPanel />}
-              {activeTab === "tags" && <TagManager />}
+              {activeTab === "todos" && (
+                <TodoPanel
+                  initialTodos={prefetchedTodos?.todos}
+                  initialTotal={prefetchedTodos?.total}
+                />
+              )}
+              {activeTab === "reports" && (
+                <ReportPanel initialData={prefetchedReport} initialPeriod="week" />
+              )}
+              {activeTab === "tags" && <TagManager initialTags={prefetchedTags} />}
               {activeTab === "settings" && (
                 <IntegrationsPanel initialSettings={integrationSettings} initialStatus={integrationStatus} />
               )}
@@ -511,12 +587,48 @@ export function HomeWorkspace({
         <RecordDetailModal
           recordId={detailModalId}
           onClose={() => setDetailModalId(null)}
-          onDelete={async (id) => {
-            await handleDelete(id);
-            setDetailModalId(null);
-          }}
+          onDelete={handleDeleteRequest}
           onUpdate={handleUpdate}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteConfirmId(null);
+          }}
+        >
+          <div
+            className="relative mx-4 w-full max-w-sm rounded-2xl border border-[var(--line)] bg-[var(--background)] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-6 text-[15px] leading-relaxed text-[var(--foreground)]">
+              确定删除此条记录？记录将移至回收站（30天后自动清理）。
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmId(null)}
+                className="rounded-lg px-4 py-2 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface)]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const id = deleteConfirmId;
+                  setDeleteConfirmId(null);
+                  await performDelete(id);
+                }}
+                className="rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-600"
+              >
+                确定删除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
@@ -768,7 +880,9 @@ function HistoryTab({
                     >
                       {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-[var(--foreground)]" />}
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-medium text-[var(--muted)]">{recordTypeLabels[record.recordType]}</span>
+                        <span className="text-[11px] font-medium text-[var(--muted)]">
+                          {(record as KnowledgeRecord & { _localPending?: boolean })._localPending ? "待同步" : recordTypeLabels[record.recordType]}
+                        </span>
                         <span className="shrink-0 text-[10px] text-[var(--muted)]">
                           {formatTime(record.createdAt)}
                         </span>
@@ -847,17 +961,20 @@ function FavoritesTab({
   onDelete,
   onUpdate,
   onOpenDetail,
+  initialRecords,
 }: {
   onDelete: (id: string) => void;
   onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => void;
   onOpenDetail: (id: string) => void;
+  initialRecords?: KnowledgeRecord[] | null;
 }) {
-  const [records, setRecords] = useState<KnowledgeRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedRecordId, setSelectedRecordId] = useState("");
+  const [records, setRecords] = useState<KnowledgeRecord[]>(initialRecords ?? []);
+  const hasInitial = initialRecords != null;
+  const [loading, setLoading] = useState(!hasInitial);
+  const [selectedRecordId, setSelectedRecordId] = useState(initialRecords?.[0]?.id ?? "");
 
   const fetchFavorites = useCallback(async () => {
-    setLoading(true);
+    if (!hasInitial) setLoading(true);
     try {
       const res = await fetch("/api/favorites");
       const data = await res.json();
@@ -868,7 +985,7 @@ function FavoritesTab({
     } finally {
       setLoading(false);
     }
-  }, [selectedRecordId]);
+  }, [selectedRecordId, hasInitial]);
 
   useEffect(() => { fetchFavorites(); }, []);
 
@@ -882,7 +999,7 @@ function FavoritesTab({
     setRecords((prev) => prev.filter((r) => r.id !== recordId));
   }, []);
 
-  if (loading) {
+  if (loading && records.length === 0) {
     return (
       <div className="flex items-center justify-center py-24">
         <span className="text-sm text-[var(--muted)]">加载中...</span>
@@ -1135,34 +1252,6 @@ function RecordPane({
           </div>
         ) : null}
 
-        {/* Copy button */}
-        {(record.contentText || record.extractedText) && (
-          <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              onClick={handleCopy}
-              className={[
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-                copied
-                  ? "bg-emerald-100 text-emerald-700"
-                  : "bg-[var(--surface)] text-[var(--muted-strong)] hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]",
-              ].join(" ")}
-            >
-              {copied ? (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                  已复制
-                </>
-              ) : (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                  复制内容
-                </>
-              )}
-            </button>
-          </div>
-        )}
-
         {/* Show OCR/description for image records */}
         {record.assets.some((a) => a.ocrText || a.description) && (
           <div className="mt-4 space-y-3">
@@ -1294,15 +1383,37 @@ function RecordPane({
               </>
             ) : (
               <>
-                <button type="button" onClick={() => onOpenDetail(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
-                  详情
-                </button>
-                <button type="button" onClick={() => setEditing(true)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
-                  编辑
-                </button>
-                <button type="button" onClick={() => onDelete(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-rose-500 transition hover:bg-rose-500/10">
-                  删除
-                </button>
+                {(record.contentText || record.extractedText) && (
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className={[
+                      "rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition",
+                      copied
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "text-[var(--muted-strong)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+                    ].join(" ")}
+                  >
+                    {copied ? "已复制" : "复制"}
+                  </button>
+                )}
+                {(record as KnowledgeRecord & { _localPending?: boolean })._localPending ? (
+                  <span className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted)]">待同步</span>
+                ) : (
+                  <button type="button" onClick={() => onOpenDetail(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
+                    详情
+                  </button>
+                )}
+                {(record as KnowledgeRecord & { _localPending?: boolean })._localPending ? null : (
+                  <>
+                    <button type="button" onClick={() => setEditing(true)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
+                      编辑
+                    </button>
+                    <button type="button" onClick={() => onDelete(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-rose-500 transition hover:bg-rose-500/10">
+                      删除
+                    </button>
+                  </>
+                )}
               </>
             )}
           </div>

@@ -2,20 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type TagItem = { tag: string; count: number };
+export type TagItem = { tag: string; count: number };
 
-export function TagManager() {
-  const [tags, setTags] = useState<TagItem[]>([]);
+export function TagManager({ initialTags }: { initialTags?: TagItem[] | null } = {}) {
+  const [tags, setTags] = useState<TagItem[]>(initialTags ?? []);
   const [filter, setFilter] = useState("");
-  const [loading, setLoading] = useState(true);
+  const hasInitial = initialTags != null;
+  const [loading, setLoading] = useState(!hasInitial);
 
   const fetchTags = useCallback(async () => {
-    setLoading(true);
+    if (!hasInitial) setLoading(true);
     const res = await fetch("/api/tags");
     const data = await res.json();
     setTags(data.tags || []);
     setLoading(false);
-  }, []);
+  }, [hasInitial]);
 
   useEffect(() => {
     fetchTags();
@@ -51,7 +52,7 @@ export function TagManager() {
         />
       </div>
 
-      {loading ? (
+      {loading && tags.length === 0 ? (
         <div className="py-12 text-center text-sm text-[var(--muted)]">加载中...</div>
       ) : filtered.length === 0 ? (
         <div className="py-12 text-center text-sm text-[var(--muted)]">暂无标签</div>

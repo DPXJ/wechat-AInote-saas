@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Todo, TodoPriority, TodoStatus } from "@/lib/types";
+import {
+  addPendingTodo,
+  getAllPendingTodos,
+  type PendingTodo,
+  type PendingTodoPayload,
+  syncPendingTodosToCloud,
+} from "@/lib/local-todo-store";
 
 type TodoFilter = "all" | "pending" | "done" | "deleted";
 
@@ -71,9 +78,16 @@ function groupByDate(todos: Todo[]): Array<{ dateKey: string; label: string; ite
     .map(([key, items]) => ({ dateKey: key, label: formatDateLabel(items[0].createdAt), items }));
 }
 
-export function TodoPanel() {
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [total, setTotal] = useState(0);
+export function TodoPanel({
+  initialTodos,
+  initialTotal,
+}: {
+  initialTodos?: Todo[];
+  initialTotal?: number;
+} = {}) {
+  const [serverTodos, setServerTodos] = useState<Todo[]>(initialTodos ?? []);
+  const [localTodos, setLocalTodos] = useState<Todo[]>([]);
+  const [total, setTotal] = useState(initialTotal ?? 0);
   const [filter, setFilter] = useState<TodoFilter>("pending");
   const [dateFilter, setDateFilter] = useState("");
   const [newContent, setNewContent] = useState("");
@@ -81,14 +95,36 @@ export function TodoPanel() {
   const [creating, setCreating] = useState(false);
   const [detailTodo, setDetailTodo] = useState<Todo | null>(null);
 
+  const loadLocalTodos = useCallback(async () => {
+    try {
+      const pending: PendingTodo[] = await getAllPendingTodos();
+      const mapped: Todo[] = pending.map((t) => ({
+        id: t.localId,
+        recordId: null,
+        content: t.payload.content,
+        priority: t.payload.priority,
+        status: t.payload.status,
+        createdAt: t.createdAt,
+        completedAt: null,
+        updatedAt: t.createdAt,
+        deletedAt: null,
+        syncedAt: null,
+      }));
+      setLocalTodos(mapped);
+    } catch {
+      setLocalTodos([]);
+    }
+  }, []);
+
   const fetchTodos = useCallback(async () => {
     const res = await fetch(`/api/todos?limit=200`);
     const data = await res.json();
-    setTodos(data.todos);
+    setServerTodos(data.todos);
     setTotal(data.total);
   }, []);
 
   useEffect(() => {
+    void loadLocalTodos();
     void fetchTodos();
     const timer = window.setInterval(() => { void fetchTodos(); }, 30000);
     const onFocus = () => { void fetchTodos(); };
@@ -97,26 +133,46 @@ export function TodoPanel() {
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, [fetchTodos]);
+  }, [fetchTodos, loadLocalTodos]);
 
   const handleCreate = async () => {
     if (!newContent.trim() || creating) return;
     setCreating(true);
     try {
-      await fetch("/api/todos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: newContent.trim(), priority: newPriority }),
-      });
+      const payload: PendingTodoPayload = {
+        content: newContent.trim(),
+        priority: newPriority,
+        status: "pending",
+      };
+      const pending = await addPendingTodo(payload);
+      setLocalTodos((curr) => [
+        ...curr,
+        {
+          id: pending.localId,
+          recordId: null,
+          content: pending.payload.content,
+          priority: pending.payload.priority,
+          status: pending.payload.status,
+          createdAt: pending.createdAt,
+          completedAt: null,
+          updatedAt: pending.createdAt,
+          deletedAt: null,
+          syncedAt: null,
+        },
+      ]);
       setNewContent("");
       setNewPriority("medium");
       setFilter("pending");
       setDateFilter("");
-      await fetchTodos();
+      void syncPendingTodosToCloud().then(() => {
+        void loadLocalTodos();
+        void fetchTodos();
+      });
     } finally { setCreating(false); }
   };
 
   const toggleStatus = async (todo: Todo) => {
+    if (todo.id.startsWith("local_todo_")) return;
     const newStatus: TodoStatus = todo.status === "pending" ? "done" : "pending";
     await fetch(`/api/todos/${todo.id}`, {
       method: "PATCH",
@@ -127,6 +183,7 @@ export function TodoPanel() {
   };
 
   const updatePriority = async (todo: Todo, priority: TodoPriority) => {
+    if (todo.id.startsWith("local_todo_")) return;
     await fetch(`/api/todos/${todo.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -136,12 +193,20 @@ export function TodoPanel() {
   };
 
   const handleSoftDelete = async (id: string) => {
+    if (id.startsWith("local_todo_")) {
+      setLocalTodos((curr) => curr.filter((t) => t.id !== id));
+      return;
+    }
     await fetch(`/api/todos/${id}`, { method: "DELETE" });
     await fetchTodos();
   };
 
   const handleHardDelete = async (id: string) => {
     if (!window.confirm("确定彻底删除？此操作不可恢复。")) return;
+    if (id.startsWith("local_todo_")) {
+      setLocalTodos((curr) => curr.filter((t) => t.id !== id));
+      return;
+    }
     await fetch(`/api/todos/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -151,6 +216,7 @@ export function TodoPanel() {
   };
 
   const handleRestore = async (id: string) => {
+    if (id.startsWith("local_todo_")) return;
     await fetch(`/api/todos/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -159,8 +225,10 @@ export function TodoPanel() {
     await fetchTodos();
   };
 
+  const allTodos = useMemo(() => [...localTodos, ...serverTodos], [localTodos, serverTodos]);
+
   const filteredTodos = useMemo(() => {
-    let base = todos;
+    let base = allTodos;
     if (filter !== "all") {
       base = base.filter((t) => t.status === filter);
     }
@@ -168,15 +236,15 @@ export function TodoPanel() {
       base = base.filter((t) => getDateKey(t.createdAt) === dateFilter);
     }
     return base;
-  }, [todos, filter, dateFilter]);
+  }, [allTodos, filter, dateFilter]);
 
   const groups = useMemo(() => groupByDate(filteredTodos), [filteredTodos]);
 
   const availableDates = useMemo(() => {
     const set = new Set<string>();
-    for (const t of todos) set.add(getDateKey(t.createdAt));
+    for (const t of allTodos) set.add(getDateKey(t.createdAt));
     return Array.from(set).sort().reverse();
-  }, [todos]);
+  }, [allTodos]);
 
   return (
     <div className="flex h-full flex-col">
@@ -255,7 +323,7 @@ export function TodoPanel() {
 
       {/* Scrollable todo list */}
       <div className="hide-scrollbar mt-4 min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-6">
+        <div className="mx-auto max-w-3xl space-y-4">
           {filteredTodos.length === 0 ? (
             <div className="flex flex-col items-center py-16 text-center">
               <span className="text-3xl">☑</span>
@@ -265,19 +333,19 @@ export function TodoPanel() {
             groups.map((group) => (
               <div key={group.dateKey}>
                 {/* Date divider */}
-                <div className="mb-3 flex items-center gap-3">
+                <div className="mb-2 flex items-center gap-3">
                   <span className="text-xs font-semibold text-[var(--muted)]">{group.label}</span>
                   <span className="text-[10px] text-[var(--muted)]">{group.dateKey}</span>
                   <div className="h-px flex-1 bg-[var(--line)]" />
                 </div>
 
-                <div className="space-y-2.5">
+                <div className="space-y-4">
                   {group.items.map((todo) => (
                     <TodoCard
                       key={todo.id}
                       todo={todo}
                       onToggleStatus={() => toggleStatus(todo)}
-                      onCyclePriority={() => cyclePriority(todo)}
+                      onChangePriority={(p) => updatePriority(todo, p)}
                       onSoftDelete={() => handleSoftDelete(todo.id)}
                       onHardDelete={() => handleHardDelete(todo.id)}
                       onRestore={() => handleRestore(todo.id)}
@@ -334,15 +402,16 @@ function TodoCard({
   return (
     <div
       className={[
-        "rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3 transition",
+        "group/card rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3 transition",
         isDeleted ? "opacity-50" : "hover:border-[var(--line-strong)] hover:shadow-sm cursor-pointer",
         todo.status === "done" && !isDeleted ? "opacity-60" : "",
       ].join(" ")}
       onClick={() => !isDeleted && onOpenDetail()}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_180px] items-stretch gap-3">
-        {/* 左侧：内容卡片 */}
-        <div className="flex items-start gap-3 pr-2 border-r border-dashed border-[var(--line)]">
+      {/* 左侧固定宽度使虚线对齐；右侧操作区 */}
+      <div className="grid grid-cols-[minmax(0,1fr)_160px] items-stretch gap-0">
+        {/* 左侧小卡片：勾选 + 内容（最多 3 行）+ 时间，宽度自适应但虚线由右侧列起点固定 */}
+        <div className="flex min-w-0 items-start gap-3 border-r border-dashed border-[var(--line)] pr-4">
           {!isDeleted && (
             <button
               type="button"
@@ -362,15 +431,15 @@ function TodoCard({
             </button>
           )}
 
-          <div className="min-w-0 flex-1" onClick={() => !isDeleted && onOpenDetail()}>
-            <p className={[
-              "truncate text-[15px] leading-relaxed font-medium",
-              todo.status === "done" ? "text-[var(--muted)] line-through" : "text-[var(--foreground)]",
-            ].join(" ")}>
+          <div className="min-w-0 flex-1">
+            <p
+              className={[
+                "text-sm font-medium leading-snug line-clamp-3 break-words",
+                todo.status === "done" ? "text-[var(--muted)] line-through" : "text-[var(--foreground)]",
+              ].join(" ")}
+            >
               {todo.content}
             </p>
-
-            {/* Second row: time hint + created time */}
             <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
               {timeHint && (
                 <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-600">
@@ -382,100 +451,107 @@ function TodoCard({
           </div>
         </div>
 
-        {/* 右侧：操作卡片 */}
-        <div className="flex flex-col items-end gap-2">
+        {/* 右侧小卡片：默认显示优先级（靠左）+ 已同步绿点；悬浮依次显示：同步滴答、来源、删除 */}
+        <div className="flex min-w-[160px] flex-wrap items-center justify-start gap-2 content-center pl-4" onClick={(e) => e.stopPropagation()}>
           {!isDeleted && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setPriorityOpen((v) => !v); }}
-                title={`优先级: ${pc.label}`}
-                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${pc.bg}`}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
-                {pc.label}
-              </button>
-              {priorityOpen && (
-                <div
-                  className="absolute right-0 z-20 mt-1 w-28 rounded-lg border border-[var(--line)] bg-[var(--card)] p-1 shadow-lg"
-                  onClick={(e) => e.stopPropagation()}
+            <>
+              {/* 优先级：始终显示，靠左 */}
+              <div className="relative flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setPriorityOpen((v) => !v); }}
+                  title={`优先级: ${pc.label}`}
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${pc.bg}`}
                 >
-                  {priorities.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => { onChangePriority(p); setPriorityOpen(false); }}
-                      className={[
-                        "flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition",
-                        todo.priority === p
-                          ? priorityConfig[p].bg
-                          : "text-[var(--muted-strong)] hover:bg-[var(--surface)]",
-                      ].join(" ")}
-                    >
-                      <span>{priorityConfig[p].label}</span>
-                      {todo.priority === p && (
-                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                  <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
+                  {pc.label}
+                </button>
+                {/* 已同步滴答：绿色小圆点 */}
+                {todo.syncedAt && !needsResync && (
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="已同步至滴答清单" />
+                )}
+                {priorityOpen && (
+                  <div
+                    className="absolute left-0 top-full z-20 mt-1 w-28 rounded-lg border border-[var(--line)] bg-[var(--card)] p-1 shadow-lg"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {priorities.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => { onChangePriority(p); setPriorityOpen(false); }}
+                        className={[
+                          "flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition",
+                          todo.priority === p
+                            ? priorityConfig[p].bg
+                            : "text-[var(--muted-strong)] hover:bg-[var(--surface)]",
+                        ].join(" ")}
+                      >
+                        <span>{priorityConfig[p].label}</span>
+                        {todo.priority === p && (
+                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 悬浮时依次显示：同步滴答、来源、删除 */}
+              <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-150 group-hover/card:opacity-100">
+                {todo.syncedAt && !needsResync ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/5 px-2 py-1 text-[11px] font-medium text-emerald-500">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    已同步
+                  </span>
+                ) : needsResync ? (
+                  <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="重同步" />
+                ) : (
+                  <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="同步滴答" />
+                )}
+                {todo.recordId && (
+                  <a
+                    href={`/records/${todo.recordId}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center rounded-md border border-purple-400/40 px-2 py-1 text-[11px] font-medium text-purple-500 transition hover:border-purple-400 hover:bg-purple-500/5"
+                    title="查看来源"
+                  >
+                    来源
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onSoftDelete(); }}
+                  className="rounded-md p-1 text-[var(--muted)] transition hover:bg-rose-500/10 hover:text-rose-500"
+                  title="删除"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z" />
+                    <path d="M10 11v6M14 11v6" />
+                  </svg>
+                </button>
+              </div>
+            </>
           )}
 
-          {isDeleted ? (
-            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {isDeleted && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onRestore}
-                className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface)]"
+                className="rounded-md border border-[var(--line)] px-2 py-1 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface)]"
               >
                 恢复
               </button>
               <button
                 type="button"
                 onClick={onHardDelete}
-                className="rounded-md px-2 py-0.5 text-xs text-rose-500 transition hover:bg-rose-500/10"
+                className="rounded-md px-2 py-1 text-xs text-rose-500 transition hover:bg-rose-500/10"
               >
                 彻底删除
               </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              {todo.recordId && (
-                <a
-                  href={`/records/${todo.recordId}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 rounded-md border border-purple-400/40 px-2.5 py-1 text-[11px] font-medium text-purple-500 transition hover:border-purple-400 hover:bg-purple-500/5"
-                >
-                  来源
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onSoftDelete(); }}
-                className="shrink-0 text-xs text-[var(--muted)] transition hover:text-rose-500"
-                title="删除"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {!isDeleted && (
-            <div className="mt-1 flex items-center gap-2">
-              {todo.syncedAt && !needsResync ? (
-                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/5 px-2.5 py-1 text-[11px] font-medium text-emerald-500">
-                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  已同步滴答
-                </span>
-              ) : needsResync ? (
-                <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="重新同步" />
-              ) : (
-                <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="同步滴答" />
-              )}
             </div>
           )}
         </div>
@@ -649,20 +725,20 @@ function SyncTickTickBtn({ todoId, onSynced, label }: { todoId: string; onSynced
   };
 
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex items-center gap-1">
       <button
         type="button"
         onClick={handleSync}
         disabled={syncing}
-        className="inline-flex items-center gap-1 rounded-md border border-purple-400/40 px-2.5 py-1 text-[11px] font-medium text-purple-500 transition hover:border-purple-400 hover:bg-purple-500/5 disabled:opacity-50"
+        className="inline-flex items-center gap-0.5 rounded border border-purple-400/40 px-1.5 py-0.5 text-[10px] font-medium text-purple-500 transition hover:border-purple-400 hover:bg-purple-500/5 disabled:opacity-50"
       >
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 8a6 6 0 0 1 10.3-4.1M14 8a6 6 0 0 1-10.3 4.1" />
           <path d="M14 2v4h-4M2 14v-4h4" />
         </svg>
-        {syncing ? "同步中..." : label}
+        {syncing ? "..." : label}
       </button>
-      {errMsg && <span className="text-[10px] text-rose-500">{errMsg}</span>}
+      {errMsg && <span className="text-[9px] text-rose-500">{errMsg}</span>}
     </span>
   );
 }

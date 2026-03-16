@@ -104,7 +104,7 @@ export function StatsBar({ onNavigateToTodos }: { onNavigateToTodos?: () => void
   }, []);
 
   return (
-    <div className="mb-2 shrink-0 grid grid-cols-3 gap-2 sm:grid-cols-6">
+    <div className="mb-2 grid w-full flex-1 grid-cols-3 gap-2 sm:grid-cols-6">
       {statItems.map((item) => {
         const Icon = item.icon;
         const isClickable = item.clickable && onNavigateToTodos;
