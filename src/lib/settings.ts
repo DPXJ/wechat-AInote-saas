@@ -4,6 +4,8 @@ import type { IntegrationSettings } from "@/lib/types";
 import { nowIso } from "@/lib/utils";
 
 const settingKeys = [
+  "aiProvider",
+  "aiApiKey",
   "storageMode",
   "notionToken",
   "notionParentPageId",
@@ -35,6 +37,8 @@ const settingKeys = [
 type SettingKey = (typeof settingKeys)[number];
 
 const envDefaults: IntegrationSettings = {
+  aiProvider: "",
+  aiApiKey: "",
   storageMode: appConfig.storageMode === "oss" ? "oss" : "local",
   notionToken: "",
   notionParentPageId: "",
@@ -78,6 +82,8 @@ export async function getIntegrationSettings(userId: string): Promise<Integratio
   const stored = new Map((rows || []).map((row: { key: string; value: string }) => [row.key as SettingKey, row.value]));
 
   return {
+    aiProvider: (stored.get("aiProvider") as IntegrationSettings["aiProvider"]) ?? envDefaults.aiProvider,
+    aiApiKey: stored.get("aiApiKey") ?? envDefaults.aiApiKey,
     storageMode: stored.get("storageMode") === "oss" ? "oss" : envDefaults.storageMode,
     notionToken: stored.get("notionToken") ?? envDefaults.notionToken,
     notionParentPageId: stored.get("notionParentPageId") ?? envDefaults.notionParentPageId,
@@ -112,6 +118,8 @@ export async function saveIntegrationSettings(userId: string, input: Integration
   const updatedAt = nowIso();
 
   const entries: Array<{ key: string; value: string }> = [
+    { key: "aiProvider", value: (input.aiProvider || "").trim() },
+    { key: "aiApiKey", value: input.aiApiKey || "" },
     { key: "storageMode", value: input.storageMode },
     { key: "notionToken", value: input.notionToken.trim() },
     { key: "notionParentPageId", value: input.notionParentPageId.trim() },

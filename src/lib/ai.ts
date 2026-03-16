@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import { appConfig } from "@/lib/config";
+import { getIntegrationSettings } from "@/lib/settings";
 import type { AnalysisInput, AnalysisOutput, SearchCitation } from "@/lib/types";
+import type { AiProvider } from "@/lib/types";
 import { tokenize, trimText, unique } from "@/lib/utils";
 
 const analysisSchema = z.object({
@@ -14,17 +15,59 @@ const analysisSchema = z.object({
     .max(3),
 });
 
-const openaiClient =
-  appConfig.openAiApiKey && appConfig.openAiTextModel
-    ? new OpenAI({ apiKey: appConfig.openAiApiKey })
-    : null;
+const PROVIDER_DEFAULTS: Record<
+  Exclude<AiProvider, "">,
+  { baseURL: string; textModel: string; embeddingModel: string; embeddingSupported: boolean }
+> = {
+  openai: {
+    baseURL: "https://api.openai.com/v1",
+    textModel: "gpt-4o-mini",
+    embeddingModel: "text-embedding-3-small",
+    embeddingSupported: true,
+  },
+  glm: {
+    baseURL: "https://open.bigmodel.cn/api/paas/v4",
+    textModel: "glm-4-flash",
+    embeddingModel: "embedding-2",
+    embeddingSupported: true,
+  },
+  deepseek: {
+    baseURL: "https://api.deepseek.com",
+    textModel: "deepseek-chat",
+    embeddingModel: "deepseek-embedding",
+    embeddingSupported: false,
+  },
+};
 
-export function isAiConfigured() {
-  return Boolean(
-    openaiClient &&
-      appConfig.openAiTextModel &&
-      appConfig.openAiEmbeddingModel,
-  );
+export function isAiConfiguredFromSettings(settings: { aiProvider?: string; aiApiKey?: string }): boolean {
+  const p = (settings.aiProvider || "").trim();
+  const k = (settings.aiApiKey || "").trim();
+  return (p === "openai" || p === "glm" || p === "deepseek") && k.length > 0;
+}
+
+async function getAiConfig(userId: string) {
+  const settings = await getIntegrationSettings(userId);
+  const provider = (settings.aiProvider || "").trim() as AiProvider;
+  const apiKey = (settings.aiApiKey || "").trim();
+  if (!apiKey || (provider !== "openai" && provider !== "glm" && provider !== "deepseek")) {
+    return null;
+  }
+  const defaults = PROVIDER_DEFAULTS[provider];
+  return {
+    provider,
+    apiKey,
+    baseURL: defaults.baseURL,
+    textModel: defaults.textModel,
+    embeddingModel: defaults.embeddingModel,
+    embeddingSupported: defaults.embeddingSupported,
+  };
+}
+
+function buildOpenAIClient(config: { apiKey: string; baseURL: string }) {
+  return new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: config.baseURL,
+  });
 }
 
 function buildFallbackAnalysis(input: AnalysisInput): AnalysisOutput {
@@ -50,10 +93,13 @@ function buildFallbackAnalysis(input: AnalysisInput): AnalysisOutput {
   };
 }
 
-export async function analyzeRecord(input: AnalysisInput): Promise<AnalysisOutput> {
-  if (!openaiClient || !appConfig.openAiTextModel) {
+export async function analyzeRecord(userId: string, input: AnalysisInput): Promise<AnalysisOutput> {
+  const config = await getAiConfig(userId);
+  if (!config) {
     return buildFallbackAnalysis(input);
   }
+
+  const client = buildOpenAIClient({ apiKey: config.apiKey, baseURL: config.baseURL });
 
   const content = [
     `标题: ${input.title}`,
@@ -68,67 +114,78 @@ export async function analyzeRecord(input: AnalysisInput): Promise<AnalysisOutpu
     .filter(Boolean)
     .join("\n");
 
-  const response = await openaiClient.chat.completions.create({
-    model: appConfig.openAiTextModel,
-    temperature: 0.2,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；summary 为 30-50 字的精炼摘要，概括核心要点，适合搜索回显；keywords 固定 5 个关键词（仅供搜索索引）；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。",
-      },
-      {
-        role: "user",
-        content,
-      },
-    ],
-  });
-
-  const raw = response.choices[0]?.message?.content || "{}";
-  let parsedJson: unknown = {};
-
   try {
-    parsedJson = JSON.parse(raw);
+    const response = await client.chat.completions.create({
+      model: config.textModel,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；summary 为 30-50 字的精炼摘要，概括核心要点，适合搜索回显；keywords 固定 5 个关键词（仅供搜索索引）；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。",
+        },
+        {
+          role: "user",
+          content,
+        },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content || "{}";
+    let parsedJson: unknown = {};
+    try {
+      parsedJson = JSON.parse(raw);
+    } catch {
+      return buildFallbackAnalysis(input);
+    }
+
+    const parsed = analysisSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      return buildFallbackAnalysis(input);
+    }
+    return parsed.data;
   } catch {
     return buildFallbackAnalysis(input);
   }
-
-  const parsed = analysisSchema.safeParse(parsedJson);
-
-  if (!parsed.success) {
-    return buildFallbackAnalysis(input);
-  }
-
-  return parsed.data;
 }
 
-export async function createEmbeddings(texts: string[]) {
-  if (!openaiClient || !appConfig.openAiEmbeddingModel || texts.length === 0) {
+export async function createEmbeddings(userId: string, texts: string[]) {
+  const config = await getAiConfig(userId);
+  if (!config || !config.embeddingSupported || texts.length === 0) {
     return null;
   }
 
-  const response = await openaiClient.embeddings.create({
-    model: appConfig.openAiEmbeddingModel,
-    input: texts,
-  });
-
-  return response.data.map((row) => row.embedding);
+  try {
+    const client = buildOpenAIClient({ apiKey: config.apiKey, baseURL: config.baseURL });
+    const response = await client.embeddings.create({
+      model: config.embeddingModel,
+      input: texts,
+    });
+    return response.data.map((row) => row.embedding);
+  } catch {
+    return null;
+  }
 }
 
-export async function answerWithContext(input: {
-  question: string;
-  citations: SearchCitation[];
-  history?: Array<{ role: string; content: string }>;
-}) {
-  if (!openaiClient || !appConfig.openAiTextModel) {
+export async function answerWithContext(
+  userId: string,
+  input: {
+    question: string;
+    citations: SearchCitation[];
+    history?: Array<{ role: string; content: string }>;
+  },
+) {
+  const config = await getAiConfig(userId);
+  if (!config) {
     const topCitation = input.citations[0];
     if (!topCitation) {
       return "暂时没有命中资料。你可以换个关键词，或者先把相关资料录入收件箱。";
     }
-
     return `最相关的信息来自《${topCitation.title}》。${topCitation.reason}。上下文摘要：${topCitation.snippet}`;
   }
+
+  const client = buildOpenAIClient({ apiKey: config.apiKey, baseURL: config.baseURL });
 
   const sourceBlock = input.citations
     .map(
@@ -156,14 +213,18 @@ export async function answerWithContext(input: {
     },
   ];
 
-  const response = await openaiClient.chat.completions.create({
-    model: appConfig.openAiTextModel,
-    temperature: 0.1,
-    messages,
-  });
+  try {
+    const response = await client.chat.completions.create({
+      model: config.textModel,
+      temperature: 0.1,
+      messages,
+    });
 
-  return (
-    response.choices[0]?.message?.content?.trim() ||
-    "我找到了相关资料，但没有生成稳定回答。"
-  );
+    return (
+      response.choices[0]?.message?.content?.trim() ||
+      "我找到了相关资料，但没有生成稳定回答。"
+    );
+  } catch {
+    return "AI 回答生成失败，请稍后重试。";
+  }
 }

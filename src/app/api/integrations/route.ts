@@ -5,20 +5,26 @@ import {
   getIntegrationStatus,
   sendTickTickTestEmail,
   testNotionConnection,
-  testOssConnection,
   testSmtpConnection,
 } from "@/lib/sync";
+import { isAiConfiguredFromSettings } from "@/lib/ai";
+import { getIntegrationSettings } from "@/lib/settings";
 
 export const runtime = "nodejs";
 
 const bodySchema = z.object({
-  target: z.enum(["notion", "smtp", "ticktick-email", "oss"]),
+  target: z.enum(["notion", "smtp", "ticktick-email"]),
 });
 
 export async function GET() {
   try {
     const userId = await requireUserId();
-    return NextResponse.json({ status: await getIntegrationStatus(userId) });
+    const status = await getIntegrationStatus(userId);
+    const settings = await getIntegrationSettings(userId);
+    return NextResponse.json({
+      status,
+      aiConfigured: isAiConfiguredFromSettings(settings),
+    });
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -41,13 +47,14 @@ export async function POST(request: Request) {
         ? await testNotionConnection(userId)
         : body.data.target === "smtp"
           ? await testSmtpConnection(userId)
-          : body.data.target === "oss"
-            ? await testOssConnection(userId)
-            : await sendTickTickTestEmail(userId);
+          : await sendTickTickTestEmail(userId);
 
+    const status = await getIntegrationStatus(userId);
+    const settings = await getIntegrationSettings(userId);
     return NextResponse.json({
       ...result,
-      status: await getIntegrationStatus(userId),
+      status,
+      aiConfigured: isAiConfiguredFromSettings(settings),
     });
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {

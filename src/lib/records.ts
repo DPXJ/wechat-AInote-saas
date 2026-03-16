@@ -107,7 +107,7 @@ export async function createKnowledgeRecord(
 
     const stored = existingAsset
       ? { fileId: existingAsset.id, storageKey: existingAsset.storage_key, absolutePath: "" }
-      : await storeUpload(upload.buffer, upload.originalName, upload.mimeType);
+      : await storeUpload(upload.buffer, upload.originalName, upload.mimeType, userId);
 
     const extractedText = await extractTextFromUpload(upload);
     if (extractedText.trim()) {
@@ -156,18 +156,13 @@ export async function createKnowledgeRecord(
 
   const contentText = input.contentText?.trim() || "";
   const extractedText = extractedParts.join("\n\n");
-  let title =
-    input.title?.trim() ||
-    (storedAssets[0]?.original_name as string) ||
-    contentText.slice(0, 42) ||
-    "未命名资料";
   const sourceLabel = input.sourceLabel?.trim() || "手动收件箱";
   const contextNote = input.contextNote?.trim() || "";
   const recordType =
     input.recordTypeHint || inferRecordType(uploads.map((item) => item.mimeType));
 
-  const analysis: AnalysisOutput = await analyzeRecord({
-    title,
+  const analysis: AnalysisOutput = await analyzeRecord(userId, {
+    title: input.title?.trim() || contentText.slice(0, 42) || (storedAssets[0]?.original_name as string) || "未命名资料",
     sourceLabel,
     recordType,
     contentText,
@@ -176,10 +171,15 @@ export async function createKnowledgeRecord(
     assetNames,
   });
 
-  const titleMatchesFilename = storedAssets.some((a) => a.original_name as string === title);
-  if (analysis.title && (titleMatchesFilename || !input.title?.trim())) {
-    title = analysis.title;
-  }
+  // 标题优先级：用户输入 > AI 生成 > 文本内容 > 图片文件名
+  const textContent = (contentText || extractedText).trim().slice(0, 42);
+  const firstAssetName = storedAssets[0]?.original_name as string | undefined;
+  const title =
+    input.title?.trim() ||
+    (analysis.title && analysis.title.trim()) ||
+    textContent ||
+    firstAssetName ||
+    "未命名资料";
 
   const userTags = input.userTags ?? [];
 
@@ -208,7 +208,7 @@ export async function createKnowledgeRecord(
   }
 
   const chunks = chunkText(combinedText || analysis.summary);
-  const chunkEmbeddings = await createEmbeddings(chunks);
+  const chunkEmbeddings = await createEmbeddings(userId, chunks);
   const chunkRows = chunks.map((chunk, index) => {
     const chunkId = createId("chk");
     return {
@@ -435,10 +435,11 @@ export async function readAssetBuffer(
   const asset = await getAssetById(userId, assetId);
   if (!asset) return null;
 
-  const content = await readStoredUpload(asset.storage_key, {
-    download: options?.download,
-    fileName: asset.original_name,
-  });
+  const content = await readStoredUpload(
+    asset.storage_key,
+    { download: options?.download, fileName: asset.original_name },
+    userId,
+  );
   return { asset: mapAsset(asset), content };
 }
 
@@ -455,7 +456,7 @@ export async function hardDeleteRecord(userId: string, recordId: string) {
     .eq("user_id", userId);
 
   for (const asset of assets || []) {
-    await deleteStoredUpload(asset.storage_key);
+    await deleteStoredUpload(asset.storage_key, userId);
   }
 
   await supabase.from("chunks").delete().eq("record_id", recordId).eq("user_id", userId);
@@ -468,13 +469,14 @@ export async function hardDeleteRecord(userId: string, recordId: string) {
 export async function updateKnowledgeRecord(
   userId: string,
   recordId: string,
-  fields: { title?: string; contextNote?: string; sourceLabel?: string },
+  fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string },
 ) {
   const updates: Record<string, string> = { updated_at: nowIso() };
 
   if (fields.title !== undefined) updates.title = fields.title;
   if (fields.contextNote !== undefined) updates.context_note = fields.contextNote;
   if (fields.sourceLabel !== undefined) updates.source_label = fields.sourceLabel;
+  if (fields.contentText !== undefined) updates.content_text = fields.contentText;
 
   await getSupabaseAdmin()
     .from("records")
@@ -490,7 +492,7 @@ export async function readAssetThumbnail(userId: string, assetId: string) {
   if (!asset) return null;
   if (!asset.mime_type.startsWith("image/")) return null;
 
-  const content = await readStoredUpload(asset.storage_key, { thumbnail: true });
+  const content = await readStoredUpload(asset.storage_key, { thumbnail: true }, userId);
   return { asset: mapAsset(asset), content };
 }
 

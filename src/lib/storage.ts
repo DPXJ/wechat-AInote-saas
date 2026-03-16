@@ -2,25 +2,80 @@ import OSS from "ali-oss";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { appConfig, paths } from "@/lib/config";
+import { getIntegrationSettings } from "@/lib/settings";
+import type { IntegrationSettings } from "@/lib/types";
 import { createId, sanitizeFileName } from "@/lib/utils";
 
-function hasOssSettings() {
-  return Boolean(
-    appConfig.storageMode === "oss" &&
-      appConfig.ossRegion &&
-      appConfig.ossBucket &&
-      appConfig.ossAccessKeyId &&
-      appConfig.ossAccessKeySecret,
-  );
+type OssConfig = {
+  region: string;
+  bucket: string;
+  endpoint?: string;
+  accessKeyId: string;
+  accessKeySecret: string;
+  pathPrefix?: string;
+  publicBaseUrl?: string;
+};
+
+function hasOssConfig(c: OssConfig) {
+  return Boolean(c.region && c.bucket && c.accessKeyId && c.accessKeySecret);
 }
 
-function createOssClient() {
-  return new OSS({
-    region: appConfig.ossRegion,
+function toOssConfig(s: IntegrationSettings): OssConfig {
+  return {
+    region: s.ossRegion || "",
+    bucket: s.ossBucket || "",
+    endpoint: s.ossEndpoint || undefined,
+    accessKeyId: s.ossAccessKeyId || "",
+    accessKeySecret: s.ossAccessKeySecret || "",
+    pathPrefix: s.ossPathPrefix || "",
+    publicBaseUrl: s.ossPublicBaseUrl || "",
+  };
+}
+
+function appConfigToOss(): OssConfig {
+  return {
+    region: appConfig.ossRegion || "",
+    bucket: appConfig.ossBucket || "",
     endpoint: appConfig.ossEndpoint || undefined,
-    bucket: appConfig.ossBucket,
-    accessKeyId: appConfig.ossAccessKeyId,
-    accessKeySecret: appConfig.ossAccessKeySecret,
+    accessKeyId: appConfig.ossAccessKeyId || "",
+    accessKeySecret: appConfig.ossAccessKeySecret || "",
+    pathPrefix: appConfig.ossPathPrefix || "",
+    publicBaseUrl: appConfig.ossPublicBaseUrl || "",
+  };
+}
+
+async function getStorageConfig(userId?: string): Promise<{
+  useOss: boolean;
+  oss: OssConfig;
+}> {
+  const fromEnv = appConfigToOss();
+  const envHasOss =
+    appConfig.storageMode === "oss" && hasOssConfig(fromEnv);
+
+  if (envHasOss) {
+    return { useOss: true, oss: fromEnv };
+  }
+
+  if (userId) {
+    const settings = await getIntegrationSettings(userId);
+    const fromSettings = toOssConfig(settings);
+    const settingsHasOss =
+      settings.storageMode === "oss" && hasOssConfig(fromSettings);
+    if (settingsHasOss) {
+      return { useOss: true, oss: fromSettings };
+    }
+  }
+
+  return { useOss: false, oss: fromEnv };
+}
+
+function createOssClient(oss: OssConfig) {
+  return new OSS({
+    region: oss.region,
+    endpoint: oss.endpoint || undefined,
+    bucket: oss.bucket,
+    accessKeyId: oss.accessKeyId,
+    accessKeySecret: oss.accessKeySecret,
     secure: true,
   });
 }
@@ -41,10 +96,15 @@ function mimeToFolder(mimeType?: string): string {
   return "others";
 }
 
-function buildObjectKey(fileId: string, originalName: string, mimeType?: string) {
+function buildObjectKey(
+  fileId: string,
+  originalName: string,
+  mimeType?: string,
+  pathPrefix?: string,
+) {
   const safeName = sanitizeFileName(originalName || "upload.bin") || "upload.bin";
   const datePrefix = new Date().toISOString().slice(0, 10);
-  const prefix = (appConfig.ossPathPrefix || "").trim().replace(/^\/+|\/+$/g, "");
+  const prefix = (pathPrefix || appConfig.ossPathPrefix || "").trim().replace(/^\/+|\/+$/g, "");
   const typeFolder = mimeToFolder(mimeType);
 
   return [prefix, typeFolder, datePrefix, `${fileId}-${safeName}`].filter(Boolean).join("/");
@@ -58,28 +118,34 @@ export async function storeUpload(
   buffer: Buffer,
   originalName: string,
   mimeType?: string,
+  userId?: string,
 ) {
   const fileId = createId("asset");
-  const objectKey = buildObjectKey(fileId, originalName, mimeType);
+  const { useOss, oss } = await getStorageConfig(userId);
+  const objectKey = buildObjectKey(fileId, originalName, mimeType, oss.pathPrefix);
 
-  if (hasOssSettings()) {
-    const client = createOssClient();
+  if (useOss) {
+    const client = createOssClient(oss);
     await client.put(objectKey, buffer, { mime: mimeType });
     return { fileId, storageKey: `oss:${objectKey}`, absolutePath: "" };
   }
 
-  const absolutePath = path.join(paths.uploadsDir, objectKey);
+  const objectKeyLocal = buildObjectKey(fileId, originalName, mimeType);
+  const absolutePath = path.join(paths.uploadsDir, objectKeyLocal);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, buffer);
-  return { fileId, storageKey: `local:${objectKey}`, absolutePath };
+  return { fileId, storageKey: `local:${objectKeyLocal}`, absolutePath };
 }
 
-export async function deleteStoredUpload(storageKey: string) {
+export async function deleteStoredUpload(storageKey: string, userId?: string) {
   if (storageKey.startsWith("oss:")) {
     const objectKey = storageKey.replace(/^oss:/, "");
     try {
-      const client = createOssClient();
-      await client.delete(objectKey);
+      const { oss } = await getStorageConfig(userId);
+      if (hasOssConfig(oss)) {
+        const client = createOssClient(oss);
+        await client.delete(objectKey);
+      }
     } catch {
       // best-effort
     }
@@ -97,13 +163,18 @@ export async function deleteStoredUpload(storageKey: string) {
 export async function readStoredUpload(
   storageKey: string,
   options?: { download?: boolean; fileName?: string; thumbnail?: boolean },
+  userId?: string,
 ) {
   if (storageKey.startsWith("oss:")) {
     const objectKey = storageKey.replace(/^oss:/, "");
-    const client = createOssClient();
+    const { oss } = await getStorageConfig(userId);
+    if (!hasOssConfig(oss)) {
+      throw new Error("OSS 未配置，无法读取已存储的 OSS 文件");
+    }
+    const client = createOssClient(oss);
 
-    if (appConfig.ossPublicBaseUrl) {
-      let url = joinUrl(appConfig.ossPublicBaseUrl, objectKey);
+    if (oss.publicBaseUrl) {
+      let url = joinUrl(oss.publicBaseUrl, objectKey);
       if (options?.thumbnail) {
         url += "?x-oss-process=image/resize,m_fill,w_480,h_320";
       }

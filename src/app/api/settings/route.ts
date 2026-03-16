@@ -6,6 +6,8 @@ import { getIntegrationSettings, saveIntegrationSettings } from "@/lib/settings"
 export const runtime = "nodejs";
 
 const settingsSchema = z.object({
+  aiProvider: z.enum(["openai", "glm", "deepseek", ""]).optional().default(""),
+  aiApiKey: z.string().optional().default(""),
   storageMode: z.enum(["local", "oss"]),
   notionToken: z.string(),
   notionParentPageId: z.string(),

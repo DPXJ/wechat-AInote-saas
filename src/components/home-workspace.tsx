@@ -272,16 +272,29 @@ export function HomeWorkspace({
   }, [deleteConfirmId]);
 
   const handleUpdate = useCallback(
-    async (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => {
-      const res = await fetch(`/api/records/${id}`, {
+    (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => {
+      let prev: KnowledgeRecord | undefined;
+      setRecords((p) => {
+        prev = p.find((r) => r.id === id);
+        const merged = prev ? { ...prev, ...fields } : null;
+        return merged ? p.map((r) => (r.id === id ? merged : r)) : p;
+      });
+      return fetch(`/api/records/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
-      });
-      const data = await res.json();
-      if (data.record) {
-        setRecords((prev) => prev.map((r) => (r.id === id ? data.record : r)));
-      }
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.record) {
+            setRecords((p) => p.map((r) => (r.id === id ? data.record : r)));
+          }
+          return data.record;
+        })
+        .catch(() => {
+          if (prev) setRecords((p) => p.map((r) => (r.id === id ? prev! : r)));
+          throw new Error("保存失败");
+        });
     },
     [],
   );
@@ -667,7 +680,7 @@ function HistoryTab({
   onSelectRecord: (id: string) => void;
   onLoadMore: () => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void;
   onOpenDetail: (id: string) => void;
   onRefresh: () => Promise<void>;
 }) {
@@ -964,7 +977,7 @@ function FavoritesTab({
   initialRecords,
 }: {
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void;
   onOpenDetail: (id: string) => void;
   initialRecords?: KnowledgeRecord[] | null;
 }) {
@@ -1092,7 +1105,7 @@ function RecordPane({
 }: {
   record: KnowledgeRecord;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void;
   onOpenDetail: (id: string) => void;
   favorited?: boolean;
   onToggleFavorite?: () => void;
@@ -1101,6 +1114,7 @@ function RecordPane({
   const [editTitle, setEditTitle] = useState(record.title);
   const [editSource, setEditSource] = useState(record.sourceLabel);
   const [editNote, setEditNote] = useState(record.contextNote);
+  const [editContentText, setEditContentText] = useState(record.contentText || record.extractedText || "");
   const [saving, setSaving] = useState(false);
   const [isFav, setIsFav] = useState(initialFavorited ?? false);
   const [syncing, setSyncing] = useState("");
@@ -1112,7 +1126,8 @@ function RecordPane({
     setEditTitle(record.title);
     setEditSource(record.sourceLabel);
     setEditNote(record.contextNote);
-  }, [record.id, record.title, record.sourceLabel, record.contextNote]);
+    setEditContentText(record.contentText || record.extractedText || "");
+  }, [record.id, record.title, record.sourceLabel, record.contextNote, record.contentText, record.extractedText]);
 
   useEffect(() => {
     if (initialFavorited !== undefined) {
@@ -1128,14 +1143,16 @@ function RecordPane({
     return () => { cancelled = true; };
   }, [record.id, initialFavorited]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setSaving(true);
     const fields: Record<string, string> = {};
     if (editTitle !== record.title) fields.title = editTitle;
     if (editSource !== record.sourceLabel) fields.sourceLabel = editSource;
     if (editNote !== record.contextNote) fields.contextNote = editNote;
+    const origText = record.contentText || record.extractedText || "";
+    if (editContentText !== origText) fields.contentText = editContentText;
     if (Object.keys(fields).length > 0) {
-      await onUpdate(record.id, fields);
+      onUpdate(record.id, fields);
     }
     setSaving(false);
     setEditing(false);
@@ -1231,26 +1248,44 @@ function RecordPane({
           </h2>
         )}
 
-        {/* AI 摘要 */}
+        {/* AI 摘要 / 摘要 */}
         {record.summary && (
           <div className="mt-3 rounded-lg bg-[var(--surface)] px-3.5 py-2.5">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">AI 摘要</p>
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+              {record.summary === (record.contentText || record.extractedText || "").trim()
+                ? "摘要（原文，未启用 AI）"
+                : "AI 摘要"}
+            </p>
             <p className="text-[13px] leading-6 text-[var(--muted-strong)]">{record.summary}</p>
+            {record.summary === (record.contentText || record.extractedText || "").trim() && (
+              <p className="mt-2 text-[11px] text-[var(--muted)]">
+                在 设置 → AI 摘要 中配置 OpenAI 可启用智能标题与摘要生成。
+              </p>
+            )}
           </div>
         )}
 
         <div className="my-5 border-t border-dashed border-[var(--line)]" />
 
-        {/* Content text with Markdown */}
-        {record.contentText ? (
-          <div className="prose-custom text-[15px] leading-8 text-[var(--foreground)]">
-            <ReactMarkdown>{record.contentText}</ReactMarkdown>
+        {/* 文本内容 */}
+        {(record.contentText || record.extractedText || editing) && (
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">文本内容</p>
+            {editing ? (
+              <textarea
+                value={editContentText}
+                onChange={(e) => setEditContentText(e.target.value)}
+                rows={6}
+                className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[15px] leading-7 text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                placeholder="输入或编辑文本内容…"
+              />
+            ) : (
+              <div className="prose-custom text-[15px] leading-8 text-[var(--foreground)]">
+                <ReactMarkdown>{record.contentText || record.extractedText}</ReactMarkdown>
+              </div>
+            )}
           </div>
-        ) : record.extractedText ? (
-          <div className="prose-custom text-[15px] leading-8 text-[var(--foreground)]">
-            <ReactMarkdown>{record.extractedText}</ReactMarkdown>
-          </div>
-        ) : null}
+        )}
 
         {/* Show OCR/description for image records */}
         {record.assets.some((a) => a.ocrText || a.description) && (

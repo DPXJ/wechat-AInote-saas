@@ -46,6 +46,7 @@ export async function PATCH(
       title?: string;
       contextNote?: string;
       sourceLabel?: string;
+      contentText?: string;
     };
 
     const record = await updateKnowledgeRecord(userId, id, body);

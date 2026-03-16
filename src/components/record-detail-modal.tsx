@@ -31,7 +31,7 @@ export function RecordDetailModal({
   recordId: string;
   onClose: () => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string }) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void;
 }) {
   const [record, setRecord] = useState<KnowledgeRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +39,7 @@ export function RecordDetailModal({
   const [editTitle, setEditTitle] = useState("");
   const [editSource, setEditSource] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [editContentText, setEditContentText] = useState("");
   const [saving, setSaving] = useState(false);
 
   const loadRecord = useCallback(async () => {
@@ -49,6 +50,7 @@ export function RecordDetailModal({
     setEditTitle(data.record.title);
     setEditSource(data.record.sourceLabel);
     setEditNote(data.record.contextNote);
+    setEditContentText(data.record.contentText || data.record.extractedText || "");
     setLoading(false);
   }, [recordId]);
 
@@ -60,24 +62,19 @@ export function RecordDetailModal({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!record) return;
     setSaving(true);
     const fields: Record<string, string> = {};
     if (editTitle !== record.title) fields.title = editTitle;
     if (editSource !== record.sourceLabel) fields.sourceLabel = editSource;
     if (editNote !== record.contextNote) fields.contextNote = editNote;
+    const origText = record.contentText || record.extractedText || "";
+    if (editContentText !== origText) fields.contentText = editContentText;
     if (Object.keys(fields).length > 0) {
-      const res = await fetch(`/api/records/${record.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
-      });
-      const data = await res.json();
-      if (data.record) {
-        setRecord(data.record);
-        onUpdate(record.id, fields);
-      }
+      const merged = { ...record, ...fields };
+      setRecord(merged);
+      onUpdate(record.id, fields);
     }
     setSaving(false);
     setEditing(false);
@@ -203,16 +200,25 @@ export function RecordDetailModal({
                 </section>
               ) : null}
 
-              {/* Original & extracted text */}
-              {record.contentText && (
-                <details className="rounded-2xl border border-[var(--line)] bg-[var(--card)]">
-                  <summary className="px-5 py-3.5 text-sm font-medium text-[var(--muted-strong)]">原始文本</summary>
-                  <div className="border-t border-[var(--line)] px-5 py-4">
-                    <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--muted-strong)]">{record.contentText}</p>
-                  </div>
-                </details>
+              {/* 文本内容 / 原始文本 */}
+              {(record.contentText || record.extractedText || editing) && (
+                <section className="rounded-2xl border border-[var(--line)] bg-[var(--card)] px-5 py-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">文本内容</p>
+                  {editing ? (
+                    <textarea
+                      value={editContentText}
+                      onChange={(e) => setEditContentText(e.target.value)}
+                      rows={6}
+                      className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm leading-6 text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                      placeholder="输入或编辑文本内容…"
+                    />
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--muted-strong)]">{record.contentText || record.extractedText || "—"}</p>
+                  )}
+                </section>
               )}
-              {record.extractedText && (
+              {/* 抽取文本：当同时存在 contentText 和 extractedText 时单独展示 */}
+              {!editing && record.extractedText && record.contentText && record.extractedText !== record.contentText && (
                 <details className="rounded-2xl border border-[var(--line)] bg-[var(--card)]">
                   <summary className="px-5 py-3.5 text-sm font-medium text-[var(--muted-strong)]">抽取文本</summary>
                   <div className="border-t border-[var(--line)] px-5 py-4">

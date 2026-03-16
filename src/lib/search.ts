@@ -1,4 +1,5 @@
-import { answerWithContext, createEmbeddings, isAiConfigured } from "@/lib/ai";
+import { answerWithContext, createEmbeddings, isAiConfiguredFromSettings } from "@/lib/ai";
+import { getIntegrationSettings } from "@/lib/settings";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { SearchCitation, SearchResponse } from "@/lib/types";
 import { cosineSimilarity, safeJsonParse, trimText } from "@/lib/utils";
@@ -135,7 +136,8 @@ export async function searchKnowledge(
     });
   }
 
-  if (isAiConfigured()) {
+  const settings = await getIntegrationSettings(userId);
+  if (isAiConfiguredFromSettings(settings)) {
     const { data: embeddingRows } = await supabase
       .from("chunks")
       .select("id, record_id, content, reason, embedding")
@@ -152,7 +154,7 @@ export async function searchKnowledge(
         .in("id", recordIds);
       const recordMap = new Map((recordRows || []).map((r) => [r.id, r]));
 
-      const [queryEmbedding] = (await createEmbeddings([trimmed])) || [];
+      const [queryEmbedding] = (await createEmbeddings(userId, [trimmed])) || [];
       if (queryEmbedding) {
         for (const row of embeddingRows) {
           const vector = safeJsonParse<number[]>(row.embedding, []);
@@ -179,7 +181,7 @@ export async function searchKnowledge(
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
-  const answer = await answerWithContext({ question: trimmed, citations, history });
+  const answer = await answerWithContext(userId, { question: trimmed, citations, history });
 
   return { answer, citations };
 }

@@ -3,14 +3,13 @@
 import { useState, useCallback, useEffect } from "react";
 import type { IntegrationSettings, IntegrationStatus } from "@/lib/types";
 
-type ActionTarget = "notion" | "smtp" | "ticktick-email" | "oss";
-type SettingsTab = "notion" | "ticktick" | "storage" | "ocr" | "imap" | "backup";
+type ActionTarget = "notion" | "smtp" | "ticktick-email";
+type SettingsTab = "ai" | "notion" | "ticktick" | "ocr" | "imap" | "backup";
 
 const actionLabels: Record<ActionTarget, string> = {
   notion: "测试 Notion",
   smtp: "测试 SMTP",
   "ticktick-email": "发送滴答测试邮件",
-  oss: "测试 OSS",
 };
 
 function SettingsTabIcon({ id }: { id: string }) {
@@ -18,18 +17,18 @@ function SettingsTabIcon({ id }: { id: string }) {
   switch (id) {
     case "notion": return <svg {...p}><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>;
     case "ticktick": return <svg {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M9 12l2 2 4-4" /></svg>;
-    case "storage": return <svg {...p}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>;
     case "ocr": return <svg {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
     case "imap": return <svg {...p}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 7l-10 7L2 7" /></svg>;
     case "backup": return <svg {...p}><path d="M12 2v6M12 22v-6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M22 12h-6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24" /></svg>;
+    case "ai": return <svg {...p}><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" /></svg>;
     default: return null;
   }
 }
 
 const settingsTabs: Array<{ id: SettingsTab; label: string }> = [
+  { id: "ai", label: "AI 摘要" },
   { id: "notion", label: "Notion" },
   { id: "ticktick", label: "滴答清单" },
-  { id: "storage", label: "附件存储" },
   { id: "ocr", label: "OCR 识别" },
   { id: "imap", label: "邮件收录" },
   { id: "backup", label: "数据备份" },
@@ -44,8 +43,9 @@ export function IntegrationsPanel({
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const [status, setStatus] = useState(initialStatus);
+  const [aiConfigured, setAiConfigured] = useState(false);
   const [busy, setBusy] = useState<ActionTarget | "">("");
-  const [activeTab, setActiveTab] = useState<SettingsTab>("notion");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("ai");
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -65,6 +65,7 @@ export function IntegrationsPanel({
         if (statusRes.ok) {
           const d = await statusRes.json();
           setStatus(d.status);
+          if (typeof d.aiConfigured === "boolean") setAiConfigured(d.aiConfigured);
         }
       } catch {}
     })();
@@ -79,6 +80,7 @@ export function IntegrationsPanel({
     const res = await fetch("/api/integrations");
     const data = await res.json();
     setStatus(data.status);
+    if (typeof data.aiConfigured === "boolean") setAiConfigured(data.aiConfigured);
   }
 
   const saveSettings = useCallback(async (): Promise<{ ok: boolean; msg: string }> => {
@@ -122,14 +124,14 @@ export function IntegrationsPanel({
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       {/* Tab navigation */}
-      <div className="flex items-center gap-1 border-b border-[var(--line)]">
+      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--line)] overflow-x-auto">
         {settingsTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => { setActiveTab(tab.id); setMsg(""); }}
             className={[
-              "flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition",
+              "flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition",
               activeTab === tab.id
                 ? "border-[var(--foreground)] text-[var(--foreground)]"
                 : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]",
@@ -143,6 +145,47 @@ export function IntegrationsPanel({
 
       {/* Tab panels */}
       <div className="rounded-xl border border-[var(--line)] bg-[var(--card)] p-5 space-y-4">
+        {activeTab === "ai" && (
+          <>
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex h-2.5 w-2.5 rounded-full ${aiConfigured ? "bg-emerald-500" : "bg-amber-500"}`} />
+              <span className="text-sm font-medium text-[var(--foreground)]">
+                {aiConfigured ? "AI 摘要与标题生成已启用" : "AI 摘要与标题生成未配置"}
+              </span>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--muted)]">模型供应商</label>
+                <select
+                  value={settings.aiProvider || ""}
+                  onChange={(e) => updateField("aiProvider", e.target.value as "" | "openai" | "glm" | "deepseek")}
+                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)]"
+                >
+                  <option value="">请选择</option>
+                  <option value="openai">OpenAI (GPT)</option>
+                  <option value="glm">智谱 AI (GLM)</option>
+                  <option value="deepseek">DeepSeek</option>
+                </select>
+              </div>
+              <div>
+                <Field
+                  label="API 密钥"
+                  type="password"
+                  value={settings.aiApiKey || ""}
+                  onChange={(v) => updateField("aiApiKey", v)}
+                  placeholder={settings.aiProvider === "openai" ? "sk-xxx" : settings.aiProvider === "glm" ? "智谱 API Key" : settings.aiProvider === "deepseek" ? "DeepSeek API Key" : "选择供应商后输入"}
+                />
+              </div>
+            </div>
+            <p className="text-[12px] text-[var(--muted)]">
+              模型名称使用默认值，无需额外配置。保存后新收录的记录将自动使用 AI 生成标题与摘要。
+            </p>
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <SaveBtn saving={saving} onSave={handleSave} />
+            </div>
+          </>
+        )}
+
         {activeTab === "notion" && (
           <>
             <div className="grid gap-3 lg:grid-cols-2">
@@ -174,34 +217,6 @@ export function IntegrationsPanel({
               <SaveBtn saving={saving} onSave={handleSave} />
               <Btn onClick={() => runTest("smtp")} disabled={Boolean(busy)} label={busy === "smtp" ? "测试中..." : "测试 SMTP"} />
               <Btn onClick={() => runTest("ticktick-email")} disabled={Boolean(busy)} label={busy === "ticktick-email" ? "发送中..." : "发送滴答测试邮件"} primary />
-            </div>
-          </>
-        )}
-
-        {activeTab === "storage" && (
-          <>
-            <div className="flex gap-2">
-              <ModeBtn label="本地存储" active={settings.storageMode === "local"} onClick={() => updateField("storageMode", "local")} />
-              <ModeBtn label="阿里云 OSS" active={settings.storageMode === "oss"} onClick={() => updateField("storageMode", "oss")} />
-            </div>
-            {settings.storageMode === "oss" ? (
-              <div className="grid gap-3 lg:grid-cols-2">
-                <Field label="Region" value={settings.ossRegion} onChange={(v) => updateField("ossRegion", v)} placeholder="oss-cn-hangzhou" />
-                <Field label="Bucket" value={settings.ossBucket} onChange={(v) => updateField("ossBucket", v)} placeholder="wechat-ai-note" />
-                <Field label="Endpoint" value={settings.ossEndpoint} onChange={(v) => updateField("ossEndpoint", v)} placeholder="可选" />
-                <Field label="路径前缀" value={settings.ossPathPrefix} onChange={(v) => updateField("ossPathPrefix", v)} placeholder="uploads/wechat" />
-                <Field label="AccessKey ID" value={settings.ossAccessKeyId} onChange={(v) => updateField("ossAccessKeyId", v)} placeholder="LTAI..." />
-                <Field label="AccessKey Secret" type="password" value={settings.ossAccessKeySecret} onChange={(v) => updateField("ossAccessKeySecret", v)} placeholder="请输入密钥" />
-                <div className="lg:col-span-2">
-                  <Field label="公网访问域名" value={settings.ossPublicBaseUrl} onChange={(v) => updateField("ossPublicBaseUrl", v)} placeholder="可选" />
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-[var(--muted)]">本地存储模式，适合先验证流程。附件量变大后再切到 OSS。</p>
-            )}
-            <div className="flex flex-wrap items-center gap-2 pt-2">
-              <SaveBtn saving={saving} onSave={handleSave} />
-              <Btn onClick={() => runTest("oss")} disabled={Boolean(busy) || settings.storageMode !== "oss"} label={busy === "oss" ? "测试中..." : "保存并测试 OSS"} />
             </div>
           </>
         )}

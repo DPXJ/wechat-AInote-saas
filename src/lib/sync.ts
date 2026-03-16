@@ -1,6 +1,6 @@
-import OSS from "ali-oss";
 import { Client } from "@notionhq/client";
 import nodemailer from "nodemailer";
+import { appConfig } from "@/lib/config";
 import { addSyncRun, getKnowledgeRecord } from "@/lib/records";
 import { getIntegrationSettings } from "@/lib/settings";
 import type {
@@ -33,17 +33,6 @@ function createTransporter(settings: IntegrationSettings) {
   });
 }
 
-export function createOssClient(settings: IntegrationSettings) {
-  return new OSS({
-    region: settings.ossRegion,
-    endpoint: settings.ossEndpoint || undefined,
-    bucket: settings.ossBucket,
-    accessKeyId: settings.ossAccessKeyId,
-    accessKeySecret: settings.ossAccessKeySecret,
-    secure: true,
-  });
-}
-
 function requireNotionSettings(settings: IntegrationSettings) {
   if (!settings.notionToken || !settings.notionParentPageId) {
     throw new Error("请先填写 Notion Token 和目标页面地址。");
@@ -60,14 +49,6 @@ function requireEmailSettings(settings: IntegrationSettings, needTickTick = fals
   if (needTickTick && !settings.tickTickInboxEmail) {
     throw new Error("请先填写滴答清单收件邮箱。");
   }
-}
-
-function hasOssSettings(settings: IntegrationSettings) {
-  return Boolean(settings.ossRegion && settings.ossBucket && settings.ossAccessKeyId && settings.ossAccessKeySecret);
-}
-
-function requireOssSettings(settings: IntegrationSettings) {
-  if (!hasOssSettings(settings)) throw new Error("请先填写 OSS 区域、Bucket 和密钥信息。");
 }
 
 function explainIntegrationError(error: unknown) {
@@ -127,13 +108,18 @@ export function buildTickTickSyncPreview(record: KnowledgeRecord): TickTickSyncP
 
 export async function getIntegrationStatus(userId: string): Promise<IntegrationStatus> {
   const settings = await getIntegrationSettings(userId);
+  const envOss =
+    appConfig.storageMode === "oss" &&
+    appConfig.ossRegion &&
+    appConfig.ossBucket &&
+    appConfig.ossAccessKeyId &&
+    appConfig.ossAccessKeySecret;
   return {
     storage: {
-      configured:
-        settings.storageMode === "local" || (settings.storageMode === "oss" && hasOssSettings(settings)),
+      configured: appConfig.storageMode === "local" || envOss,
       label:
-        settings.storageMode === "oss"
-          ? settings.ossBucket ? `OSS · ${settings.ossBucket}` : "OSS 未完成配置"
+        appConfig.storageMode === "oss"
+          ? envOss ? `OSS · ${appConfig.ossBucket}` : "OSS 未完成配置（请在 .env 中填写）"
           : "本地存储",
     },
     notion: {
@@ -188,24 +174,6 @@ export async function sendTickTickTestEmail(userId: string) {
       text: ["这是一封来自 AI Box 的测试邮件。", "如果你在滴答清单里看到了新任务，说明邮箱投递链路已经可用。", `时间：${stamp}`].join("\n"),
     });
     return { ok: true, messageId: result.messageId, message: "滴答测试邮件已发送。" };
-  } catch (error) {
-    throw new Error(explainIntegrationError(error));
-  }
-}
-
-export async function testOssConnection(userId: string) {
-  const settings = await getIntegrationSettings(userId);
-  requireOssSettings(settings);
-  try {
-    const client = createOssClient(settings);
-    const result = await client.listV2({ prefix: settings.ossPathPrefix || undefined, "max-keys": 1 });
-    return {
-      ok: true,
-      count: result.keyCount,
-      message: settings.storageMode === "oss"
-        ? "OSS 已连接成功，且当前附件存储模式已切换为 OSS。"
-        : "OSS 已连接成功，保存后即可用于附件存储。",
-    };
   } catch (error) {
     throw new Error(explainIntegrationError(error));
   }

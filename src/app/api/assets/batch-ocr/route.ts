@@ -28,7 +28,7 @@ export async function POST() {
 
     for (const asset of items) {
       try {
-        const result = await readStoredUpload(asset.storage_key);
+        const result = await readStoredUpload(asset.storage_key, undefined, userId);
         let buffer: Buffer;
         if (result.kind === "buffer") {
           buffer = result.buffer;

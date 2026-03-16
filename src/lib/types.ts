@@ -132,7 +132,11 @@ export interface StatsData {
   urgentTodos: number;
 }
 
+export type AiProvider = "openai" | "glm" | "deepseek" | "";
+
 export interface IntegrationSettings {
+  aiProvider: AiProvider;
+  aiApiKey: string;
   storageMode: "local" | "oss";
   notionToken: string;
   notionParentPageId: string;
