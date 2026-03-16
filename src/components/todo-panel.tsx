@@ -82,16 +82,18 @@ function groupByDate(todos: Todo[]): Array<{ dateKey: string; label: string; ite
 export function TodoPanel({
   initialTodos,
   initialTotal,
+  initialPriorityFilter,
 }: {
   initialTodos?: Todo[];
   initialTotal?: number;
+  initialPriorityFilter?: TodoPriority | "";
 } = {}) {
   const [serverTodos, setServerTodos] = useState<Todo[]>(initialTodos ?? []);
   const [localTodos, setLocalTodos] = useState<Todo[]>([]);
   const [total, setTotal] = useState(initialTotal ?? 0);
   const [filter, setFilter] = useState<TodoFilter>("pending");
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("");
-  const [priorityFilter, setPriorityFilter] = useState<TodoPriority | "">("");
+  const [priorityFilter, setPriorityFilter] = useState<TodoPriority | "">(initialPriorityFilter ?? "");
   const [dateFilter, setDateFilter] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newPriority, setNewPriority] = useState<TodoPriority>("medium");

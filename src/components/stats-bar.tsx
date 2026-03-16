@@ -83,7 +83,7 @@ function getCachedStats(): StatsData | null {
   }
 }
 
-export function StatsBar({ onNavigateToTodos }: { onNavigateToTodos?: () => void } = {}) {
+export function StatsBar({ onNavigateToTodos }: { onNavigateToTodos?: (priority?: "urgent") => void } = {}) {
   const [stats, setStats] = useState<StatsData | null>(null);
   const fetched = useRef(false);
 
@@ -114,8 +114,8 @@ export function StatsBar({ onNavigateToTodos }: { onNavigateToTodos?: () => void
             key={item.key}
             role={isClickable ? "button" : undefined}
             tabIndex={isClickable ? 0 : undefined}
-            onClick={isClickable ? onNavigateToTodos : undefined}
-            onKeyDown={isClickable ? (e) => { if (e.key === "Enter") onNavigateToTodos?.(); } : undefined}
+            onClick={isClickable ? () => onNavigateToTodos?.(item.key === "urgentTodos" ? "urgent" : undefined) : undefined}
+            onKeyDown={isClickable ? (e) => { if (e.key === "Enter") onNavigateToTodos?.(item.key === "urgentTodos" ? "urgent" : undefined); } : undefined}
             className={[
               "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--card)] px-3.5 py-3",
               isClickable ? "cursor-pointer transition hover:border-[var(--line-strong)] hover:shadow-sm" : "",

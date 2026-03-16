@@ -25,6 +25,7 @@ import type {
   KnowledgeRecord,
   RecordType,
   Todo,
+  TodoPriority,
 } from "@/lib/types";
 import type { ReportData } from "@/components/report-panel";
 import { formatDateTime, formatDateOnly, formatTime } from "@/lib/utils";
@@ -137,6 +138,7 @@ export function HomeWorkspace({
   const [prefetchedTags, setPrefetchedTags] = useState<Array<{ tag: string; count: number }> | null>(null);
   const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [todosInitialPriority, setTodosInitialPriority] = useState<TodoPriority | "">("");
 
   useEffect(() => {
     const refreshPending = () => {
@@ -387,7 +389,10 @@ export function HomeWorkspace({
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    if (tab.id === "todos") setTodosInitialPriority("");
+                    setActiveTab(tab.id);
+                  }}
                   title={sidebarCollapsed ? tab.label : undefined}
                   className={[
                     "relative flex w-full items-center rounded-xl transition",
@@ -502,7 +507,10 @@ export function HomeWorkspace({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  if (tab.id === "todos") setTodosInitialPriority("");
+                  setActiveTab(tab.id);
+                }}
                 className={[
                   "relative flex flex-col items-center gap-0.5 px-3 py-2 text-xs transition",
                   activeTab === tab.id
@@ -535,7 +543,7 @@ export function HomeWorkspace({
           <div className="flex h-screen flex-col p-4 pb-24 lg:px-6 lg:pb-[24px] lg:pt-[24px]">
             {(activeTab === "record" || activeTab === "history") && (
               <div className="flex items-center justify-between gap-2">
-                <StatsBar onNavigateToTodos={() => setActiveTab("todos")} />
+                <StatsBar onNavigateToTodos={(priority) => { setTodosInitialPriority(priority ?? ""); setActiveTab("todos"); }} />
                 <SyncIndicator />
               </div>
             )}
@@ -597,6 +605,7 @@ export function HomeWorkspace({
                 <TodoPanel
                   initialTodos={prefetchedTodos?.todos}
                   initialTotal={prefetchedTodos?.total}
+                  initialPriorityFilter={todosInitialPriority}
                 />
               )}
               {activeTab === "reports" && (
