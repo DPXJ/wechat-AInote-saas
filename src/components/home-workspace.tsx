@@ -143,7 +143,7 @@ export function HomeWorkspace({
   useEffect(() => {
     const refreshPending = () => {
       getPendingRecordsForDisplay()
-        .then((list) => setLocalPendingRecords(list.map((p) => pendingToRecordLike(p) as KnowledgeRecord)))
+        .then((list) => setLocalPendingRecords(list.map((p) => pendingToRecordLike(p) as unknown as KnowledgeRecord)))
         .catch(() => setLocalPendingRecords([]));
     };
     refreshPending();

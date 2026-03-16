@@ -84,7 +84,9 @@ export async function createKnowledgeRecord(
   input: RecordInput,
   uploads: StoredUpload[],
   fileMeta?: Array<{ tags?: string[]; description?: string }>,
+  opts?: { enableAiSummaryAndTodos?: boolean },
 ) {
+  const enableAi = opts?.enableAiSummaryAndTodos !== false;
   const supabase = getSupabaseAdmin();
   const recordId = createId("rec");
   const createdAt = nowIso();
@@ -161,22 +163,33 @@ export async function createKnowledgeRecord(
   const recordType =
     input.recordTypeHint || inferRecordType(uploads.map((item) => item.mimeType));
 
-  const analysis: AnalysisOutput = await analyzeRecord(userId, {
-    title: input.title?.trim() || contentText.slice(0, 42) || (storedAssets[0]?.original_name as string) || "未命名资料",
-    sourceLabel,
-    recordType,
-    contentText,
-    extractedText,
-    contextNote,
-    assetNames,
-  });
+  let analysis: AnalysisOutput;
+  if (enableAi) {
+    analysis = await analyzeRecord(userId, {
+      title: input.title?.trim() || contentText.slice(0, 42) || (storedAssets[0]?.original_name as string) || "未命名资料",
+      sourceLabel,
+      recordType,
+      contentText,
+      extractedText,
+      contextNote,
+      assetNames,
+    });
+  } else {
+    const textContent = (contentText || extractedText).trim().slice(0, 50);
+    analysis = {
+      summary: textContent || "已收录一条信息。",
+      keywords: input.userTags ?? [],
+      actionItems: [],
+      suggestedTargets: [],
+    };
+  }
 
   // 标题优先级：用户输入 > AI 生成 > 文本内容 > 图片文件名
   const textContent = (contentText || extractedText).trim().slice(0, 42);
   const firstAssetName = storedAssets[0]?.original_name as string | undefined;
   const title =
     input.title?.trim() ||
-    (analysis.title && analysis.title.trim()) ||
+    (enableAi && analysis.title && analysis.title.trim()) ||
     textContent ||
     firstAssetName ||
     "未命名资料";
@@ -257,9 +270,11 @@ export async function createKnowledgeRecord(
     syncRuns: [],
   };
 
-  import("@/lib/todos")
-    .then(({ extractTodosFromRecord }) => extractTodosFromRecord(userId, created))
-    .catch(() => {});
+  if (enableAi && analysis.actionItems.length > 0) {
+    import("@/lib/todos")
+      .then(({ extractTodosFromRecord }) => extractTodosFromRecord(userId, created))
+      .catch(() => {});
+  }
 
   return created;
 }

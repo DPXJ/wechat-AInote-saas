@@ -100,6 +100,7 @@ export function TodoPanel({
   const [creating, setCreating] = useState(false);
   const [detailTodo, setDetailTodo] = useState<Todo | null>(null);
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [batchSyncing, setBatchSyncing] = useState(false);
 
   const loadLocalTodos = useCallback(async () => {
     try {
@@ -279,6 +280,33 @@ export function TodoPanel({
 
   const groups = useMemo(() => groupByDate(displayTodos), [displayTodos]);
 
+  const todosNeedingSync = useMemo(() => {
+    return displayTodos.filter(
+      (t) =>
+        !t.id.startsWith("local_todo_") &&
+        (!t.syncedAt || (t.updatedAt && t.syncedAt && t.updatedAt > t.syncedAt)),
+    );
+  }, [displayTodos]);
+
+  const handleBatchSync = useCallback(async () => {
+    if (todosNeedingSync.length === 0) return;
+    setBatchSyncing(true);
+    try {
+      const res = await fetch("/api/todos/sync-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: todosNeedingSync.map((t) => t.id) }),
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        fetchTodos();
+      }
+    } finally {
+      setBatchSyncing(false);
+    }
+  }, [todosNeedingSync, fetchTodos]);
+
   const availableDates = useMemo(() => {
     const set = new Set<string>();
     for (const t of allTodos) set.add(getDateKey(t.createdAt));
@@ -398,6 +426,17 @@ export function TodoPanel({
           </select>
 
           <span className="text-xs text-[var(--muted)] ml-1">{filteredTodos.length} 条</span>
+
+          {todosNeedingSync.length > 0 && (
+            <button
+              type="button"
+              onClick={handleBatchSync}
+              disabled={batchSyncing}
+              className="ml-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-strong)] disabled:opacity-50"
+            >
+              {batchSyncing ? "同步中..." : `批量同步滴答 (${todosNeedingSync.length})`}
+            </button>
+          )}
         </div>
       </div>
 

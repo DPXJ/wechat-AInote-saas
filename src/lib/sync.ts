@@ -124,7 +124,7 @@ export async function getIntegrationStatus(userId: string): Promise<IntegrationS
     appConfig.ossAccessKeySecret;
   return {
     storage: {
-      configured: appConfig.storageMode === "local" || envOss,
+      configured: Boolean(appConfig.storageMode === "local" || envOss),
       label:
         appConfig.storageMode === "oss"
           ? envOss ? `OSS · ${appConfig.ossBucket}` : "OSS 未完成配置（请在 .env 中填写）"

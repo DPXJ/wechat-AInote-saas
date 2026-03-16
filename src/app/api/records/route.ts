@@ -116,6 +116,8 @@ export async function POST(request: Request) {
     const contextNote = String(formData.get("contextNote") || "");
     const contentText = String(formData.get("contentText") || "");
     const recordTypeHint = String(formData.get("recordTypeHint") || "") as RecordType | "";
+    const enableAiRaw = String(formData.get("enableAiSummaryAndTodos") || "true");
+    const enableAiSummaryAndTodos = enableAiRaw !== "false" && enableAiRaw !== "0";
     const userTagsRaw = String(formData.get("userTags") || "");
     const userTags = userTagsRaw
       .split(/[,，]/)
@@ -163,6 +165,7 @@ export async function POST(request: Request) {
       },
       uploads,
       fileMeta,
+      { enableAiSummaryAndTodos },
     );
 
     if (record) {

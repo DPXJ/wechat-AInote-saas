@@ -26,6 +26,7 @@ export interface PendingRecordPayload {
   files: PendingFilePayload[];
   fileTags: Record<string, string>;
   fileDescs: Record<string, string>;
+  enableAiSummaryAndTodos?: boolean;
 }
 
 export interface PendingRecord {
@@ -152,6 +153,7 @@ export function buildFormDataFromPending(pending: PendingRecord): FormData {
   formData.set("contextNote", payload.contextNote);
   formData.set("userTags", payload.userTags);
   formData.set("recordTypeHint", payload.recordTypeHint);
+  formData.set("enableAiSummaryAndTodos", String(payload.enableAiSummaryAndTodos !== false));
   payload.files.forEach((file, idx) => {
     const blob = new Blob([file.content], { type: file.type || "application/octet-stream" });
     formData.append("files", blob, file.name);

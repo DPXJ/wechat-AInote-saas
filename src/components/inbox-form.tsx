@@ -3,21 +3,21 @@
 import type {
   ChangeEvent,
   ClipboardEvent as ReactClipboardEvent,
-  DragEvent as ReactDragEvent,
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { RecordType } from "@/lib/types";
 import {
   addPendingRecord,
   syncPendingRecordsToCloud,
   type PendingRecordPayload,
 } from "@/lib/local-record-store";
 
-type RecordComposerType = "doc" | "attachment";
 type StatusTone = "info" | "success" | "error";
+
+const FILE_ACCEPT_ALL =
+  "image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.csv,.json,application/pdf";
 
 function fileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}-${file.type}`;
@@ -33,11 +33,11 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [activeType, setActiveType] = useState<RecordComposerType>("doc");
   const [title, setTitle] = useState("");
   const [sourceLabel, setSourceLabel] = useState("微信手动同步");
   const [contentText, setContentText] = useState("");
   const [contextNote, setContextNote] = useState("");
+  const [userTags, setUserTags] = useState("");
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState<StatusTone>("info");
   const [submitting, setSubmitting] = useState(false);
@@ -45,10 +45,8 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   const [files, setFiles] = useState<File[]>([]);
   const [fileTags, setFileTags] = useState<Record<string, string>>({});
   const [fileDescs, setFileDescs] = useState<Record<string, string>>({});
-  const [userTags, setUserTags] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
-
-  const isDocMode = activeType === "doc";
+  const [enableAiSummaryAndTodos, setEnableAiSummaryAndTodos] = useState(true);
 
   useEffect(() => {
     if (!status || statusTone === "error") return;
@@ -77,32 +75,15 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
     event.target.value = "";
   }
 
-  function handleDrop(event: ReactDragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setDragging(false);
-    const dropped = Array.from(event.dataTransfer.files || []);
-    if (isDocMode) {
-      const images = dropped.filter((f) => f.type.startsWith("image/"));
-      if (images.length > 0) attachFiles(images, "拖拽");
-    } else {
-      attachFiles(dropped, "拖拽区");
-    }
-  }
-
   function handlePaste(event: ReactClipboardEvent<HTMLFormElement>) {
     const pastedFiles = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file")
       .map((item) => item.getAsFile())
       .filter((file): file is File => Boolean(file));
     if (pastedFiles.length === 0) return;
-    if (isDocMode) {
-      const images = pastedFiles.filter((f) => f.type.startsWith("image/"));
-      if (images.length > 0) {
-        attachFiles(images, "剪贴板");
-      }
-    } else {
-      event.preventDefault();
-      attachFiles(pastedFiles, "剪贴板");
+    const images = pastedFiles.filter((f) => f.type.startsWith("image/"));
+    if (images.length > 0) {
+      attachFiles(images, "剪贴板");
     }
   }
 
@@ -122,17 +103,13 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isDocMode && !contentText.trim() && files.length === 0) {
-      updateStatus("请输入文本或粘贴图片。", "error");
-      return;
-    }
-    if (!isDocMode && files.length === 0) {
-      updateStatus("请先上传附件文件。", "error");
+    if (!contentText.trim() && files.length === 0) {
+      updateStatus("请输入文本或添加附件。", "error");
       return;
     }
 
     setSubmitting(true);
-    updateStatus("正在收录...", "info");
+    updateStatus("正在提交...", "info");
 
     try {
       const filePayloads = await Promise.all(
@@ -146,13 +123,14 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       const payload: PendingRecordPayload = {
         title,
         sourceLabel,
-        contentText: isDocMode ? contentText : "",
+        contentText,
         contextNote,
         userTags,
-        recordTypeHint: isDocMode && files.length === 0 ? "text" : "",
+        recordTypeHint: files.length === 0 ? "text" : "",
         files: filePayloads,
         fileTags: { ...fileTags },
         fileDescs: { ...fileDescs },
+        enableAiSummaryAndTodos,
       };
 
       await addPendingRecord(payload);
@@ -178,7 +156,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         .catch(() => updateStatus("同步异常，可稍后点击云图标重试", "error"));
     } catch (e) {
       setSubmitting(false);
-      updateStatus(e instanceof Error ? e.message : "收录失败，请重试", "error");
+      updateStatus(e instanceof Error ? e.message : "提交失败，请重试", "error");
     }
   }
 
@@ -192,41 +170,43 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   }
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} onPasteCapture={handlePaste} className="space-y-5">
-      {/* Type selector */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveType("doc")}
-          className={[
-            "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-medium transition",
-            isDocMode
-              ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
-              : "bg-[var(--surface)] text-[var(--muted-strong)] hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]",
-          ].join(" ")}
-        >
-          <span>📝</span>
-          <span>文档</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveType("attachment")}
-          className={[
-            "flex items-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-medium transition",
-            !isDocMode
-              ? "bg-[var(--foreground)] text-[var(--background)] shadow-sm"
-              : "bg-[var(--surface)] text-[var(--muted-strong)] hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]",
-          ].join(" ")}
-        >
-          <span>📎</span>
-          <span>附件</span>
-        </button>
-
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      onPasteCapture={handlePaste}
+      className="space-y-5"
+      onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setDragging(false);
+      }}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); const dropped = Array.from(e.dataTransfer.files || []); if (dropped.length > 0) attachFiles(dropped, "拖拽"); }}
+    >
+      {/* Top: Title + Tags + AI Search */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="input-focus-bar flex-1 min-w-[140px]">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="标题（选填）"
+            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
+          />
+        </div>
+        <div className="input-focus-bar flex-1 min-w-[140px]">
+          <input
+            value={userTags}
+            onChange={(e) => setUserTags(e.target.value)}
+            placeholder="标签（逗号分隔，选填）"
+            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
+          />
+        </div>
         {onSwitchToSearch && (
           <button
             type="button"
             onClick={onSwitchToSearch}
-            className="ai-border ml-auto flex items-center gap-2 rounded-lg bg-[var(--card)] px-3 py-2 text-left transition"
+            className="ai-border flex shrink-0 items-center gap-2 rounded-lg bg-[var(--card)] px-3 py-2 text-left transition"
           >
             <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
               <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
@@ -236,133 +216,83 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         )}
       </div>
 
-      {/* Document mode */}
-      {isDocMode ? (
-        <div>
-          <div
-            onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-              setDragging(false);
-            }}
-            onDrop={handleDrop}
-            className={[
-              "input-focus-bar overflow-hidden rounded-3xl border shadow-sm transition",
-              dragging
-                ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                : "border-[var(--line-strong)] bg-[var(--surface)]",
-            ].join(" ")}
-          >
-            <textarea
-              value={contentText}
-              onChange={(e) => setContentText(e.target.value)}
-              onKeyDown={handleTextareaKeyDown}
-              rows={10}
-              placeholder="输入文本或 Markdown，支持直接粘贴截图…（Enter 提交，Shift+Enter 换行）"
-              className="min-h-[240px] max-h-[500px] w-full resize-none border-none bg-transparent px-6 py-5 text-[15px] leading-8 text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-            />
+      {/* Main content area */}
+      <div
+        className={[
+          "input-focus-bar overflow-hidden rounded-3xl border shadow-sm transition",
+          dragging
+            ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+            : "border-[var(--line-strong)] bg-[var(--surface)]",
+        ].join(" ")}
+      >
+        <textarea
+          value={contentText}
+          onChange={(e) => setContentText(e.target.value)}
+          onKeyDown={handleTextareaKeyDown}
+          rows={6}
+          placeholder="输入文本或 Markdown，支持直接粘贴截图…（Enter 提交，Shift+Enter 换行）"
+          className="min-h-[180px] max-h-[500px] w-full resize-none border-none bg-transparent px-6 py-5 text-[15px] leading-8 text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+        />
 
-            {/* Inline image previews */}
-            {imageFiles.length > 0 && (
-              <div className="border-t border-[var(--line)] bg-[var(--surface)] px-5 py-3">
-                <p className="mb-2 text-[11px] font-medium text-[var(--muted)]">{imageFiles.length} 张图片</p>
-                <div className="flex flex-wrap gap-2">
-                  {imageFiles.map((file) => (
-                    <InlineImagePreview key={fileKey(file)} file={file} onRemove={() => removeFile(file)} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between border-t border-[var(--line)] bg-[var(--surface)] px-5 py-3">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={readClipboardText}
-                  className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
-                >
-                  📋 粘贴文本
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
-                >
-                  🖼 插入图片
-                </button>
-              </div>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="rounded-xl bg-[var(--foreground)] px-6 py-2.5 text-sm font-semibold text-[var(--background)] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {submitting ? "收录中..." : "确认收录"}
-              </button>
+        {/* Inline image previews */}
+        {imageFiles.length > 0 && (
+          <div className="border-t border-[var(--line)] bg-[var(--surface)] px-5 py-3">
+            <p className="mb-2 text-[11px] font-medium text-[var(--muted)]">{imageFiles.length} 张图片</p>
+            <div className="flex flex-wrap gap-2">
+              {imageFiles.map((file) => (
+                <InlineImagePreview key={fileKey(file)} file={file} onRemove={() => removeFile(file)} />
+              ))}
             </div>
           </div>
-          {dragging && (
-            <p className="mt-2 text-center text-sm text-[var(--accent)]">松开以添加图片</p>
-          )}
-        </div>
-      ) : (
-        /* Attachment mode */
-        <div className="space-y-4">
-          <div
-            onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-              setDragging(false);
-            }}
-            onDrop={handleDrop}
-            className={[
-              "rounded-3xl border-2 border-dashed px-6 py-10 text-center transition",
-              dragging
-                ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                : "border-[var(--line-strong)] bg-[var(--surface)]",
-            ].join(" ")}
-          >
+        )}
+
+        {/* Toolbar + Attachment area */}
+        <div className="border-t border-[var(--line)] bg-[var(--surface)] px-5 py-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={readClipboardText}
+              className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
+            >
+              粘贴文本
+            </button>
             <input
-              ref={isDocMode ? undefined : fileInputRef}
+              ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.csv,.json,application/pdf"
+              accept={FILE_ACCEPT_ALL}
               onChange={handleFileInputChange}
               className="hidden"
             />
-            <div className="text-4xl">📎</div>
-            <p className="mt-3 text-base font-medium text-[var(--foreground)]">
-              上传附件（图片、视频、音频、文档等）
-            </p>
-            <p className="mt-1.5 text-sm text-[var(--muted)]">
-              拖拽或点击选择文件，支持图片、视频、音频、文档等
-            </p>
-            <div className="mx-auto mt-4 max-w-md space-y-1 text-[11px] leading-relaxed text-[var(--muted)]">
-              <p>📷 图片：JPG / PNG / GIF / WebP / SVG</p>
-              <p>🎬 视频：MP4 / MOV / WebM / AVI（建议 &lt; 100MB）</p>
-              <p>🎵 音频：MP3 / WAV / AAC / OGG</p>
-              <p>📋 文档：PDF / Word / Excel / PPT / Markdown / TXT / CSV</p>
-            </div>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="mt-5 rounded-xl bg-[var(--foreground)] px-5 py-2.5 text-sm font-medium text-[var(--background)] transition hover:opacity-90"
+              className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
             >
-              选择文件
+              添加附件
             </button>
           </div>
 
+          {/* Attachment drop zone - compact, always visible */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className={[
+              "flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed px-4 py-3 transition",
+              dragging
+                ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                : "border-[var(--line)] bg-[var(--card)]/50 hover:border-[var(--line-strong)]",
+            ].join(" ")}
+          >
+            <span className="text-2xl">📎</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                {files.length > 0 ? `已添加 ${files.length} 个文件` : "拖拽或点击添加附件（图片、视频、音频、文档等）"}
+              </p>
+              <p className="text-xs text-[var(--muted)]">支持 JPG、PNG、PDF、Word、Excel、MP4、MP3 等</p>
+            </div>
+          </div>
+
+          {/* Attachment preview grid */}
           {files.length > 0 && (
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
               {files.map((file) => {
@@ -393,19 +323,33 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             </div>
           )}
 
-          <div className="flex justify-end">
+          {/* Submit row: AI checkbox + 提交记录 */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--muted-strong)]">
+              <input
+                type="checkbox"
+                checked={enableAiSummaryAndTodos}
+                onChange={(e) => setEnableAiSummaryAndTodos(e.target.checked)}
+                className="rounded border-[var(--line)]"
+              />
+              <span>AI 摘要与识别待办</span>
+            </label>
             <button
               type="submit"
               disabled={submitting}
               className="rounded-xl bg-[var(--foreground)] px-6 py-2.5 text-sm font-semibold text-[var(--background)] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitting ? "收录中..." : "确认收录"}
+              {submitting ? "提交中..." : "提交记录"}
             </button>
           </div>
         </div>
+      </div>
+
+      {dragging && (
+        <p className="text-center text-sm text-[var(--accent)]">松开以添加文件</p>
       )}
 
-      {/* Optional fields */}
+      {/* 更多信息（来源、备注） */}
       <div className="rounded-3xl border border-[var(--line)] bg-[var(--card)]">
         <button
           type="button"
@@ -414,7 +358,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         >
           <span>
             更多信息
-            <span className="ml-2 text-xs text-[var(--muted)]">标题、来源、标签、备注</span>
+            <span className="ml-2 text-xs text-[var(--muted)]">来源、备注</span>
           </span>
           <svg
             width="16"
@@ -433,17 +377,6 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         {moreOpen && (
           <div className="grid gap-4 border-t border-[var(--line)] px-5 py-4 lg:grid-cols-2">
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-[var(--foreground)]">标题</span>
-              <div className="input-focus-bar">
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="例如：客户报价截图"
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                />
-              </div>
-            </label>
-            <label className="block space-y-1.5">
               <span className="text-sm font-medium text-[var(--foreground)]">来源</span>
               <div className="input-focus-bar">
                 <input
@@ -452,18 +385,6 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
                   className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                 />
               </div>
-            </label>
-            <label className="block space-y-1.5 lg:col-span-2">
-              <span className="text-sm font-medium text-[var(--foreground)]">标签</span>
-              <div className="input-focus-bar">
-                <input
-                  value={userTags}
-                  onChange={(e) => setUserTags(e.target.value)}
-                  placeholder="用逗号分隔，例如：工作,客户,报价"
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                />
-              </div>
-              <p className="text-xs text-[var(--muted)]">自定义标签，方便后续筛选和搜索</p>
             </label>
             <label className="block space-y-1.5 lg:col-span-2">
               <span className="text-sm font-medium text-[var(--foreground)]">备注</span>
@@ -481,7 +402,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         )}
       </div>
 
-      {/* Status toast - 页面居中上方 */}
+      {/* Status toast */}
       {status && (
         <div
           className="pointer-events-none fixed left-1/2 top-6 z-50 -translate-x-1/2"
@@ -554,10 +475,6 @@ function InlineImagePreview({ file, onRemove }: { file: File; onRemove: () => vo
 function FilePreviewChip({ file, onRemove }: { file: File; onRemove: () => void }) {
   const [preview, setPreview] = useState<string | null>(null);
 
-  const revoke = useCallback(() => {
-    if (preview) URL.revokeObjectURL(preview);
-  }, [preview]);
-
   useEffect(() => {
     if (file.type.startsWith("image/")) {
       const url = URL.createObjectURL(file);
@@ -565,8 +482,6 @@ function FilePreviewChip({ file, onRemove }: { file: File; onRemove: () => void 
       return () => URL.revokeObjectURL(url);
     }
   }, [file]);
-
-  useEffect(() => revoke, [revoke]);
 
   const isImage = file.type.startsWith("image/");
   const isVideo = file.type.startsWith("video/");
