@@ -66,10 +66,16 @@ export async function POST(
     return NextResponse.json({ ok: true, todo: updated, message: "已同步到滴答清单。" });
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {
-      return NextResponse.json({ error: "未登录" }, { status: 401 });
+      return NextResponse.json({ error: "未登录，请刷新页面重试" }, { status: 401 });
     }
     const msg = e instanceof Error ? e.message : "未知错误";
     console.error("[Todo Sync Error]", msg);
+    if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(msg)) {
+      return NextResponse.json({ error: "SMTP 连接失败，请检查网络和邮箱配置" }, { status: 500 });
+    }
+    if (/Invalid login|auth|535|Authentication failed/i.test(msg)) {
+      return NextResponse.json({ error: "邮箱登录失败，请检查 SMTP 账号和授权码" }, { status: 500 });
+    }
     return NextResponse.json({ error: `同步失败：${msg}` }, { status: 500 });
   }
 }

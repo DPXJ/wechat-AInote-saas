@@ -25,11 +25,17 @@ function buildNotionClient(settings: IntegrationSettings) {
 }
 
 function createTransporter(settings: IntegrationSettings) {
+  const port = Number(settings.smtpPort || "587");
+  const isImplicitTLS = port === 465;
   return nodemailer.createTransport({
     host: settings.smtpHost,
-    port: Number(settings.smtpPort || "587"),
-    secure: settings.smtpSecure,
+    port,
+    secure: isImplicitTLS || settings.smtpSecure,
     auth: { user: settings.smtpUser, pass: settings.smtpPass },
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   });
 }
 
@@ -63,6 +69,8 @@ function explainIntegrationError(error: unknown) {
     return "连接外部服务时发生网络错误，请确认当前网络可以访问目标服务。";
   if (/Invalid login|auth|535/i.test(message))
     return "SMTP 登录失败，请检查邮箱账号、授权码和 SSL/TLS 设置。";
+  if (/Greeting never received|ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(message))
+    return "SMTP 连接失败：无法连接邮箱服务器。请尝试：(1) 端口 587 不通时改用 465 并勾选 SSL/TLS；(2) 检查网络/VPN 是否允许 SMTP；(3) QQ 邮箱需使用授权码而非登录密码。";
   if (/AccessDenied|InvalidAccessKeyId|SignatureDoesNotMatch/i.test(message))
     return "OSS 鉴权失败，请检查 AccessKey、Bucket、Region 或 Endpoint。";
   return message;
@@ -161,17 +169,22 @@ export async function testSmtpConnection(userId: string) {
   }
 }
 
+function toBeijingTimeStr(iso?: string): string {
+  const d = new Date(iso || Date.now());
+  return d.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+}
+
 export async function sendTickTickTestEmail(userId: string) {
   const settings = await getIntegrationSettings(userId);
   requireEmailSettings(settings, true);
   try {
     const transporter = createTransporter(settings);
-    const stamp = new Date().toISOString();
+    const stamp = toBeijingTimeStr();
     const result = await transporter.sendMail({
       from: settings.smtpFrom,
       to: settings.tickTickInboxEmail,
-      subject: `[AI Box 测试] 滴答邮箱连通性 ${stamp}`,
-      text: ["这是一封来自 AI Box 的测试邮件。", "如果你在滴答清单里看到了新任务，说明邮箱投递链路已经可用。", `时间：${stamp}`].join("\n"),
+      subject: `[AI 信迹] 滴答邮箱连通性测试 ${stamp}`,
+      text: ["这是一封来自 AI 信迹 的测试邮件。", "如果你在滴答清单里看到了新任务，说明邮箱投递链路已经可用。", `时间：${stamp}（北京时间）`].join("\n"),
     });
     return { ok: true, messageId: result.messageId, message: "滴答测试邮件已发送。" };
   } catch (error) {

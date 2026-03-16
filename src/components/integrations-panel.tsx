@@ -9,7 +9,7 @@ type SettingsTab = "ai" | "notion" | "ticktick" | "ocr" | "imap" | "backup";
 const actionLabels: Record<ActionTarget, string> = {
   notion: "测试 Notion",
   smtp: "测试 SMTP",
-  "ticktick-email": "发送滴答测试邮件",
+  "ticktick-email": "测试连接",
 };
 
 function SettingsTabIcon({ id }: { id: string }) {
@@ -108,7 +108,7 @@ export function IntegrationsPanel({
     const result = await saveSettings();
     if (!result.ok) { setMsg(result.msg); return; }
     setBusy(target);
-    setMsg(`正在执行${actionLabels[target]}...`);
+    setMsg(target === "ticktick-email" ? "正在测试连接..." : `正在执行${actionLabels[target]}...`);
     const res = await fetch("/api/integrations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -117,8 +117,8 @@ export function IntegrationsPanel({
     const data = await res.json();
     setBusy("");
     await refreshStatus();
-    if (!res.ok) { setMsg(data.error || "测试失败。"); return; }
-    setMsg(data.message || `${actionLabels[target]}通过。`);
+    if (!res.ok) { setMsg(data.error || "测试失败"); return; }
+    setMsg(target === "ticktick-email" ? "连接测试成功，邮件已发送到滴答收件邮箱" : (data.message || `${actionLabels[target]}通过`));
   }
 
   return (
@@ -201,6 +201,14 @@ export function IntegrationsPanel({
 
         {activeTab === "ticktick" && (
           <>
+            <div className="rounded-lg bg-[var(--surface)] px-4 py-3 text-[13px] text-[var(--muted-strong)] space-y-2">
+              <p className="font-medium text-[var(--foreground)]">配置说明</p>
+              <ul className="list-disc list-inside space-y-1 text-[12px]">
+                <li><strong>SMTP</strong>：QQ 邮箱在 设置 → 账户 → POP3/IMAP 中开启服务并获取授权码；163 同理。SMTP 密码填授权码，非登录密码。</li>
+                <li><strong>滴答收件邮箱</strong>：滴答清单 App → 设置 → 日历与订阅 → 邮件收件 中复制邮箱地址（格式如 todo+xxx@mail.dida365.com）。</li>
+                <li>端口 587 不通时可试 465，并勾选「使用 SSL/TLS 直连」。587 常被公司网络、校园网或运营商拦截（防垃圾邮件），465 为 SSL 直连，有时可绕过限制。</li>
+              </ul>
+            </div>
             <div className="grid gap-3 lg:grid-cols-2">
               <Field label="SMTP Host" value={settings.smtpHost} onChange={(v) => updateField("smtpHost", v)} placeholder="smtp.qq.com" />
               <Field label="SMTP Port" value={settings.smtpPort} onChange={(v) => updateField("smtpPort", v)} placeholder="587" />
@@ -215,8 +223,7 @@ export function IntegrationsPanel({
             </label>
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <SaveBtn saving={saving} onSave={handleSave} />
-              <Btn onClick={() => runTest("smtp")} disabled={Boolean(busy)} label={busy === "smtp" ? "测试中..." : "测试 SMTP"} />
-              <Btn onClick={() => runTest("ticktick-email")} disabled={Boolean(busy)} label={busy === "ticktick-email" ? "发送中..." : "发送滴答测试邮件"} primary />
+              <Btn onClick={() => runTest("ticktick-email")} disabled={Boolean(busy)} label={busy === "ticktick-email" ? "测试中..." : "测试连接"} primary />
             </div>
           </>
         )}
@@ -274,13 +281,18 @@ export function IntegrationsPanel({
         {/* Message feedback */}
         {msg && (
           <p className={[
-            "rounded-lg px-3 py-2 text-xs",
+            "rounded-lg px-3 py-2.5 text-sm font-medium flex items-center gap-2",
             msg.includes("失败") || msg.includes("错误") || msg.includes("校验")
               ? "bg-rose-500/10 text-rose-500"
-              : msg.includes("已保存") || msg.includes("通过")
+              : msg.includes("成功") || msg.includes("已保存") || msg.includes("通过") || msg.includes("已发送")
                 ? "bg-emerald-500/10 text-emerald-500"
                 : "bg-[var(--surface)] text-[var(--muted-strong)]",
           ].join(" ")}>
+            {msg.includes("成功") || msg.includes("已保存") || msg.includes("通过") || msg.includes("已发送") ? (
+              <span className="text-emerald-500">✓</span>
+            ) : msg.includes("失败") || msg.includes("错误") ? (
+              <span className="text-rose-500">✕</span>
+            ) : null}
             {msg}
           </p>
         )}

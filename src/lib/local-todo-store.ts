@@ -161,6 +161,7 @@ export async function syncPendingTodosToCloud(): Promise<{ synced: number; faile
         priority: todo.payload.priority,
       };
       const response = await fetch("/api/todos", {
+        cache: "no-store",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

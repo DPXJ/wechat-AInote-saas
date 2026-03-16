@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Todo, TodoPriority, TodoStatus } from "@/lib/types";
 import {
   addPendingTodo,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/local-todo-store";
 
 type TodoFilter = "all" | "pending" | "done" | "deleted";
+type DateRangeFilter = "" | "today" | "last7";
 
 const priorityConfig: Record<TodoPriority, { label: string; dot: string; bg: string }> = {
   urgent: { label: "紧急", dot: "bg-rose-500", bg: "bg-rose-500/10 text-rose-600" },
@@ -89,11 +90,14 @@ export function TodoPanel({
   const [localTodos, setLocalTodos] = useState<Todo[]>([]);
   const [total, setTotal] = useState(initialTotal ?? 0);
   const [filter, setFilter] = useState<TodoFilter>("pending");
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("");
+  const [priorityFilter, setPriorityFilter] = useState<TodoPriority | "">("");
   const [dateFilter, setDateFilter] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newPriority, setNewPriority] = useState<TodoPriority>("medium");
   const [creating, setCreating] = useState(false);
   const [detailTodo, setDetailTodo] = useState<Todo | null>(null);
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
 
   const loadLocalTodos = useCallback(async () => {
     try {
@@ -117,7 +121,7 @@ export function TodoPanel({
   }, []);
 
   const fetchTodos = useCallback(async () => {
-    const res = await fetch(`/api/todos?limit=200`);
+    const res = await fetch(`/api/todos?limit=200`, { cache: "no-store" });
     const data = await res.json();
     setServerTodos(data.todos);
     setTotal(data.total);
@@ -174,12 +178,22 @@ export function TodoPanel({
   const toggleStatus = async (todo: Todo) => {
     if (todo.id.startsWith("local_todo_")) return;
     const newStatus: TodoStatus = todo.status === "pending" ? "done" : "pending";
+    if (newStatus === "done") {
+      setCompletingIds((s) => new Set(s).add(todo.id));
+      await new Promise((r) => setTimeout(r, 280));
+    }
     await fetch(`/api/todos/${todo.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
+      cache: "no-store",
     });
     await fetchTodos();
+    setCompletingIds((s) => {
+      const next = new Set(s);
+      next.delete(todo.id);
+      return next;
+    });
   };
 
   const updatePriority = async (todo: Todo, priority: TodoPriority) => {
@@ -188,6 +202,7 @@ export function TodoPanel({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ priority }),
+      cache: "no-store",
     });
     await fetchTodos();
   };
@@ -197,7 +212,7 @@ export function TodoPanel({
       setLocalTodos((curr) => curr.filter((t) => t.id !== id));
       return;
     }
-    await fetch(`/api/todos/${id}`, { method: "DELETE" });
+    await fetch(`/api/todos/${id}`, { method: "DELETE", cache: "no-store" });
     await fetchTodos();
   };
 
@@ -211,6 +226,7 @@ export function TodoPanel({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ _hardDelete: true }),
+      cache: "no-store",
     });
     await fetchTodos();
   };
@@ -221,6 +237,7 @@ export function TodoPanel({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "pending" }),
+      cache: "no-store",
     });
     await fetchTodos();
   };
@@ -232,13 +249,33 @@ export function TodoPanel({
     if (filter !== "all") {
       base = base.filter((t) => t.status === filter);
     }
-    if (dateFilter) {
+    if (dateRangeFilter === "today") {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      base = base.filter((t) => getDateKey(t.createdAt) === todayStr);
+    } else if (dateRangeFilter === "last7") {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      base = base.filter((t) => new Date(t.createdAt) >= cutoff);
+    } else if (dateFilter) {
       base = base.filter((t) => getDateKey(t.createdAt) === dateFilter);
     }
+    if (priorityFilter) {
+      base = base.filter((t) => t.priority === priorityFilter);
+    }
     return base;
-  }, [allTodos, filter, dateFilter]);
+  }, [allTodos, filter, dateRangeFilter, dateFilter, priorityFilter]);
 
-  const groups = useMemo(() => groupByDate(filteredTodos), [filteredTodos]);
+  const displayTodos = useMemo(() => {
+    const base = [...filteredTodos];
+    for (const id of completingIds) {
+      const t = allTodos.find((x) => x.id === id);
+      if (t && !base.some((x) => x.id === id)) base.push(t);
+    }
+    return base;
+  }, [filteredTodos, allTodos, completingIds]);
+
+  const groups = useMemo(() => groupByDate(displayTodos), [displayTodos]);
 
   const availableDates = useMemo(() => {
     const set = new Set<string>();
@@ -247,7 +284,7 @@ export function TodoPanel({
   }, [allTodos]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Fixed header: title + create + filters */}
       <div className="shrink-0 space-y-4">
         <h2 className="text-xl font-bold text-[var(--foreground)]">待办事项</h2>
@@ -306,9 +343,50 @@ export function TodoPanel({
             </button>
           ))}
 
+          {/* 日期范围 + 优先级筛选（与状态 tab 为并关系） */}
+          {([
+            { id: "today", label: "今日" },
+            { id: "last7", label: "近七日" },
+          ] as const).map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => {
+                setDateRangeFilter((v) => (v === f.id ? "" : f.id));
+                if (dateRangeFilter !== f.id) setDateFilter("");
+              }}
+              className={[
+                "rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                dateRangeFilter === f.id
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
+                  : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+              ].join(" ")}
+            >
+              {f.label}
+            </button>
+          ))}
+          {priorities.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPriorityFilter((v) => (v === p ? "" : p))}
+              className={[
+                "rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                priorityFilter === p
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
+                  : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+              ].join(" ")}
+            >
+              {priorityConfig[p].label}
+            </button>
+          ))}
+
           <select
             value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
+            onChange={(e) => {
+              setDateFilter(e.target.value);
+              if (e.target.value) setDateRangeFilter("");
+            }}
             className="ml-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
           >
             <option value="">全部日期</option>
@@ -321,9 +399,9 @@ export function TodoPanel({
         </div>
       </div>
 
-      {/* Scrollable todo list */}
-      <div className="hide-scrollbar mt-4 min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-4">
+      {/* Todo list (scroll handled by parent content-card when todos tab) */}
+      <div className="mt-4">
+        <div className="mx-auto max-w-4xl space-y-4 pb-24">
           {filteredTodos.length === 0 ? (
             <div className="flex flex-col items-center py-16 text-center">
               <span className="text-3xl">☑</span>
@@ -340,19 +418,32 @@ export function TodoPanel({
                 </div>
 
                 <div className="space-y-4">
-                  {group.items.map((todo) => (
-                    <TodoCard
-                      key={todo.id}
-                      todo={todo}
-                      onToggleStatus={() => toggleStatus(todo)}
-                      onChangePriority={(p) => updatePriority(todo, p)}
-                      onSoftDelete={() => handleSoftDelete(todo.id)}
-                      onHardDelete={() => handleHardDelete(todo.id)}
-                      onRestore={() => handleRestore(todo.id)}
-                      onOpenDetail={() => setDetailTodo(todo)}
-                      onSynced={fetchTodos}
-                    />
-                  ))}
+                  {group.items.map((todo) => {
+                    const completing = completingIds.has(todo.id);
+                    return (
+                      <div
+                        key={todo.id}
+                        className="overflow-hidden transition-all duration-300 ease-out"
+                        style={
+                          completing
+                            ? { maxHeight: 0, opacity: 0, marginTop: 0, marginBottom: 0 }
+                            : { maxHeight: 500, opacity: 1 }
+                        }
+                      >
+                        <TodoCard
+                          todo={todo}
+                          completing={completing}
+                          onToggleStatus={() => toggleStatus(todo)}
+                          onChangePriority={(p) => updatePriority(todo, p)}
+                          onSoftDelete={() => handleSoftDelete(todo.id)}
+                          onHardDelete={() => handleHardDelete(todo.id)}
+                          onRestore={() => handleRestore(todo.id)}
+                          onOpenDetail={() => setDetailTodo(todo)}
+                          onSynced={fetchTodos}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))
@@ -376,6 +467,7 @@ export function TodoPanel({
 
 function TodoCard({
   todo,
+  completing,
   onToggleStatus,
   onChangePriority,
   onSoftDelete,
@@ -385,6 +477,7 @@ function TodoCard({
   onSynced,
 }: {
   todo: Todo;
+  completing?: boolean;
   onToggleStatus: () => void;
   onChangePriority: (priority: TodoPriority) => void;
   onSoftDelete: () => void;
@@ -402,14 +495,15 @@ function TodoCard({
   return (
     <div
       className={[
-        "group/card rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3 transition",
+        "group/card rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3 transition-all duration-300 ease-out will-change-transform",
         isDeleted ? "opacity-50" : "hover:border-[var(--line-strong)] hover:shadow-sm cursor-pointer",
         todo.status === "done" && !isDeleted ? "opacity-60" : "",
+        completing ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
       ].join(" ")}
-      onClick={() => !isDeleted && onOpenDetail()}
+      onClick={() => !isDeleted && !completing && onOpenDetail()}
     >
       {/* 左侧固定宽度使虚线对齐；右侧操作区 */}
-      <div className="grid grid-cols-[minmax(0,1fr)_160px] items-stretch gap-0">
+      <div className="grid grid-cols-[minmax(0,1fr)_220px] items-stretch gap-0">
         {/* 左侧小卡片：勾选 + 内容（最多 3 行）+ 时间，宽度自适应但虚线由右侧列起点固定 */}
         <div className="flex min-w-0 items-start gap-3 border-r border-dashed border-[var(--line)] pr-4">
           {!isDeleted && (
@@ -417,10 +511,10 @@ function TodoCard({
               type="button"
               onClick={(e) => { e.stopPropagation(); onToggleStatus(); }}
               className={[
-                "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition",
+                "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all duration-200 ease-out active:scale-95",
                 todo.status === "done"
                   ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
-                  : "border-[var(--line-strong)] hover:border-[var(--foreground)]",
+                  : "border-[var(--line-strong)] hover:border-[var(--foreground)] hover:bg-[var(--surface)]",
               ].join(" ")}
             >
               {todo.status === "done" && (
@@ -452,7 +546,7 @@ function TodoCard({
         </div>
 
         {/* 右侧小卡片：默认显示优先级（靠左）+ 已同步绿点；悬浮依次显示：同步滴答、来源、删除 */}
-        <div className="flex min-w-[160px] flex-wrap items-center justify-start gap-2 content-center pl-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex min-w-[220px] flex-nowrap items-center justify-start gap-2 pl-4" onClick={(e) => e.stopPropagation()}>
           {!isDeleted && (
             <>
               {/* 优先级：始终显示，靠左 */}
@@ -466,9 +560,12 @@ function TodoCard({
                   <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
                   {pc.label}
                 </button>
-                {/* 已同步滴答：绿色小圆点 */}
+                {/* 已同步滴答：小绿点 + 文字 */}
                 {todo.syncedAt && !needsResync && (
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="已同步至滴答清单" />
+                  <span className="inline-flex shrink-0 items-center gap-1 text-xs text-emerald-500" title="已同步至滴答清单">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    已同步滴答
+                  </span>
                 )}
                 {priorityOpen && (
                   <div
@@ -499,27 +596,15 @@ function TodoCard({
                 )}
               </div>
 
-              {/* 悬浮时依次显示：同步滴答、来源、删除 */}
-              <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-150 group-hover/card:opacity-100">
-                {todo.syncedAt && !needsResync ? (
-                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/5 px-2 py-1 text-[11px] font-medium text-emerald-500">
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    已同步
-                  </span>
-                ) : needsResync ? (
-                  <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="重同步" />
+              {/* 悬浮时显示：同步/重同步按钮（已同步时左侧已有标识，此处不重复）、来源、删除 */}
+              <div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity duration-150 group-hover/card:opacity-100">
+                {todo.syncedAt && !needsResync ? null : needsResync ? (
+                  <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="重同步" disabled={todo.id.startsWith("local_todo_")} />
                 ) : (
-                  <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="同步滴答" />
+                  <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="同步滴答" disabled={todo.id.startsWith("local_todo_")} />
                 )}
                 {todo.recordId && (
-                  <a
-                    href={`/records/${todo.recordId}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center rounded-md border border-purple-400/40 px-2 py-1 text-[11px] font-medium text-purple-500 transition hover:border-purple-400 hover:bg-purple-500/5"
-                    title="查看来源"
-                  >
-                    来源
-                  </a>
+                  <SourcePopover recordId={todo.recordId} />
                 )}
                 <button
                   type="button"
@@ -589,6 +674,7 @@ function TodoDetailModal({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: editContent, priority: editPriority }),
+      cache: "no-store",
     });
     setSaving(false);
     onRefresh();
@@ -598,7 +684,7 @@ function TodoDetailModal({
     setSyncing(true);
     setMsg("");
     try {
-      const res = await fetch(`/api/todos/${todo.id}/sync`, { method: "POST" });
+      const res = await fetch(`/api/todos/${todo.id}/sync`, { method: "POST", cache: "no-store" });
       const data = await res.json();
       if (!res.ok) { setMsg(data.error || "同步失败"); }
       else { setMsg("已同步到滴答清单 ✓"); }
@@ -697,18 +783,85 @@ function TodoDetailModal({
   );
 }
 
+/* ── Source Popover ── */
+
+function SourcePopover({ recordId }: { recordId: string }) {
+  const [open, setOpen] = useState(false);
+  const [record, setRecord] = useState<{ title: string; summary?: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || record) return;
+    setLoading(true);
+    fetch(`/api/records/${recordId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.record) setRecord({ title: data.record.title, summary: data.record.summary });
+      })
+      .finally(() => setLoading(false));
+  }, [open, recordId, record]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("click", close, { capture: true });
+    return () => document.removeEventListener("click", close, { capture: true });
+  }, [open]);
+
+  return (
+    <div className="relative" ref={popoverRef}>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-purple-500 transition hover:bg-purple-500/10"
+        title="查看来源"
+      >
+        来源
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-lg border border-[var(--line)] bg-[var(--card)] p-3 shadow-lg">
+          {loading ? (
+            <p className="text-xs text-[var(--muted)]">加载中...</p>
+          ) : record ? (
+            <div className="space-y-2">
+              <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{record.title}</p>
+              {record.summary && <p className="line-clamp-2 text-[11px] text-[var(--muted)]">{record.summary}</p>}
+              <a
+                href={`/records/${recordId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-xs text-purple-500 hover:underline"
+              >
+                查看详情 →
+              </a>
+            </div>
+          ) : (
+            <a href={`/records/${recordId}`} target="_blank" rel="noopener noreferrer" className="text-xs text-purple-500 hover:underline">
+              查看来源笔记 →
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Inline Sync Button ── */
 
-function SyncTickTickBtn({ todoId, onSynced, label }: { todoId: string; onSynced: () => void; label: string }) {
+function SyncTickTickBtn({ todoId, onSynced, label, disabled }: { todoId: string; onSynced: () => void; label: string; disabled?: boolean }) {
   const [syncing, setSyncing] = useState(false);
   const [errMsg, setErrMsg] = useState("");
 
   const handleSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (disabled) return;
     setSyncing(true);
     setErrMsg("");
     try {
-      const res = await fetch(`/api/todos/${todoId}/sync`, { method: "POST" });
+      const res = await fetch(`/api/todos/${todoId}/sync`, { method: "POST", cache: "no-store" });
       if (res.ok) {
         onSynced();
       } else {
@@ -725,18 +878,18 @@ function SyncTickTickBtn({ todoId, onSynced, label }: { todoId: string; onSynced
   };
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex shrink-0 items-center gap-1">
       <button
         type="button"
         onClick={handleSync}
-        disabled={syncing}
-        className="inline-flex items-center gap-0.5 rounded border border-purple-400/40 px-1.5 py-0.5 text-[10px] font-medium text-purple-500 transition hover:border-purple-400 hover:bg-purple-500/5 disabled:opacity-50"
+        disabled={syncing || disabled}
+        className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-purple-500 transition hover:bg-purple-500/10 disabled:opacity-50"
       >
         <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 8a6 6 0 0 1 10.3-4.1M14 8a6 6 0 0 1-10.3 4.1" />
           <path d="M14 2v4h-4M2 14v-4h4" />
         </svg>
-        {syncing ? "..." : label}
+        {syncing ? "..." : disabled ? "先保存" : label}
       </button>
       {errMsg && <span className="text-[9px] text-rose-500">{errMsg}</span>}
     </span>

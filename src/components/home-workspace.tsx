@@ -149,10 +149,21 @@ export function HomeWorkspace({
     return unsub;
   }, []);
 
+  const refetchTodos = useCallback(() => {
+    fetch("/api/todos?limit=200", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setPrefetchedTodos({ todos: d.todos || [], total: d.total ?? 0 }))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "todos") refetchTodos();
+  }, [activeTab, refetchTodos]);
+
   useEffect(() => {
     const abort = new AbortController();
     Promise.all([
-      fetch("/api/todos?limit=200", { signal: abort.signal })
+      fetch("/api/todos?limit=200", { signal: abort.signal, cache: "no-store" })
         .then((r) => r.json())
         .then((d) => setPrefetchedTodos({ todos: d.todos || [], total: d.total ?? 0 }))
         .catch(() => {}),
@@ -187,7 +198,7 @@ export function HomeWorkspace({
   };
 
   useEffect(() => {
-    fetch("/api/todos?limit=1&status=pending")
+    fetch("/api/todos?limit=1&status=pending", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setPendingTodoCount(d.total || 0))
       .catch(() => {});
@@ -529,7 +540,12 @@ export function HomeWorkspace({
               </div>
             )}
 
-            <div className="content-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--card)]/80 p-5 shadow-sm backdrop-blur-sm lg:p-6">
+            <div
+              className={[
+                "content-card flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)]/80 shadow-sm backdrop-blur-sm",
+                activeTab === "todos" ? "overflow-y-auto p-5 pb-8 lg:p-6 lg:pb-10" : "overflow-hidden p-5 lg:p-6",
+              ].join(" ")}
+            >
               {activeTab === "record" && (
                 <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
                   <div className="mb-4 flex items-center justify-between gap-2">
