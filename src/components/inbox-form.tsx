@@ -19,6 +19,8 @@ type StatusTone = "info" | "success" | "error";
 const FILE_ACCEPT_ALL =
   "image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.csv,.json,application/pdf";
 
+const DEFAULT_TAG_KEY = "ai-box-default-tag";
+
 function fileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}-${file.type}`;
 }
@@ -47,6 +49,40 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   const [fileDescs, setFileDescs] = useState<Record<string, string>>({});
   const [moreOpen, setMoreOpen] = useState(false);
   const [enableAiSummaryAndTodos, setEnableAiSummaryAndTodos] = useState(true);
+  const [recentTags, setRecentTags] = useState<Array<{ tag: string; count: number }>>([]);
+  const [defaultTag, setDefaultTagState] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(DEFAULT_TAG_KEY) || "";
+  });
+
+  useEffect(() => {
+    fetch("/api/tags")
+      .then((r) => r.json())
+      .then((d) => setRecentTags((d.tags || []).slice(0, 3)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (defaultTag && !userTags) {
+      setUserTags(defaultTag);
+    }
+  }, []);
+
+  function setDefaultTag(tag: string) {
+    if (tag) {
+      window.localStorage.setItem(DEFAULT_TAG_KEY, tag);
+      setDefaultTagState(tag);
+    } else {
+      window.localStorage.removeItem(DEFAULT_TAG_KEY);
+      setDefaultTagState("");
+    }
+  }
+
+  function addTag(tag: string) {
+    const current = userTags.split(/\s+/).filter(Boolean);
+    if (current.includes(tag)) return;
+    setUserTags([...current, tag].join(" "));
+  }
 
   useEffect(() => {
     if (!status || statusTone === "error") return;
@@ -137,7 +173,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       setTitle("");
       setContentText("");
       setContextNote("");
-      setUserTags("");
+      setUserTags(defaultTag);
       setFiles([]);
       setFileTags({});
       setFileDescs({});
@@ -184,36 +220,88 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       }}
       onDrop={(e) => { e.preventDefault(); setDragging(false); const dropped = Array.from(e.dataTransfer.files || []); if (dropped.length > 0) attachFiles(dropped, "拖拽"); }}
     >
-      {/* Top: Title + Tags + AI Search */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="input-focus-bar flex-1 min-w-[140px]">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="标题（选填）"
-            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
-          />
+      {/* Top: Title + Tags + AI Search - 同一水平线 */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="input-focus-bar flex-1 min-w-[120px]">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="标题（选填）"
+              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
+            />
+          </div>
+          <div className="input-focus-bar flex-1 min-w-[120px]">
+            <input
+              value={userTags}
+              onChange={(e) => setUserTags(e.target.value)}
+              placeholder="标签（空格分隔，选填）"
+              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
+            />
+          </div>
+          {onSwitchToSearch && (
+            <button
+              type="button"
+              onClick={onSwitchToSearch}
+              className="ai-border flex shrink-0 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-2.5 text-left transition"
+            >
+              <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
+                <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
+              </svg>
+              <span className="text-sm text-[var(--muted)]">AI 搜索</span>
+            </button>
+          )}
         </div>
-        <div className="input-focus-bar flex-1 min-w-[140px]">
-          <input
-            value={userTags}
-            onChange={(e) => setUserTags(e.target.value)}
-            placeholder="标签（逗号分隔，选填）"
-            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
-          />
+        {/* 默认标签 + 最近标签 - 独立一行，与上方输入框对齐 */}
+        <div className="flex flex-wrap items-center gap-2">
+          {defaultTag && (
+            <span className="inline-flex items-center gap-1 rounded-lg bg-purple-500/10 px-2.5 py-1 text-xs text-purple-600">
+              <span className="text-[var(--muted)]">默认</span>
+              <button
+                type="button"
+                onClick={() => addTag(defaultTag)}
+                className="font-medium hover:underline"
+              >
+                {defaultTag}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDefaultTag("")}
+                className="rounded p-0.5 hover:bg-purple-500/20"
+                title="取消默认"
+              >
+                ×
+              </button>
+            </span>
+          )}
+          {recentTags.filter(({ tag }) => tag !== defaultTag).map(({ tag }) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => addTag(tag)}
+              onContextMenu={(e) => { e.preventDefault(); setDefaultTag(tag); }}
+              className="rounded-lg bg-[var(--surface)] px-2.5 py-1 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
+              title="点击添加，右键设为默认"
+            >
+              {tag}
+            </button>
+          ))}
+          {!defaultTag && (
+            <button
+              type="button"
+              onClick={() => {
+                const v = window.prompt("输入默认标签（新建记录时自动填入）");
+                if (v?.trim()) setDefaultTag(v.trim());
+              }}
+              className="rounded-lg px-2.5 py-1 text-[11px] text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+            >
+              设置默认
+            </button>
+          )}
+          {!defaultTag && recentTags.length > 0 && (
+            <span className="text-[11px] text-[var(--muted)]">· 右键标签可设为默认</span>
+          )}
         </div>
-        {onSwitchToSearch && (
-          <button
-            type="button"
-            onClick={onSwitchToSearch}
-            className="ai-border flex shrink-0 items-center gap-2 rounded-lg bg-[var(--card)] px-3 py-2 text-left transition"
-          >
-            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
-              <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
-            </svg>
-            <span className="text-xs text-[var(--muted)]">AI 搜索</span>
-          </button>
-        )}
       </div>
 
       {/* Main content area */}
@@ -312,7 +400,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
                         <input
                           value={fileTags[fk] || ""}
                           onChange={(e) => setFileTags((prev) => ({ ...prev, [fk]: e.target.value }))}
-                          placeholder="标签（逗号分隔）"
+                          placeholder="标签（空格分隔）"
                           className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)]"
                         />
                       </>

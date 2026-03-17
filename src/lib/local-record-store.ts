@@ -233,7 +233,7 @@ export function pendingToRecordLike(pending: PendingRecord): Record<string, unkn
   const p = pending.payload;
   const summary = p.contentText.slice(0, 120).replace(/\n/g, " ") || "未同步";
   const keywords = p.userTags
-    .split(/[,，]/)
+    .split(/\s+/)
     .map((t) => t.trim())
     .filter(Boolean);
   return {

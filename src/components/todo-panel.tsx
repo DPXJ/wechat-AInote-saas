@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Todo, TodoPriority, TodoStatus } from "@/lib/types";
 import {
   addPendingTodo,
@@ -637,15 +637,12 @@ function TodoCard({
                 )}
               </div>
 
-              {/* 悬浮时显示：同步/重同步按钮（已同步时左侧已有标识，此处不重复）、来源、删除 */}
+              {/* 悬浮时显示：同步/重同步按钮（已同步时左侧已有标识，此处不重复）、删除 */}
               <div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity duration-150 group-hover/card:opacity-100">
                 {todo.syncedAt && !needsResync ? null : needsResync ? (
                   <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="重同步" disabled={todo.id.startsWith("local_todo_")} />
                 ) : (
                   <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="同步滴答" disabled={todo.id.startsWith("local_todo_")} />
-                )}
-                {todo.recordId && (
-                  <SourcePopover recordId={todo.recordId} />
                 )}
                 <button
                   type="button"
@@ -702,6 +699,25 @@ function TodoDetailModal({
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState("");
+  const [sourceRecord, setSourceRecord] = useState<{ title: string; summary?: string; sourceLabel?: string } | null | "loading">(todo.recordId ? "loading" : null);
+
+  useEffect(() => {
+    if (!todo.recordId) return;
+    fetch(`/api/records/${todo.recordId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.record) {
+          setSourceRecord({
+            title: data.record.title || "未命名",
+            summary: data.record.summary,
+            sourceLabel: data.record.sourceLabel,
+          });
+        } else {
+          setSourceRecord(null);
+        }
+      })
+      .catch(() => setSourceRecord(null));
+  }, [todo.recordId]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -776,8 +792,45 @@ function TodoDetailModal({
           <div className="grid grid-cols-2 gap-3 text-xs text-[var(--muted)]">
             <div>状态：<span className="text-[var(--foreground)]">{todo.status === "pending" ? "待处理" : todo.status === "done" ? "已完成" : "已删除"}</span></div>
             <div>创建时间：<span className="text-[var(--foreground)]">{formatBeijingTime(todo.createdAt)}</span></div>
-            {todo.recordId && <div className="col-span-2">来源记录：<a href={`/records/${todo.recordId}`} className="text-[var(--muted-strong)] hover:underline">{todo.recordId}</a></div>}
           </div>
+
+          {todo.recordId && (
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs font-medium text-[var(--muted)] mb-2">来源</p>
+              {sourceRecord === "loading" ? (
+                <p className="text-xs text-[var(--muted)]">加载中...</p>
+              ) : sourceRecord ? (
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-[var(--foreground)]">{sourceRecord.title}</p>
+                  {sourceRecord.summary && (
+                    <p className="text-xs text-[var(--muted)] line-clamp-3">{sourceRecord.summary}</p>
+                  )}
+                  {sourceRecord.sourceLabel && (
+                    <p className="text-[11px] text-[var(--muted)]">来源：{sourceRecord.sourceLabel}</p>
+                  )}
+                  <a
+                    href={`/records/${todo.recordId}`}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-purple-500 hover:underline"
+                  >
+                    查看完整记录
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M7 17L17 7M17 7h-10v10" />
+                    </svg>
+                  </a>
+                </div>
+              ) : (
+                <a
+                  href={`/records/${todo.recordId}`}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-purple-500 hover:underline"
+                >
+                  查看完整记录
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M7 17L17 7M17 7h-10v10" />
+                  </svg>
+                </a>
+              )}
+            </div>
+          )}
 
           {/* Sync to TickTick */}
           <div className="flex items-center gap-3 rounded-lg bg-[var(--surface)] px-4 py-3">
@@ -820,72 +873,6 @@ function TodoDetailModal({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ── Source Popover ── */
-
-function SourcePopover({ recordId }: { recordId: string }) {
-  const [open, setOpen] = useState(false);
-  const [record, setRecord] = useState<{ title: string; summary?: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open || record) return;
-    setLoading(true);
-    fetch(`/api/records/${recordId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.record) setRecord({ title: data.record.title, summary: data.record.summary });
-      })
-      .finally(() => setLoading(false));
-  }, [open, recordId, record]);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("click", close, { capture: true });
-    return () => document.removeEventListener("click", close, { capture: true });
-  }, [open]);
-
-  return (
-    <div className="relative" ref={popoverRef}>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-purple-500 transition hover:bg-purple-500/10"
-        title="查看来源"
-      >
-        来源
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-lg border border-[var(--line)] bg-[var(--card)] p-3 shadow-lg">
-          {loading ? (
-            <p className="text-xs text-[var(--muted)]">加载中...</p>
-          ) : record ? (
-            <div className="space-y-2">
-              <p className="line-clamp-2 text-xs font-medium text-[var(--foreground)]">{record.title}</p>
-              {record.summary && <p className="line-clamp-2 text-[11px] text-[var(--muted)]">{record.summary}</p>}
-              <a
-                href={`/records/${recordId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-xs text-purple-500 hover:underline"
-              >
-                查看详情 →
-              </a>
-            </div>
-          ) : (
-            <a href={`/records/${recordId}`} target="_blank" rel="noopener noreferrer" className="text-xs text-purple-500 hover:underline">
-              查看来源笔记 →
-            </a>
-          )}
-        </div>
-      )}
     </div>
   );
 }

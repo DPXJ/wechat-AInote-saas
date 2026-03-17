@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     const enableAiSummaryAndTodos = enableAiRaw !== "false" && enableAiRaw !== "0";
     const userTagsRaw = String(formData.get("userTags") || "");
     const userTags = userTagsRaw
-      .split(/[,，]/)
+      .split(/\s+/)
       .map((t) => t.trim())
       .filter(Boolean);
     const fileEntries = formData
@@ -147,7 +147,7 @@ export async function POST(request: Request) {
       const tagsRaw = String(formData.get(`fileTags_${i}`) || "");
       const desc = String(formData.get(`fileDesc_${i}`) || "");
       const tags = tagsRaw
-        .split(/[,，]/)
+        .split(/\s+/)
         .map((t) => t.trim())
         .filter(Boolean);
       return { tags, description: desc };
