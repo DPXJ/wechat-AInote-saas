@@ -145,6 +145,17 @@ export async function extractTodosFromRecord(userId: string, record: KnowledgeRe
   }
 }
 
+/** 强制将记录关联为待办（用户勾选「关联待办」时调用） */
+export async function createTodoFromRecord(userId: string, record: KnowledgeRecord) {
+  const content = (record.title || record.summary || record.contentText?.slice(0, 100) || "未命名").trim();
+  if (!content) return;
+  await createTodo(userId, {
+    content,
+    priority: "medium",
+    recordId: record.id,
+  });
+}
+
 export async function getTodoStats(userId: string) {
   const supabase = getSupabaseAdmin();
   const today = new Date().toISOString().slice(0, 10);

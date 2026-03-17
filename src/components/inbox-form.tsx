@@ -48,7 +48,9 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   const [fileTags, setFileTags] = useState<Record<string, string>>({});
   const [fileDescs, setFileDescs] = useState<Record<string, string>>({});
   const [moreOpen, setMoreOpen] = useState(false);
-  const [enableAiSummaryAndTodos, setEnableAiSummaryAndTodos] = useState(true);
+  const [enableAiSummary, setEnableAiSummary] = useState(true);
+  const [enableAiTodo, setEnableAiTodo] = useState(true);
+  const [linkToTodo, setLinkToTodo] = useState(false);
   const [recentTags, setRecentTags] = useState<Array<{ tag: string; count: number }>>([]);
   const [defaultTag, setDefaultTagState] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -166,7 +168,9 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         files: filePayloads,
         fileTags: { ...fileTags },
         fileDescs: { ...fileDescs },
-        enableAiSummaryAndTodos,
+        enableAiSummary,
+        enableAiTodo,
+        linkToTodo,
       };
 
       await addPendingRecord(payload);
@@ -411,17 +415,37 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             </div>
           )}
 
-          {/* Submit row: AI checkbox + 提交记录 */}
+          {/* Submit row: AI options + 提交记录 */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--muted-strong)]">
-              <input
-                type="checkbox"
-                checked={enableAiSummaryAndTodos}
-                onChange={(e) => setEnableAiSummaryAndTodos(e.target.checked)}
-                className="rounded border-[var(--line)]"
-              />
-              <span>AI 摘要与识别待办</span>
-            </label>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--muted-strong)]">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enableAiSummary}
+                  onChange={(e) => setEnableAiSummary(e.target.checked)}
+                  className="rounded border-[var(--line)]"
+                />
+                <span>AI 识别摘要</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enableAiTodo}
+                  onChange={(e) => setEnableAiTodo(e.target.checked)}
+                  className="rounded border-[var(--line)]"
+                />
+                <span>AI 识别待办</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={linkToTodo}
+                  onChange={(e) => setLinkToTodo(e.target.checked)}
+                  className="rounded border-[var(--line)]"
+                />
+                <span>关联待办</span>
+              </label>
+            </div>
             <button
               type="submit"
               disabled={submitting}

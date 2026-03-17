@@ -116,8 +116,9 @@ export async function POST(request: Request) {
     const contextNote = String(formData.get("contextNote") || "");
     const contentText = String(formData.get("contentText") || "");
     const recordTypeHint = String(formData.get("recordTypeHint") || "") as RecordType | "";
-    const enableAiRaw = String(formData.get("enableAiSummaryAndTodos") || "true");
-    const enableAiSummaryAndTodos = enableAiRaw !== "false" && enableAiRaw !== "0";
+    const enableAiSummary = String(formData.get("enableAiSummary") || "true") !== "false";
+    const enableAiTodo = String(formData.get("enableAiTodo") || "true") !== "false";
+    const linkToTodo = String(formData.get("linkToTodo") || "false") === "true";
     const userTagsRaw = String(formData.get("userTags") || "");
     const userTags = userTagsRaw
       .split(/\s+/)
@@ -165,7 +166,7 @@ export async function POST(request: Request) {
       },
       uploads,
       fileMeta,
-      { enableAiSummaryAndTodos },
+      { enableAiSummary, enableAiTodo, linkToTodo },
     );
 
     if (record) {

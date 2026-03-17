@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { AssetGallery } from "@/components/asset-gallery";
 import { InboxForm } from "@/components/inbox-form";
@@ -151,17 +151,6 @@ export function HomeWorkspace({
     return unsub;
   }, []);
 
-  const refetchTodos = useCallback(() => {
-    fetch("/api/todos?limit=200", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setPrefetchedTodos({ todos: d.todos || [], total: d.total ?? 0 }))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === "todos") refetchTodos();
-  }, [activeTab, refetchTodos]);
-
   useEffect(() => {
     const abort = new AbortController();
     Promise.all([
@@ -231,6 +220,8 @@ export function HomeWorkspace({
     window.sessionStorage.setItem("ai-box-tab", tab);
   }, []);
 
+  const searchParams = useSearchParams();
+
   useEffect(() => {
     if (tabRestoredRef.current) return;
     tabRestoredRef.current = true;
@@ -239,6 +230,17 @@ export function HomeWorkspace({
       setActiveTabRaw(saved as WorkspaceTab);
     }
   }, []);
+
+  // 支持 URL 参数：/?tab=history&record=xxx → 跳转历史 tab 并选中该记录（用于「源信息」入口）
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const recordId = searchParams.get("record");
+    if (tab === "history" && tabs.some((t) => t.id === tab)) {
+      setActiveTabRaw("history");
+      if (recordId) setSelectedRecordId(recordId);
+      router.replace("/", { scroll: false });
+    }
+  }, [searchParams, router]);
 
   const refreshRecords = useCallback(async () => {
     const res = await fetch(`/api/records?limit=${records.length || PAGE_SIZE}&offset=0`);
@@ -544,7 +546,7 @@ export function HomeWorkspace({
             {(activeTab === "record" || activeTab === "history") && (
               <div className="flex items-center justify-between gap-2">
                 <StatsBar onNavigateToTodos={(priority) => { setTodosInitialPriority(priority ?? ""); setActiveTab("todos"); }} />
-                <SyncIndicator />
+                {activeTab === "history" && <SyncIndicator />}
               </div>
             )}
 
@@ -558,7 +560,7 @@ export function HomeWorkspace({
                 <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
                   <div className="mb-4 flex items-center justify-between gap-2">
                     <h2 className="text-sm font-medium text-[var(--foreground)]">新建文档</h2>
-                    <RefreshButton onClick={refreshRecords} />
+                    <SyncIndicator />
                   </div>
                   <InboxForm
                     onCreated={async (id) => {

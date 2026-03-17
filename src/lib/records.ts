@@ -84,9 +84,11 @@ export async function createKnowledgeRecord(
   input: RecordInput,
   uploads: StoredUpload[],
   fileMeta?: Array<{ tags?: string[]; description?: string }>,
-  opts?: { enableAiSummaryAndTodos?: boolean },
+  opts?: { enableAiSummary?: boolean; enableAiTodo?: boolean; linkToTodo?: boolean },
 ) {
-  const enableAi = opts?.enableAiSummaryAndTodos !== false;
+  const enableAiSummary = opts?.enableAiSummary !== false;
+  const enableAiTodo = opts?.enableAiTodo !== false;
+  const linkToTodo = opts?.linkToTodo === true;
   const supabase = getSupabaseAdmin();
   const recordId = createId("rec");
   const createdAt = nowIso();
@@ -164,7 +166,7 @@ export async function createKnowledgeRecord(
     input.recordTypeHint || inferRecordType(uploads.map((item) => item.mimeType));
 
   let analysis: AnalysisOutput;
-  if (enableAi) {
+  if (enableAiSummary) {
     analysis = await analyzeRecord(userId, {
       title: input.title?.trim() || contentText.slice(0, 42) || (storedAssets[0]?.original_name as string) || "未命名资料",
       sourceLabel,
@@ -189,7 +191,7 @@ export async function createKnowledgeRecord(
   const firstAssetName = storedAssets[0]?.original_name as string | undefined;
   const title =
     input.title?.trim() ||
-    (enableAi && analysis.title && analysis.title.trim()) ||
+    (enableAiSummary && analysis.title && analysis.title.trim()) ||
     textContent ||
     firstAssetName ||
     "未命名资料";
@@ -270,10 +272,11 @@ export async function createKnowledgeRecord(
     syncRuns: [],
   };
 
-  if (enableAi && analysis.actionItems.length > 0) {
-    import("@/lib/todos")
-      .then(({ extractTodosFromRecord }) => extractTodosFromRecord(userId, created))
-      .catch(() => {});
+  const { extractTodosFromRecord, createTodoFromRecord } = await import("@/lib/todos");
+  if (linkToTodo) {
+    await createTodoFromRecord(userId, created);
+  } else if (enableAiTodo && analysis.actionItems.length > 0) {
+    await extractTodosFromRecord(userId, created);
   }
 
   return created;

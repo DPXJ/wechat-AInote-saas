@@ -26,7 +26,9 @@ export interface PendingRecordPayload {
   files: PendingFilePayload[];
   fileTags: Record<string, string>;
   fileDescs: Record<string, string>;
-  enableAiSummaryAndTodos?: boolean;
+  enableAiSummary?: boolean;
+  enableAiTodo?: boolean;
+  linkToTodo?: boolean;
 }
 
 export interface PendingRecord {
@@ -153,7 +155,9 @@ export function buildFormDataFromPending(pending: PendingRecord): FormData {
   formData.set("contextNote", payload.contextNote);
   formData.set("userTags", payload.userTags);
   formData.set("recordTypeHint", payload.recordTypeHint);
-  formData.set("enableAiSummaryAndTodos", String(payload.enableAiSummaryAndTodos !== false));
+  formData.set("enableAiSummary", String(payload.enableAiSummary !== false));
+  formData.set("enableAiTodo", String(payload.enableAiTodo !== false));
+  formData.set("linkToTodo", String(payload.linkToTodo === true));
   payload.files.forEach((file, idx) => {
     const blob = new Blob([file.content], { type: file.type || "application/octet-stream" });
     formData.append("files", blob, file.name);

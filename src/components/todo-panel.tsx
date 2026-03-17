@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Todo, TodoPriority, TodoStatus } from "@/lib/types";
 import {
   addPendingTodo,
@@ -123,11 +125,29 @@ export function TodoPanel({
     }
   }, []);
 
+  const fetchInFlightRef = useRef(false);
   const fetchTodos = useCallback(async () => {
-    const res = await fetch(`/api/todos?limit=200`, { cache: "no-store" });
-    const data = await res.json();
-    setServerTodos(data.todos);
-    setTotal(data.total);
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(`/api/todos?limit=200`, { cache: "no-store", signal: controller.signal });
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (!res.ok) {
+        setServerTodos([]);
+        setTotal(0);
+        return;
+      }
+      setServerTodos(Array.isArray(data.todos) ? data.todos : []);
+      setTotal(typeof data.total === "number" ? data.total : 0);
+    } catch {
+      setServerTodos([]);
+      setTotal(0);
+    } finally {
+      fetchInFlightRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -481,6 +501,7 @@ export function TodoPanel({
                           onRestore={() => handleRestore(todo.id)}
                           onOpenDetail={() => setDetailTodo(todo)}
                           onSynced={fetchTodos}
+                          onSetTime={fetchTodos}
                         />
                       </div>
                     );
@@ -492,19 +513,30 @@ export function TodoPanel({
         </div>
       </div>
 
-      {/* Detail modal */}
-      {detailTodo && (
-        <TodoDetailModal
-          todo={detailTodo}
-          onClose={() => setDetailTodo(null)}
-          onRefresh={() => { setDetailTodo(null); fetchTodos(); }}
-        />
-      )}
+      {/* Detail modal — 使用 Portal 渲染到 body，避免父级 overflow 裁剪遮罩 */}
+      {detailTodo &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <TodoDetailModal
+            todo={detailTodo}
+            onClose={() => setDetailTodo(null)}
+            onRefresh={() => { setDetailTodo(null); fetchTodos(); }}
+          />,
+          document.body
+        )}
     </div>
   );
 }
 
 /* ── Todo Card ── */
+
+const TIME_PREFIX_REGEX = /^(\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{2}\s*)/;
+
+function formatTimePrefix(dateStr: string, timeStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const [h, min] = timeStr.split(":").map(Number);
+  return `${y}年${m}月${d}日 ${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
 
 function TodoCard({
   todo,
@@ -516,6 +548,7 @@ function TodoCard({
   onRestore,
   onOpenDetail,
   onSynced,
+  onSetTime,
 }: {
   todo: Todo;
   completing?: boolean;
@@ -526,6 +559,7 @@ function TodoCard({
   onRestore: () => void;
   onOpenDetail: () => void;
   onSynced: () => void;
+  onSetTime?: () => void;
 }) {
   const pc = priorityConfig[todo.priority];
   const isDeleted = todo.status === "deleted";
@@ -637,8 +671,16 @@ function TodoCard({
                 )}
               </div>
 
-              {/* 悬浮时显示：同步/重同步按钮（已同步时左侧已有标识，此处不重复）、删除 */}
+              {/* 悬浮时显示：设定时间、同步/重同步按钮、删除 */}
               <div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity duration-150 group-hover/card:opacity-100">
+                {onSetTime && (
+                  <TodoTimePicker
+                    todoId={todo.id}
+                    content={todo.content}
+                    disabled={todo.id.startsWith("local_todo_")}
+                    onUpdated={onSetTime}
+                  />
+                )}
                 {todo.syncedAt && !needsResync ? null : needsResync ? (
                   <SyncTickTickBtn todoId={todo.id} onSynced={onSynced} label="重同步" disabled={todo.id.startsWith("local_todo_")} />
                 ) : (
@@ -750,130 +792,299 @@ function TodoDetailModal({
   };
 
   const needsResync = todo.syncedAt && todo.updatedAt > todo.syncedAt;
+  type DetailTab = "basic" | "source" | "sync";
+  const [activeTab, setActiveTab] = useState<DetailTab>("basic");
+
+  const tabs: { id: DetailTab; label: string }[] = [
+    { id: "basic", label: "基本信息" },
+    { id: "source", label: "来源" },
+    { id: "sync", label: "同步" },
+  ];
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="mx-4 w-full max-w-lg rounded-2xl border border-[var(--line)] bg-[var(--background)] p-6 shadow-2xl">
-        <div className="flex items-center justify-between mb-4">
+      <div className="mx-4 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-[var(--line)] bg-[var(--background)] shadow-2xl">
+        {/* 标题栏：待办详情 + 源信息按钮 + 关闭 */}
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--line)] px-6 py-4">
           <h3 className="text-lg font-bold text-[var(--foreground)]">待办详情</h3>
-          <button type="button" onClick={onClose} className="text-lg text-[var(--muted)] hover:text-[var(--foreground)]">✕</button>
+          <div className="flex items-center gap-2">
+            {todo.recordId && (
+              <Link
+                href={`/?tab=history&record=${todo.recordId}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-purple-500 transition hover:bg-purple-500/10"
+              >
+                源信息
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 17L17 7M17 7h-10v10" />
+                </svg>
+              </Link>
+            )}
+            <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
+              ✕
+            </button>
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <label className="block">
-            <span className="text-xs font-medium text-[var(--muted)]">内容</span>
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] focus:border-[var(--foreground)] focus:outline-none"
-            />
-          </label>
+        {/* 选项卡 */}
+        <div className="flex shrink-0 gap-1 border-b border-[var(--line)] px-6">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={[
+                "border-b-2 px-4 py-3 text-sm font-medium transition",
+                activeTab === t.id
+                  ? "border-[var(--foreground)] text-[var(--foreground)]"
+                  : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]",
+              ].join(" ")}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-medium text-[var(--muted)]">优先级</span>
-            <div className="flex gap-1">
-              {priorities.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setEditPriority(p)}
-                  className={[
-                    "rounded-md px-2 py-0.5 text-xs font-medium transition",
-                    editPriority === p ? priorityConfig[p].bg : "bg-[var(--surface)] text-[var(--muted)]",
-                  ].join(" ")}
-                >
-                  {priorityConfig[p].label}
-                </button>
-              ))}
+        {/* 内容区：可滚动 */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {activeTab === "basic" && (
+            <div className="space-y-4">
+              <label className="block">
+                <span className="text-xs font-medium text-[var(--muted)]">内容</span>
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={4}
+                  className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] focus:border-[var(--foreground)] focus:outline-none"
+                />
+              </label>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium text-[var(--muted)]">优先级</span>
+                <div className="flex gap-1">
+                  {priorities.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setEditPriority(p)}
+                      className={[
+                        "rounded-md px-2 py-0.5 text-xs font-medium transition",
+                        editPriority === p ? priorityConfig[p].bg : "bg-[var(--surface)] text-[var(--muted)]",
+                      ].join(" ")}
+                    >
+                      {priorityConfig[p].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs text-[var(--muted)]">
+                <div>状态：<span className="text-[var(--foreground)]">{todo.status === "pending" ? "待处理" : todo.status === "done" ? "已完成" : "已删除"}</span></div>
+                <div>创建时间：<span className="text-[var(--foreground)]">{formatBeijingTime(todo.createdAt)}</span></div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-3 text-xs text-[var(--muted)]">
-            <div>状态：<span className="text-[var(--foreground)]">{todo.status === "pending" ? "待处理" : todo.status === "done" ? "已完成" : "已删除"}</span></div>
-            <div>创建时间：<span className="text-[var(--foreground)]">{formatBeijingTime(todo.createdAt)}</span></div>
-          </div>
-
-          {todo.recordId && (
-            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
-              <p className="text-xs font-medium text-[var(--muted)] mb-2">来源</p>
+          {activeTab === "source" && todo.recordId && (
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-4">
               {sourceRecord === "loading" ? (
-                <p className="text-xs text-[var(--muted)]">加载中...</p>
+                <p className="text-sm text-[var(--muted)]">加载中...</p>
               ) : sourceRecord ? (
-                <div className="space-y-1.5">
+                <div className="space-y-3">
                   <p className="text-sm font-medium text-[var(--foreground)]">{sourceRecord.title}</p>
                   {sourceRecord.summary && (
-                    <p className="text-xs text-[var(--muted)] line-clamp-3">{sourceRecord.summary}</p>
+                    <p className="text-sm leading-6 text-[var(--muted-strong)]">{sourceRecord.summary}</p>
                   )}
                   {sourceRecord.sourceLabel && (
-                    <p className="text-[11px] text-[var(--muted)]">来源：{sourceRecord.sourceLabel}</p>
+                    <p className="text-xs text-[var(--muted)]">来源：{sourceRecord.sourceLabel}</p>
                   )}
-                  <a
-                    href={`/records/${todo.recordId}`}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-purple-500 hover:underline"
-                  >
-                    查看完整记录
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M7 17L17 7M17 7h-10v10" />
-                    </svg>
-                  </a>
+                  <p className="pt-2 text-xs text-[var(--muted)]">
+                    点击顶部「源信息」可跳转至完整记录页面查看详情。
+                  </p>
                 </div>
               ) : (
-                <a
-                  href={`/records/${todo.recordId}`}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-purple-500 hover:underline"
+                <p className="text-sm text-[var(--muted)]">无法加载来源信息</p>
+              )}
+            </div>
+          )}
+
+          {activeTab === "source" && !todo.recordId && (
+            <p className="text-sm text-[var(--muted)]">此待办无关联来源记录</p>
+          )}
+
+          {activeTab === "sync" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg bg-[var(--surface)] px-4 py-4">
+                <div>
+                  <p className="text-sm font-medium text-[var(--foreground)]">同步到滴答清单</p>
+                  {todo.syncedAt ? (
+                    <p className="mt-0.5 text-xs text-emerald-500">已同步 · {formatBeijingTime(todo.syncedAt)}</p>
+                  ) : (
+                    <p className="mt-0.5 text-xs text-[var(--muted)]">尚未同步</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--card)] disabled:opacity-50"
                 >
-                  查看完整记录
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M7 17L17 7M17 7h-10v10" />
-                  </svg>
-                </a>
+                  {syncing ? "同步中..." : (todo.syncedAt || needsResync) ? "重新同步" : "同步"}
+                </button>
+              </div>
+              {msg && (
+                <p className={["rounded-lg px-3 py-2 text-xs", msg.includes("失败") ? "bg-rose-500/10 text-rose-500" : "bg-emerald-500/10 text-emerald-500"].join(" ")}>
+                  {msg}
+                </p>
               )}
             </div>
           )}
+        </div>
 
-          {/* Sync to TickTick */}
-          <div className="flex items-center gap-3 rounded-lg bg-[var(--surface)] px-4 py-3">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-[var(--foreground)]">同步到滴答清单</p>
-              {todo.syncedAt ? (
-                <p className="mt-0.5 text-xs text-emerald-500">已同步 · {formatBeijingTime(todo.syncedAt)}</p>
-              ) : (
-                <p className="mt-0.5 text-xs text-[var(--muted)]">尚未同步</p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={handleSync}
-              disabled={syncing}
-              className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--card)] disabled:opacity-50"
-            >
-              {syncing ? "同步中..." : (todo.syncedAt || needsResync) ? "重新同步" : "同步"}
-            </button>
-          </div>
-
-          {msg && (
-            <p className={["text-xs rounded-lg px-3 py-2", msg.includes("失败") ? "bg-rose-500/10 text-rose-500" : "bg-emerald-500/10 text-emerald-500"].join(" ")}>
-              {msg}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--muted)] hover:bg-[var(--surface)]">
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] hover:opacity-90 disabled:opacity-50"
-            >
-              {saving ? "保存中..." : "保存修改"}
-            </button>
-          </div>
+        {/* 底部操作栏 */}
+        <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--line)] px-6 py-4">
+          <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--muted)] hover:bg-[var(--surface)]">
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? "保存中..." : "保存修改"}
+          </button>
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── Todo Time Picker ── */
+
+function TodoTimePicker({
+  todoId,
+  content,
+  disabled,
+  onUpdated,
+}: {
+  todoId: string;
+  content: string;
+  disabled?: boolean;
+  onUpdated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const getDefaultValues = () => {
+    const d = new Date();
+    return {
+      date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+    };
+  };
+  const [dateVal, setDateVal] = useState(getDefaultValues().date);
+  const [timeVal, setTimeVal] = useState(getDefaultValues().time);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      const def = getDefaultValues();
+      setDateVal(def.date);
+      setTimeVal(def.time);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open]);
+
+  const handleConfirm = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (disabled || saving) return;
+    setSaving(true);
+    try {
+      const prefix = formatTimePrefix(dateVal, timeVal);
+      const newContent = content.match(TIME_PREFIX_REGEX)
+        ? content.replace(TIME_PREFIX_REGEX, `${prefix} `).trim()
+        : `${prefix} ${content}`.trim();
+      const res = await fetch(`/api/todos/${todoId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newContent }),
+        cache: "no-store",
+      });
+      if (res.ok) {
+        setOpen(false);
+        onUpdated();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); if (!disabled) setOpen(true); }}
+        disabled={disabled}
+        className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:opacity-50"
+        title="设定时间"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 3" />
+        </svg>
+      </button>
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="modal-overlay"
+            onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
+          >
+            <div
+              className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--line)] bg-[var(--background)] p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="mb-4 text-lg font-bold text-[var(--foreground)]">设定提醒时间</h3>
+              <p className="mb-3 text-xs text-[var(--muted)]">输入日期和时刻，将自动添加到待办内容开头，便于同步到滴答清单</p>
+              <div className="flex gap-3">
+                <input
+                  type="date"
+                  value={dateVal}
+                  onChange={(e) => setDateVal(e.target.value)}
+                  className="flex-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)] focus:border-[var(--foreground)] focus:outline-none"
+                />
+                <input
+                  type="time"
+                  value={timeVal}
+                  onChange={(e) => setTimeVal(e.target.value)}
+                  step="60"
+                  className="w-28 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)] focus:border-[var(--foreground)] focus:outline-none"
+                />
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg px-4 py-2 text-sm text-[var(--muted)] hover:bg-[var(--surface)]"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={saving}
+                  className="rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {saving ? "保存中..." : "确定"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
   );
 }
 
