@@ -17,6 +17,7 @@ export async function searchKnowledge(
   userId: string,
   query: string,
   history?: Array<{ role: string; content: string }>,
+  opts?: { skipAnswer?: boolean },
 ): Promise<SearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) {
@@ -28,79 +29,96 @@ export async function searchKnowledge(
 
   const supabase = getSupabaseAdmin();
   const merged = new Map<string, SearchCitation>();
-
+  const like = `%${trimmed}%`;
   const tsQuery = buildTsQuery(trimmed);
-  if (tsQuery) {
-    const { data: ftsRows } = await supabase
-      .from("chunks")
-      .select("id, record_id, content, reason")
-      .eq("user_id", userId)
-      .textSearch("tsv", tsQuery)
-      .limit(8);
 
-    if (ftsRows && ftsRows.length > 0) {
-      const recordIds = [...new Set(ftsRows.map((r) => r.record_id))];
-      const { data: recordRows } = await supabase
-        .from("records")
-        .select("id, title, source_label")
-        .in("id", recordIds);
-      const recordMap = new Map((recordRows || []).map((r) => [r.id, r]));
+  const settingsP = getIntegrationSettings(userId);
 
-      for (const row of ftsRows) {
-        const rec = recordMap.get(row.record_id);
-        merged.set(row.id, {
-          recordId: row.record_id,
-          title: rec?.title || "",
-          sourceLabel: rec?.source_label || "",
-          snippet: trimText(row.content, 220),
-          reason: row.reason,
-          score: 2,
-        });
-      }
-    }
+  const ftsP = tsQuery
+    ? supabase
+        .from("chunks")
+        .select("id, record_id, content, reason")
+        .eq("user_id", userId)
+        .textSearch("tsv", tsQuery)
+        .limit(8)
+        .then((r) => r.data || [])
+    : Promise.resolve([]);
+
+  const likeP = supabase
+    .from("chunks")
+    .select("id, record_id, content, reason")
+    .eq("user_id", userId)
+    .ilike("content", like)
+    .order("created_at", { ascending: false })
+    .limit(8)
+    .then((r) => r.data || []);
+
+  const titleP = supabase
+    .from("records")
+    .select("id, title, source_label, summary")
+    .eq("user_id", userId)
+    .or(`title.ilike.${like},summary.ilike.${like}`)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(5)
+    .then((r) => r.data || []);
+
+  const todoP = supabase
+    .from("todos")
+    .select("id, content, priority, status, created_at, record_id")
+    .eq("user_id", userId)
+    .neq("status", "deleted")
+    .ilike("content", like)
+    .order("created_at", { ascending: false })
+    .limit(5)
+    .then((r) => r.data || []);
+
+  const [ftsRows, likeChunks, titleMatches, todoMatches, settings] = await Promise.all([
+    ftsP,
+    likeP,
+    titleP,
+    todoP,
+    settingsP,
+  ]);
+
+  const allChunkRows = [...ftsRows, ...likeChunks];
+  const chunkRecordIds = [...new Set(allChunkRows.map((r) => r.record_id))];
+
+  let chunkRecordMap = new Map<string, { id: string; title: string; source_label: string }>();
+  if (chunkRecordIds.length > 0) {
+    const { data: recordRows } = await supabase
+      .from("records")
+      .select("id, title, source_label")
+      .in("id", chunkRecordIds);
+    chunkRecordMap = new Map((recordRows || []).map((r) => [r.id, r]));
+  }
+
+  for (const row of ftsRows) {
+    const rec = chunkRecordMap.get(row.record_id);
+    merged.set(row.id, {
+      recordId: row.record_id,
+      title: rec?.title || "",
+      sourceLabel: rec?.source_label || "",
+      snippet: trimText(row.content, 220),
+      reason: row.reason,
+      score: 2,
+    });
   }
 
   if (merged.size === 0) {
-    const like = `%${trimmed}%`;
-    const { data: likeChunks } = await supabase
-      .from("chunks")
-      .select("id, record_id, content, reason")
-      .eq("user_id", userId)
-      .ilike("content", like)
-      .order("created_at", { ascending: false })
-      .limit(8);
-
-    if (likeChunks && likeChunks.length > 0) {
-      const recordIds = [...new Set(likeChunks.map((r) => r.record_id))];
-      const { data: recordRows } = await supabase
-        .from("records")
-        .select("id, title, source_label")
-        .in("id", recordIds);
-      const recordMap = new Map((recordRows || []).map((r) => [r.id, r]));
-
-      for (const row of likeChunks) {
-        const rec = recordMap.get(row.record_id);
-        merged.set(row.id, {
-          recordId: row.record_id,
-          title: rec?.title || "",
-          sourceLabel: rec?.source_label || "",
-          snippet: trimText(row.content, 220),
-          reason: row.reason,
-          score: 1,
-        });
-      }
+    for (const row of likeChunks) {
+      const rec = chunkRecordMap.get(row.record_id);
+      merged.set(row.id, {
+        recordId: row.record_id,
+        title: rec?.title || "",
+        sourceLabel: rec?.source_label || "",
+        snippet: trimText(row.content, 220),
+        reason: row.reason,
+        score: 1,
+      });
     }
 
-    const { data: titleMatches } = await supabase
-      .from("records")
-      .select("id, title, source_label, summary")
-      .eq("user_id", userId)
-      .or(`title.ilike.${like},summary.ilike.${like}`)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    for (const row of titleMatches || []) {
+    for (const row of titleMatches) {
       if (!merged.has(`rec-${row.id}`)) {
         merged.set(`rec-${row.id}`, {
           recordId: row.id,
@@ -114,18 +132,8 @@ export async function searchKnowledge(
     }
   }
 
-  const todoLike = `%${trimmed}%`;
-  const { data: todoMatches } = await supabase
-    .from("todos")
-    .select("id, content, priority, status, created_at, record_id")
-    .eq("user_id", userId)
-    .neq("status", "deleted")
-    .ilike("content", todoLike)
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  for (const t of todoMatches || []) {
-    const pLabel: Record<string, string> = { urgent: "紧急", high: "高", medium: "中", low: "低" };
+  const pLabel: Record<string, string> = { urgent: "紧急", high: "高", medium: "中", low: "低" };
+  for (const t of todoMatches) {
     merged.set(`todo-${t.id}`, {
       recordId: t.record_id || "",
       title: `[待办] ${trimText(t.content, 40)}`,
@@ -136,7 +144,6 @@ export async function searchKnowledge(
     });
   }
 
-  const settings = await getIntegrationSettings(userId);
   if (isAiConfiguredFromSettings(settings)) {
     const { data: embeddingRows } = await supabase
       .from("chunks")
@@ -144,15 +151,18 @@ export async function searchKnowledge(
       .eq("user_id", userId)
       .not("embedding", "is", null)
       .order("created_at", { ascending: false })
-      .limit(80);
+      .limit(30);
 
     if (embeddingRows && embeddingRows.length > 0) {
-      const recordIds = [...new Set(embeddingRows.map((r) => r.record_id))];
-      const { data: recordRows } = await supabase
-        .from("records")
-        .select("id, title, source_label")
-        .in("id", recordIds);
-      const recordMap = new Map((recordRows || []).map((r) => [r.id, r]));
+      const embRecordIds = [...new Set(embeddingRows.map((r) => r.record_id))].filter((id) => !chunkRecordMap.has(id));
+      let embRecordMap = chunkRecordMap;
+      if (embRecordIds.length > 0) {
+        const { data: recordRows } = await supabase
+          .from("records")
+          .select("id, title, source_label")
+          .in("id", embRecordIds);
+        embRecordMap = new Map([...chunkRecordMap, ...(recordRows || []).map((r) => [r.id, r] as const)]);
+      }
 
       const [queryEmbedding] = (await createEmbeddings(userId, [trimmed])) || [];
       if (queryEmbedding) {
@@ -161,7 +171,7 @@ export async function searchKnowledge(
           const score = cosineSimilarity(queryEmbedding, vector);
           if (score < 0.42) continue;
 
-          const rec = recordMap.get(row.record_id);
+          const rec = embRecordMap.get(row.record_id);
           const previous = merged.get(row.id);
           const boosted = score * 10 + (previous?.score || 0);
           merged.set(row.id, {
@@ -180,6 +190,10 @@ export async function searchKnowledge(
   const citations = Array.from(merged.values())
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
+
+  if (opts?.skipAnswer) {
+    return { answer: "", citations };
+  }
 
   const answer = await answerWithContext(userId, { question: trimmed, citations, history });
 

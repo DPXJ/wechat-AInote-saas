@@ -55,16 +55,23 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   const [moreOpen, setMoreOpen] = useState(false);
   const [enableAiSummary, setEnableAiSummary] = useState(true);
   const [enableAiTodo, setEnableAiTodo] = useState(true);
+  const [enableOcr, setEnableOcr] = useState(true);
+  const [ocrResults, setOcrResults] = useState<
+    Record<string, { text: string; keywords: string[]; description: string } | { loading: true } | { error: string }>
+  >({});
   const [linkToTodo, setLinkToTodo] = useState(false);
   const [syncToFlomo, setSyncToFlomo] = useState(false);
   const [recentTags, setRecentTags] = useState<Array<{ tag: string; count: number }>>([]);
+  const [defaultTagModalOpen, setDefaultTagModalOpen] = useState(false);
+  const [defaultTagInput, setDefaultTagInput] = useState("");
+  const defaultTagInputRef = useRef<HTMLInputElement>(null);
   const [defaultTag, setDefaultTagState] = useState<string>(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem(DEFAULT_TAG_KEY) || "";
   });
 
   useEffect(() => {
-    fetch("/api/tags")
+    fetch("/api/tags?recent=3")
       .then((r) => r.json())
       .then((d) => setRecentTags((d.tags || []).slice(0, 3)))
       .catch(() => {});
@@ -97,6 +104,45 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
     const timer = window.setTimeout(() => setStatus(""), 4200);
     return () => window.clearTimeout(timer);
   }, [status, statusTone]);
+
+  // 勾选 OCR 时对图片自动识别，用于预览
+  useEffect(() => {
+    if (!enableOcr) {
+      setOcrResults({});
+      return;
+    }
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const file of imageFiles) {
+        const fk = fileKey(file);
+        const existing = ocrResults[fk];
+        if (existing && "text" in existing) continue;
+        if (existing && "loading" in existing) continue;
+        setOcrResults((prev) => ({ ...prev, [fk]: { loading: true } }));
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch("/api/ocr/recognize", { method: "POST", body: fd });
+          const data = await res.json();
+          if (cancelled) return;
+          if (!res.ok) {
+            setOcrResults((prev) => ({ ...prev, [fk]: { error: data.error || "识别失败" } }));
+            continue;
+          }
+          setOcrResults((prev) => ({
+            ...prev,
+            [fk]: { text: data.text || "", keywords: data.keywords || [], description: data.description || "" },
+          }));
+        } catch {
+          if (cancelled) return;
+          setOcrResults((prev) => ({ ...prev, [fk]: { error: "请求失败" } }));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [enableOcr, files]);
 
   function updateStatus(message: string, tone: StatusTone = "info") {
     setStatus(message);
@@ -180,6 +226,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         fileDescs: { ...fileDescs },
         enableAiSummary,
         enableAiTodo,
+        enableOcr,
         linkToTodo,
         syncToFlomo,
       };
@@ -270,75 +317,64 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       }}
       onDrop={(e) => { e.preventDefault(); setDragging(false); const dropped = Array.from(e.dataTransfer.files || []); if (dropped.length > 0) attachFiles(dropped, "拖拽"); }}
     >
-      {/* Top: Title + AI Search */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <div className="input-focus-bar flex-1 min-w-[120px]">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="标题（选填）"
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
-            />
-          </div>
-          {onSwitchToSearch && (
-            <button
-              type="button"
-              onClick={onSwitchToSearch}
-              className="ai-border flex shrink-0 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-2.5 text-left transition"
-            >
-              <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
-                <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
-              </svg>
-              <span className="text-sm text-[var(--muted)]">AI 搜索</span>
-            </button>
-          )}
+      {/* Top: Title + Tags + AI Search — single row */}
+      <div className="flex items-center gap-2">
+        <div className="input-focus-bar min-w-0 flex-[3]">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="标题（选填）"
+            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
+          />
         </div>
-        {/* Tags row - below title, same width */}
-        <div className="flex items-center gap-3">
-          <div className="flex flex-1 min-w-[120px] items-center gap-2">
-            {defaultTag && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-purple-500/10 px-2.5 py-1.5 text-xs text-purple-600">
-                <span className="text-[var(--muted)]">默认</span>
-                <button type="button" onClick={() => addTag(defaultTag)} className="font-medium hover:underline">{defaultTag}</button>
-                <button type="button" onClick={() => setDefaultTag("")} className="rounded p-0.5 hover:bg-purple-500/20" title="取消默认">×</button>
-              </span>
-            )}
-            <div className="input-focus-bar flex-1">
-              <input
-                value={userTags}
-                onChange={(e) => setUserTags(e.target.value)}
-                placeholder="标签（空格分隔，选填）"
-                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
-              />
-            </div>
-            {recentTags.filter(({ tag }) => tag !== defaultTag).map(({ tag }) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => addTag(tag)}
-                onContextMenu={(e) => { e.preventDefault(); setDefaultTag(tag); }}
-                className="shrink-0 rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
-                title="点击添加，右键设为默认"
-              >
-                {tag}
-              </button>
-            ))}
-            {!defaultTag && (
-              <button
-                type="button"
-                onClick={() => {
-                  const v = window.prompt("输入默认标签（新建记录时自动填入）");
-                  if (v?.trim()) setDefaultTag(v.trim());
-                }}
-                className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-              >
-                +默认
-              </button>
-            )}
-          </div>
-          {onSwitchToSearch && <div className="w-[99px] shrink-0" />}
+        <div className="input-focus-bar min-w-0 flex-[2]">
+          <input
+            value={userTags}
+            onChange={(e) => setUserTags(e.target.value)}
+            placeholder="标签（空格分隔）"
+            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
+          />
         </div>
+        {defaultTag && (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-purple-500/10 px-2 py-1.5 text-xs text-purple-600">
+            <button type="button" onClick={() => addTag(defaultTag)} className="font-medium hover:underline">{defaultTag}</button>
+            <button type="button" onClick={() => setDefaultTag("")} className="rounded p-0.5 hover:bg-purple-500/20" title="取消默认">×</button>
+          </span>
+        )}
+        {recentTags.filter(({ tag }) => tag !== defaultTag).slice(0, 2).map(({ tag }) => (
+          <button
+            key={tag}
+            type="button"
+            onClick={() => addTag(tag)}
+            onContextMenu={(e) => { e.preventDefault(); setDefaultTag(tag); }}
+            className="shrink-0 rounded-lg bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
+            title="点击添加，右键设为默认"
+          >
+            {tag}
+          </button>
+        ))}
+        {!defaultTag && (
+          <button
+            type="button"
+            onClick={() => { setDefaultTagInput(""); setDefaultTagModalOpen(true); }}
+            className="shrink-0 rounded-lg px-1.5 py-1.5 text-[11px] text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+          >
+            +默认
+          </button>
+        )}
+        {onSwitchToSearch && (
+          <button
+            type="button"
+            onClick={onSwitchToSearch}
+            className="ai-border flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--line)] bg-[var(--card)] px-3 py-2.5 transition"
+            title="AI 搜索"
+          >
+            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
+              <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
+            </svg>
+            <span className="text-xs text-[var(--muted)]">搜索</span>
+          </button>
+        )}
       </div>
 
       {/* Main content area */}
@@ -458,7 +494,12 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             <p className="mb-2 text-[11px] font-medium text-[var(--muted)]">{imageFiles.length} 张图片</p>
             <div className="flex flex-wrap gap-2">
               {imageFiles.map((file) => (
-                <InlineImagePreview key={fileKey(file)} file={file} onRemove={() => removeFile(file)} />
+                <InlineImagePreview
+                  key={fileKey(file)}
+                  file={file}
+                  onRemove={() => removeFile(file)}
+                  ocrState={enableOcr ? ocrResults[fileKey(file)] : undefined}
+                />
               ))}
             </div>
           </div>
@@ -495,7 +536,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
           <div
             onClick={() => fileInputRef.current?.click()}
             className={[
-              "flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed px-4 py-3 transition",
+              "flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed px-4 py-6 transition",
               dragging
                 ? "border-[var(--accent)] bg-[var(--accent-soft)]"
                 : "border-[var(--line)] bg-[var(--card)]/50 hover:border-[var(--line-strong)]",
@@ -518,7 +559,11 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
                 const isImg = file.type.startsWith("image/");
                 return (
                   <div key={fk} className="space-y-1.5">
-                    <FilePreviewChip file={file} onRemove={() => removeFile(file)} />
+                    <FilePreviewChip
+                      file={file}
+                      onRemove={() => removeFile(file)}
+                      ocrState={isImg && enableOcr ? ocrResults[fk] : undefined}
+                    />
                     {isImg && (
                       <>
                         <input
@@ -565,11 +610,11 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
               <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={linkToTodo}
-                  onChange={(e) => setLinkToTodo(e.target.checked)}
+                  checked={enableOcr}
+                  onChange={(e) => setEnableOcr(e.target.checked)}
                   className="rounded border-[var(--line)]"
                 />
-                <span>关联待办</span>
+                <span>启用 OCR 识别</span>
               </label>
               <label className="flex cursor-pointer items-center gap-2">
                 <input
@@ -579,6 +624,15 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
                   className="rounded border-[var(--line)]"
                 />
                 <span>同步到 flomo</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={linkToTodo}
+                  onChange={(e) => setLinkToTodo(e.target.checked)}
+                  className="rounded border-[var(--line)]"
+                />
+                <span>强制关联待办</span>
               </label>
             </div>
             <button
@@ -690,11 +744,63 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
           </div>
         </div>
       )}
+      {/* Default tag modal */}
+      {defaultTagModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDefaultTagModalOpen(false)}>
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[var(--line)] bg-[var(--card)] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-1 text-base font-semibold text-[var(--foreground)]">设置默认标签</h3>
+            <p className="mb-4 text-sm text-[var(--muted)]">新建记录时自动填入该标签</p>
+            <input
+              ref={defaultTagInputRef}
+              value={defaultTagInput}
+              onChange={(e) => setDefaultTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (defaultTagInput.trim()) { setDefaultTag(defaultTagInput.trim()); setDefaultTagModalOpen(false); }
+                }
+              }}
+              autoFocus
+              placeholder="输入标签名称"
+              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDefaultTagModalOpen(false)}
+                className="rounded-lg px-4 py-2 text-sm text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (defaultTagInput.trim()) { setDefaultTag(defaultTagInput.trim()); setDefaultTagModalOpen(false); }
+                }}
+                className="rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition hover:opacity-90"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
 
-function InlineImagePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
+function InlineImagePreview({
+  file,
+  onRemove,
+  ocrState,
+}: {
+  file: File;
+  onRemove: () => void;
+  ocrState?: { text: string; keywords: string[]; description: string } | { loading: true } | { error: string };
+}) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -709,6 +815,14 @@ function InlineImagePreview({ file, onRemove }: { file: File; onRemove: () => vo
         /* eslint-disable-next-line @next/next/no-img-element */
         <img src={src} alt={file.name} className="h-full w-full object-cover" />
       )}
+      {ocrState && (
+        <span
+          className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 text-[9px] text-white truncate"
+          title={"loading" in ocrState ? "识别中" : "error" in ocrState ? ocrState.error : ocrState.text?.slice(0, 100)}
+        >
+          {"loading" in ocrState ? "OCR…" : "error" in ocrState ? "识别失败" : ocrState.text ? "✓ OCR" : ""}
+        </span>
+      )}
       <button
         type="button"
         onClick={onRemove}
@@ -720,7 +834,15 @@ function InlineImagePreview({ file, onRemove }: { file: File; onRemove: () => vo
   );
 }
 
-function FilePreviewChip({ file, onRemove }: { file: File; onRemove: () => void }) {
+function FilePreviewChip({
+  file,
+  onRemove,
+  ocrState,
+}: {
+  file: File;
+  onRemove: () => void;
+  ocrState?: { text: string; keywords: string[]; description: string } | { loading: true } | { error: string };
+}) {
   const [preview, setPreview] = useState<string | null>(null);
 
   useEffect(() => {
@@ -751,11 +873,31 @@ function FilePreviewChip({ file, onRemove }: { file: File; onRemove: () => void 
           <span className="text-3xl">{icon}</span>
         </div>
       )}
-      <div className="px-3 py-2">
+      <div className="px-3 py-2 space-y-1.5">
         <p className="truncate text-[13px] font-medium text-[var(--foreground)]">{file.name}</p>
         <p className="text-[11px] text-[var(--muted)]">
           {Math.max(1, Math.round(file.size / 1024))} KB
         </p>
+        {ocrState && (
+          <div className="rounded-lg bg-[var(--surface)] px-2 py-1.5 text-[11px]">
+            {"loading" in ocrState ? (
+              <span className="text-[var(--muted)]">OCR 识别中…</span>
+            ) : "error" in ocrState ? (
+              <span className="text-rose-500">{ocrState.error}</span>
+            ) : ocrState.text ? (
+              <details className="group/details">
+                <summary className="cursor-pointer text-[var(--muted-strong)] hover:text-[var(--foreground)]">
+                  OCR 识别 {ocrState.keywords.length > 0 && `· ${ocrState.keywords.slice(0, 3).join(" ")}`}
+                </summary>
+                <p className="mt-1 max-h-20 overflow-y-auto whitespace-pre-wrap text-[var(--muted-strong)] leading-snug">
+                  {ocrState.text}
+                </p>
+              </details>
+            ) : (
+              <span className="text-[var(--muted)]">未识别到文字</span>
+            )}
+          </div>
+        )}
       </div>
       <button
         type="button"

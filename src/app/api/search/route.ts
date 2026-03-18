@@ -23,7 +23,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const query = body.q || "";
     const history = body.history || [];
-    return NextResponse.json(await searchKnowledge(userId, query, history));
+    const skipAnswer = body.skipAnswer === true;
+    return NextResponse.json(await searchKnowledge(userId, query, history, { skipAnswer }));
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });

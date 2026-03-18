@@ -76,6 +76,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
     const msg = e instanceof Error ? e.message : "未知错误";
+    console.error("[settings] POST error:", e);
     return NextResponse.json({ error: `保存失败: ${msg}` }, { status: 500 });
   }
 }

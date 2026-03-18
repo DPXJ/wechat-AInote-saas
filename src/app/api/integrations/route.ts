@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUserId } from "@/lib/supabase/server";
+import { testFlomoWebhook } from "@/lib/flomo";
 import {
   getIntegrationStatus,
   sendTickTickTestEmail,
@@ -13,7 +14,8 @@ import { getIntegrationSettings } from "@/lib/settings";
 export const runtime = "nodejs";
 
 const bodySchema = z.object({
-  target: z.enum(["notion", "smtp", "ticktick-email"]),
+  target: z.enum(["notion", "smtp", "ticktick-email", "flomo"]),
+  webhookUrl: z.string().optional(),
 });
 
 export async function GET() {
@@ -42,12 +44,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "无效的连接测试目标。" }, { status: 400 });
     }
 
-    const result =
-      body.data.target === "notion"
-        ? await testNotionConnection(userId)
-        : body.data.target === "smtp"
-          ? await testSmtpConnection(userId)
-          : await sendTickTickTestEmail(userId);
+    let result: { ok: boolean; message: string };
+    if (body.data.target === "flomo") {
+      const url = body.data.webhookUrl?.trim() || (await getIntegrationSettings(userId)).flomoWebhookUrl || "";
+      result = await testFlomoWebhook(url);
+    } else {
+      result =
+        body.data.target === "notion"
+          ? await testNotionConnection(userId)
+          : body.data.target === "smtp"
+            ? await testSmtpConnection(userId)
+            : await sendTickTickTestEmail(userId);
+    }
 
     const status = await getIntegrationStatus(userId);
     const settings = await getIntegrationSettings(userId);

@@ -45,7 +45,7 @@ export async function POST(
       return NextResponse.json({ error: "无法读取附件内容。" }, { status: 500 });
     }
 
-    const ocrResult = await ocrImage(userId, buffer, asset.mime_type);
+    const ocrResult = await ocrImage(userId, buffer, asset.mime_type, true);
     await updateAssetOcr(userId, id, ocrResult.text, ocrResult.keywords, ocrResult.description);
     return NextResponse.json({
       text: ocrResult.text,

@@ -86,25 +86,51 @@ export function IntegrationsPanel({
     if (typeof data.aiConfigured === "boolean") setAiConfigured(data.aiConfigured);
   }
 
+  const DEFAULT_OCR_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
+  const DEFAULT_OCR_MODEL_NAME = "doubao-1-5-vision-pro-32k-250115";
+
   const saveSettings = useCallback(async (): Promise<{ ok: boolean; msg: string }> => {
-    const res = await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    });
-    const data = await res.json();
-    if (!res.ok) return { ok: false, msg: data.error || "保存失败。" };
-    setSettings(data.settings);
-    await refreshStatus();
-    return { ok: true, msg: "配置已保存。" };
+    const snapshot = { ...settings };
+    if (!snapshot.visionModelBaseUrl?.trim()) snapshot.visionModelBaseUrl = DEFAULT_OCR_BASE_URL;
+    if (!snapshot.visionModelName?.trim()) snapshot.visionModelName = DEFAULT_OCR_MODEL_NAME;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(snapshot),
+        signal: controller.signal,
+      });
+      window.clearTimeout(timeoutId);
+      let data: { error?: string; settings?: IntegrationSettings };
+      try {
+        data = await res.json();
+      } catch {
+        return { ok: false, msg: res.ok ? "保存失败，请重试。" : `请求失败 ${res.status}` };
+      }
+      if (!res.ok) return { ok: false, msg: data.error || "保存失败。" };
+      setSettings((prev) => ({ ...prev, ...snapshot, ...(data.settings || {}) }));
+      await refreshStatus();
+      return { ok: true, msg: "配置已保存。" };
+    } catch (e) {
+      window.clearTimeout(timeoutId);
+      if (e instanceof Error && e.name === "AbortError") return { ok: false, msg: "保存超时，请重试。" };
+      return { ok: false, msg: e instanceof Error ? e.message : "保存失败，请重试。" };
+    }
   }, [settings]);
 
   async function handleSave() {
     setSaving(true);
     setMsg("正在保存...");
-    const result = await saveSettings();
-    setMsg(result.msg);
-    setSaving(false);
+    try {
+      const result = await saveSettings();
+      setMsg(result.msg);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "保存失败，请重试。");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function runTest(target: ActionTarget) {
@@ -286,29 +312,34 @@ export function IntegrationsPanel({
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <SaveBtn saving={saving} onSave={handleSave} />
-              <FlomoTestBtn webhookUrl={settings.flomoWebhookUrl || ""} onSave={saveSettings} />
+              <FlomoTestBtn webhookUrl={settings.flomoWebhookUrl || ""} />
             </div>
           </>
         )}
 
         {activeTab === "ocr" && (
           <>
-            <label className="flex items-center gap-2 text-sm text-[var(--foreground)]">
-              <input type="checkbox" checked={settings.ocrEnabled} onChange={(e) => updateField("ocrEnabled", e.target.checked)} />
-              启用 OCR 识别
-            </label>
-            {settings.ocrEnabled && (
-              <div className="grid gap-3 lg:grid-cols-2">
-                <div className="lg:col-span-2">
-                  <Field label="Vision Model Base URL" value={settings.visionModelBaseUrl} onChange={(v) => updateField("visionModelBaseUrl", v)} placeholder="https://ark.cn-beijing.volces.com/api/v3" />
-                </div>
-                <Field label="Vision Model API Key" type="password" value={settings.visionModelApiKey} onChange={(v) => updateField("visionModelApiKey", v)} placeholder="请输入 API Key" />
-                <Field label="Vision Model Name" value={settings.visionModelName} onChange={(v) => updateField("visionModelName", v)} placeholder="doubao-1-5-vision-pro-32k" hint="火山方舟用模型 ID，如 doubao-1-5-vision-pro-32k" />
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="lg:col-span-2">
+                <Field
+                  label="Vision Model Base URL"
+                  value={settings.visionModelBaseUrl || DEFAULT_OCR_BASE_URL}
+                  onChange={(v) => updateField("visionModelBaseUrl", v)}
+                  placeholder={DEFAULT_OCR_BASE_URL}
+                />
               </div>
-            )}
+              <Field label="Vision Model API Key" type="password" value={settings.visionModelApiKey} onChange={(v) => updateField("visionModelApiKey", v)} placeholder="请输入 API Key" />
+              <Field
+                label="Vision Model Name"
+                value={settings.visionModelName || DEFAULT_OCR_MODEL_NAME}
+                onChange={(v) => updateField("visionModelName", v)}
+                placeholder={DEFAULT_OCR_MODEL_NAME}
+                hint="火山方舟用模型 ID，如 doubao-1-5-vision-pro-32k-250115"
+              />
+            </div>
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <SaveBtn saving={saving} onSave={handleSave} />
-              {settings.ocrEnabled && <BatchOcrBtn />}
+              <BatchOcrBtn />
             </div>
           </>
         )}
@@ -497,7 +528,7 @@ function ImapFetchBtn() {
   );
 }
 
-function FlomoTestBtn({ webhookUrl, onSave }: { webhookUrl: string; onSave: () => Promise<{ ok: boolean; msg: string }> }) {
+function FlomoTestBtn({ webhookUrl }: { webhookUrl: string }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState("");
 
@@ -506,23 +537,22 @@ function FlomoTestBtn({ webhookUrl, onSave }: { webhookUrl: string; onSave: () =
       setResult("请先填写 Webhook URL");
       return;
     }
-    const saveResult = await onSave();
-    if (!saveResult.ok) { setResult(saveResult.msg); return; }
     setLoading(true);
     setResult("");
     try {
-      const res = await fetch(webhookUrl.trim(), {
+      const res = await fetch("/api/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "AI 信迹连通性测试 — 如果你在 flomo 看到这条笔记，说明 webhook 配置正确。" }),
+        body: JSON.stringify({ target: "flomo", webhookUrl: webhookUrl.trim() }),
       });
-      if (res.ok) {
-        setResult("测试成功，已发送到 flomo");
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setResult(data.message || "测试成功，已发送到 flomo");
       } else {
-        setResult(`测试失败 (${res.status})`);
+        setResult(data.message || data.error || "测试失败");
       }
     } catch {
-      setResult("请求失败，请检查 URL 是否正确");
+      setResult("网络请求失败，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -538,7 +568,11 @@ function FlomoTestBtn({ webhookUrl, onSave }: { webhookUrl: string; onSave: () =
       >
         {loading ? "测试中..." : "测试连接"}
       </button>
-      {result && <span className="text-xs text-[var(--muted-strong)]">{result}</span>}
+      {result && (
+        <span className={result.startsWith("测试成功") || result.startsWith("已发送") ? "text-xs text-emerald-500" : "text-xs text-rose-500"}>
+          {result}
+        </span>
+      )}
     </div>
   );
 }

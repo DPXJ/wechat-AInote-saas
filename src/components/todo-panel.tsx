@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Todo, TodoPriority, TodoStatus } from "@/lib/types";
+import type { KnowledgeRecord, Todo, TodoPriority, TodoStatus } from "@/lib/types";
 import {
   addPendingTodo,
   getAllPendingTodos,
+  removePendingTodo,
   type PendingTodo,
   type PendingTodoPayload,
   syncPendingTodosToCloud,
@@ -85,10 +86,14 @@ export function TodoPanel({
   initialTodos,
   initialTotal,
   initialPriorityFilter,
+  getRecordById,
+  onGoToRecord,
 }: {
   initialTodos?: Todo[];
   initialTotal?: number;
   initialPriorityFilter?: TodoPriority | "";
+  getRecordById?: (id: string) => KnowledgeRecord | null;
+  onGoToRecord?: (recordId: string) => void;
 } = {}) {
   const [serverTodos, setServerTodos] = useState<Todo[]>(initialTodos ?? []);
   const [localTodos, setLocalTodos] = useState<Todo[]>([]);
@@ -232,6 +237,7 @@ export function TodoPanel({
 
   const handleSoftDelete = async (id: string) => {
     if (id.startsWith("local_todo_")) {
+      await removePendingTodo(id);
       setLocalTodos((curr) => curr.filter((t) => t.id !== id));
       return;
     }
@@ -242,6 +248,7 @@ export function TodoPanel({
   const handleHardDelete = async (id: string) => {
     if (!window.confirm("确定彻底删除？此操作不可恢复。")) return;
     if (id.startsWith("local_todo_")) {
+      await removePendingTodo(id);
       setLocalTodos((curr) => curr.filter((t) => t.id !== id));
       return;
     }
@@ -521,6 +528,8 @@ export function TodoPanel({
             todo={detailTodo}
             onClose={() => setDetailTodo(null)}
             onRefresh={() => { setDetailTodo(null); fetchTodos(); }}
+            initialSourceRecord={detailTodo.recordId ? getRecordById?.(detailTodo.recordId) ?? undefined : undefined}
+            onGoToRecord={onGoToRecord ? (id) => { setDetailTodo(null); onGoToRecord(id); } : undefined}
           />,
           document.body
         )}
@@ -566,6 +575,41 @@ function TodoCard({
   const timeHint = extractTimeHint(todo.content);
   const needsResync = todo.syncedAt && todo.updatedAt > todo.syncedAt;
   const [priorityOpen, setPriorityOpen] = useState(false);
+  const [priorityAnchor, setPriorityAnchor] = useState<DOMRect | null>(null);
+  const priorityBtnRef = useRef<HTMLButtonElement>(null);
+
+  const updatePriorityRect = useCallback(() => {
+    if (priorityBtnRef.current) setPriorityAnchor(priorityBtnRef.current.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!priorityOpen) return;
+    updatePriorityRect();
+    const onScrollOrResize = () => updatePriorityRect();
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [priorityOpen, updatePriorityRect]);
+
+  useEffect(() => {
+    if (!priorityOpen) return;
+    const onEscape = (e: KeyboardEvent) => { if (e.key === "Escape") setPriorityOpen(false); };
+    const onCapture = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (priorityBtnRef.current?.contains(target)) return;
+      if ((e.target as Element).closest?.("[data-todo-priority-portal]")) return;
+      setPriorityOpen(false);
+    };
+    document.addEventListener("keydown", onEscape);
+    document.addEventListener("mousedown", onCapture, true);
+    return () => {
+      document.removeEventListener("keydown", onEscape);
+      document.removeEventListener("mousedown", onCapture, true);
+    };
+  }, [priorityOpen]);
 
   return (
     <div
@@ -624,9 +668,10 @@ function TodoCard({
         <div className="flex min-w-[220px] flex-nowrap items-center justify-start gap-2 pl-4" onClick={(e) => e.stopPropagation()}>
           {!isDeleted && (
             <>
-              {/* 优先级：始终显示，靠左 */}
+              {/* 优先级：始终显示，靠左；弹层用 Portal 渲染到 body 避免被 overflow 裁剪 */}
               <div className="relative flex items-center gap-2">
                 <button
+                  ref={priorityBtnRef}
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setPriorityOpen((v) => !v); }}
                   title={`优先级: ${pc.label}`}
@@ -642,33 +687,38 @@ function TodoCard({
                     已同步滴答
                   </span>
                 )}
-                {priorityOpen && (
-                  <div
-                    className="absolute left-0 top-full z-20 mt-1 w-28 rounded-lg border border-[var(--line)] bg-[var(--card)] p-1 shadow-lg"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {priorities.map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => { onChangePriority(p); setPriorityOpen(false); }}
-                        className={[
-                          "flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition",
-                          todo.priority === p
-                            ? priorityConfig[p].bg
-                            : "text-[var(--muted-strong)] hover:bg-[var(--surface)]",
-                        ].join(" ")}
-                      >
-                        <span>{priorityConfig[p].label}</span>
-                        {todo.priority === p && (
-                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {priorityOpen &&
+                  priorityAnchor &&
+                  createPortal(
+                    <div
+                      data-todo-priority-portal
+                      className="fixed z-[9999] w-28 rounded-lg border border-[var(--line)] bg-[var(--card)] p-1 shadow-lg"
+                      style={{ left: priorityAnchor.left, top: priorityAnchor.bottom + 4 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {priorities.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => { onChangePriority(p); setPriorityOpen(false); }}
+                          className={[
+                            "flex w-full items-center justify-between rounded-md px-2 py-1 text-[11px] transition",
+                            todo.priority === p
+                              ? priorityConfig[p].bg
+                              : "text-[var(--muted-strong)] hover:bg-[var(--surface)]",
+                          ].join(" ")}
+                        >
+                          <span>{priorityConfig[p].label}</span>
+                          {todo.priority === p && (
+                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>,
+                    document.body
+                  )}
               </div>
 
               {/* 悬浮时显示：设定时间、同步/重同步按钮、删除 */}
@@ -727,39 +777,73 @@ function TodoCard({
 
 /* ── Todo Detail Modal ── */
 
+type SourceRecordInfo = {
+  title: string;
+  summary?: string;
+  sourceLabel?: string;
+  keywords?: string[];
+  contentSnippet?: string;
+  createdAt?: string;
+};
+
 function TodoDetailModal({
   todo,
   onClose,
   onRefresh,
+  initialSourceRecord,
+  onGoToRecord,
 }: {
   todo: Todo;
   onClose: () => void;
   onRefresh: () => void;
+  initialSourceRecord?: KnowledgeRecord | null;
+  onGoToRecord?: (recordId: string) => void;
 }) {
   const [editContent, setEditContent] = useState(todo.content);
   const [editPriority, setEditPriority] = useState<TodoPriority>(todo.priority);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState("");
-  const [sourceRecord, setSourceRecord] = useState<{ title: string; summary?: string; sourceLabel?: string } | null | "loading">(todo.recordId ? "loading" : null);
+  const [sourceRecord, setSourceRecord] = useState<SourceRecordInfo | null | "loading">(() => {
+    if (!todo.recordId) return null;
+    if (initialSourceRecord) {
+      const r = initialSourceRecord;
+      const snippet = (r.contentText || r.extractedText || r.summary || "").trim().slice(0, 400);
+      return {
+        title: r.title || "未命名",
+        summary: r.summary,
+        sourceLabel: r.sourceLabel,
+        keywords: r.keywords?.length ? r.keywords : undefined,
+        contentSnippet: snippet ? `${snippet}${snippet.length >= 400 ? "…" : ""}` : undefined,
+        createdAt: r.createdAt,
+      };
+    }
+    return "loading";
+  });
 
   useEffect(() => {
-    if (!todo.recordId) return;
+    if (!todo.recordId || initialSourceRecord != null) return;
     fetch(`/api/records/${todo.recordId}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.record) {
+          const r = data.record;
+          const raw = r.contentText || r.content_text || r.extractedText || r.extracted_text || r.summary || "";
+          const snippet = String(raw).trim().slice(0, 400);
           setSourceRecord({
-            title: data.record.title || "未命名",
-            summary: data.record.summary,
-            sourceLabel: data.record.sourceLabel,
+            title: r.title || "未命名",
+            summary: r.summary,
+            sourceLabel: r.sourceLabel || r.source_label,
+            keywords: (r.keywords && r.keywords.length) ? r.keywords : undefined,
+            contentSnippet: snippet ? `${snippet}${snippet.length >= 400 ? "…" : ""}` : undefined,
+            createdAt: r.createdAt || r.created_at,
           });
         } else {
           setSourceRecord(null);
         }
       })
       .catch(() => setSourceRecord(null));
-  }, [todo.recordId]);
+  }, [todo.recordId, initialSourceRecord]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -803,21 +887,34 @@ function TodoDetailModal({
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="mx-4 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-[var(--line)] bg-[var(--background)] shadow-2xl">
+      <div className="mx-4 flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-[var(--line)] bg-[var(--background)] shadow-2xl">
         {/* 标题栏：待办详情 + 源信息按钮 + 关闭 */}
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--line)] px-6 py-4">
           <h3 className="text-lg font-bold text-[var(--foreground)]">待办详情</h3>
           <div className="flex items-center gap-2">
             {todo.recordId && (
-              <Link
-                href={`/?tab=history&record=${todo.recordId}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-purple-500 transition hover:bg-purple-500/10"
-              >
-                源信息
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M7 17L17 7M17 7h-10v10" />
-                </svg>
-              </Link>
+              onGoToRecord ? (
+                <button
+                  type="button"
+                  onClick={() => onGoToRecord(todo.recordId!)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-purple-500 transition hover:bg-purple-500/10"
+                >
+                  查看完整记录
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M7 17L17 7M17 7h-10v10" />
+                  </svg>
+                </button>
+              ) : (
+                <Link
+                  href={`/?tab=history&record=${todo.recordId}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-purple-500 transition hover:bg-purple-500/10"
+                >
+                  查看完整记录
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M7 17L17 7M17 7h-10v10" />
+                  </svg>
+                </Link>
+              )
             )}
             <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
               ✕
@@ -883,21 +980,48 @@ function TodoDetailModal({
           )}
 
           {activeTab === "source" && todo.recordId && (
-            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-4">
+            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-5 py-5">
               {sourceRecord === "loading" ? (
                 <p className="text-sm text-[var(--muted)]">加载中...</p>
               ) : sourceRecord ? (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-[var(--foreground)]">{sourceRecord.title}</p>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">标题</p>
+                    <p className="mt-0.5 text-base font-medium text-[var(--foreground)]">{sourceRecord.title}</p>
+                  </div>
                   {sourceRecord.summary && (
-                    <p className="text-sm leading-6 text-[var(--muted-strong)]">{sourceRecord.summary}</p>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">摘要</p>
+                      <p className="mt-0.5 text-sm leading-6 text-[var(--muted-strong)]">{sourceRecord.summary}</p>
+                    </div>
                   )}
-                  {sourceRecord.sourceLabel && (
-                    <p className="text-xs text-[var(--muted)]">来源：{sourceRecord.sourceLabel}</p>
+                  {(sourceRecord.sourceLabel || sourceRecord.createdAt) && (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted)]">
+                      {sourceRecord.sourceLabel && <span>来源：{sourceRecord.sourceLabel}</span>}
+                      {sourceRecord.createdAt && <span>创建：{formatBeijingTime(sourceRecord.createdAt)}</span>}
+                    </div>
                   )}
-                  <p className="pt-2 text-xs text-[var(--muted)]">
-                    点击顶部「源信息」可跳转至完整记录页面查看详情。
-                  </p>
+                  {sourceRecord.keywords && sourceRecord.keywords.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">标签</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {sourceRecord.keywords.map((kw) => (
+                          <span key={kw} className="rounded-md bg-[var(--background)] px-2 py-0.5 text-xs text-[var(--muted-strong)]">{kw}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {sourceRecord.contentSnippet && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">内容摘要</p>
+                      <p className="mt-0.5 whitespace-pre-wrap text-sm leading-6 text-[var(--muted-strong)]">{sourceRecord.contentSnippet}</p>
+                    </div>
+                  )}
+                  {onGoToRecord && (
+                    <p className="pt-2 text-xs text-[var(--muted)]">
+                      点击顶部「查看完整记录」可在当前页快速打开完整记录，无需刷新。
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-[var(--muted)]">无法加载来源信息</p>

@@ -37,7 +37,7 @@ export async function POST() {
           buffer = Buffer.from(await resp.arrayBuffer());
         }
 
-        const ocrResult = await ocrImage(userId, buffer, asset.mime_type);
+        const ocrResult = await ocrImage(userId, buffer, asset.mime_type, true);
         await updateAssetOcr(userId, asset.id, ocrResult.text, ocrResult.keywords, ocrResult.description);
         success++;
       } catch (err) {

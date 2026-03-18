@@ -28,6 +28,7 @@ export interface PendingRecordPayload {
   fileDescs: Record<string, string>;
   enableAiSummary?: boolean;
   enableAiTodo?: boolean;
+  enableOcr?: boolean;
   linkToTodo?: boolean;
   syncToFlomo?: boolean;
 }
@@ -158,6 +159,7 @@ export function buildFormDataFromPending(pending: PendingRecord): FormData {
   formData.set("recordTypeHint", payload.recordTypeHint);
   formData.set("enableAiSummary", String(payload.enableAiSummary !== false));
   formData.set("enableAiTodo", String(payload.enableAiTodo !== false));
+  formData.set("enableOcr", String(payload.enableOcr !== false));
   formData.set("linkToTodo", String(payload.linkToTodo === true));
   formData.set("syncToFlomo", String(payload.syncToFlomo === true));
   payload.files.forEach((file, idx) => {

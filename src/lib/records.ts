@@ -84,10 +84,11 @@ export async function createKnowledgeRecord(
   input: RecordInput,
   uploads: StoredUpload[],
   fileMeta?: Array<{ tags?: string[]; description?: string }>,
-  opts?: { enableAiSummary?: boolean; enableAiTodo?: boolean; linkToTodo?: boolean; syncToFlomo?: boolean },
+  opts?: { enableAiSummary?: boolean; enableAiTodo?: boolean; enableOcr?: boolean; linkToTodo?: boolean; syncToFlomo?: boolean },
 ) {
   const enableAiSummary = opts?.enableAiSummary !== false;
   const enableAiTodo = opts?.enableAiTodo !== false;
+  const enableOcr = opts?.enableOcr !== false;
   const linkToTodo = opts?.linkToTodo === true;
   const syncToFlomo = opts?.syncToFlomo === true;
   const supabase = getSupabaseAdmin();
@@ -123,10 +124,10 @@ export async function createKnowledgeRecord(
     let description = meta?.description ?? "";
 
     let ocrText = "";
-    if (upload.mimeType.startsWith("image/")) {
+    if (enableOcr && upload.mimeType.startsWith("image/")) {
       try {
         const { ocrImage } = await import("@/lib/ocr");
-        const ocrResult = await ocrImage(userId, upload.buffer, upload.mimeType);
+        const ocrResult = await ocrImage(userId, upload.buffer, upload.mimeType, true);
         ocrText = ocrResult.text;
         if (ocrResult.keywords.length > 0) {
           tags.push(...ocrResult.keywords.filter((k) => !tags.includes(k)));
@@ -137,8 +138,9 @@ export async function createKnowledgeRecord(
         if (ocrText.trim()) {
           extractedParts.push(`图片 ${upload.originalName} OCR识别:\n${ocrText.trim()}`);
         }
-      } catch {
-        // OCR non-critical
+      } catch (ocrErr) {
+        // OCR 非关键，记录失败便于排查
+        console.warn(`[OCR] 图片 ${upload.originalName} 识别失败:`, ocrErr instanceof Error ? ocrErr.message : ocrErr);
       }
     }
 
@@ -495,14 +497,15 @@ export async function hardDeleteRecord(userId: string, recordId: string) {
 export async function updateKnowledgeRecord(
   userId: string,
   recordId: string,
-  fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string },
+  fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] },
 ) {
-  const updates: Record<string, string> = { updated_at: nowIso() };
+  const updates: Record<string, unknown> = { updated_at: nowIso() };
 
   if (fields.title !== undefined) updates.title = fields.title;
   if (fields.contextNote !== undefined) updates.context_note = fields.contextNote;
   if (fields.sourceLabel !== undefined) updates.source_label = fields.sourceLabel;
   if (fields.contentText !== undefined) updates.content_text = fields.contentText;
+  if (fields.keywords !== undefined) updates.keywords = fields.keywords;
 
   await getSupabaseAdmin()
     .from("records")

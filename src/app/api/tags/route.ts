@@ -4,10 +4,67 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+/** 按最近使用顺序返回标签：从最近更新的记录及其附件中收集标签，去重后取前 limit 个 */
+async function getRecentTags(userId: string, limit: number): Promise<Array<{ tag: string; count: number }>> {
+  const supabase = getSupabaseAdmin();
+  const { data: records } = await supabase
+    .from("records")
+    .select("id, keywords, updated_at")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(50);
+
+  if (!records?.length) return [];
+
+  const recordIds = records.map((r) => r.id);
+  const recordOrder = new Map(records.map((r, i) => [r.id, i]));
+  const { data: assets } = await supabase
+    .from("assets")
+    .select("record_id, tags")
+    .eq("user_id", userId)
+    .in("record_id", recordIds);
+
+  const tagsByRecord = new Map<string, string[]>();
+  for (const r of records) {
+    const kws = (r.keywords || []).map((k) => k.trim()).filter(Boolean);
+    tagsByRecord.set(r.id, [...kws]);
+  }
+  for (const a of assets ?? []) {
+    const existing = tagsByRecord.get(a.record_id) ?? [];
+    const more = (a.tags || []).map((t) => t.trim()).filter(Boolean);
+    tagsByRecord.set(a.record_id, [...existing, ...more]);
+  }
+
+  const seen = new Set<string>();
+  const recent: string[] = [];
+  for (const r of records) {
+    for (const t of tagsByRecord.get(r.id) ?? []) {
+      const key = t.toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        recent.push(t);
+        if (recent.length >= limit) break;
+      }
+    }
+    if (recent.length >= limit) break;
+  }
+  return recent.map((tag) => ({ tag, count: 0 }));
+}
+
+export async function GET(request: NextRequest) {
   try {
     const userId = await requireUserId();
     const supabase = getSupabaseAdmin();
+    const { searchParams } = new URL(request.url);
+    const recentLimit = searchParams.get("recent");
+    const wantRecent = recentLimit != null && /^\d+$/.test(recentLimit);
+    const limit = wantRecent ? Math.min(parseInt(recentLimit, 10), 20) : 0;
+
+    if (wantRecent && limit > 0) {
+      const tags = await getRecentTags(userId, limit);
+      return NextResponse.json({ tags, total: tags.length });
+    }
 
     const { data: records } = await supabase
       .from("records")

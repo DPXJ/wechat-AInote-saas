@@ -32,6 +32,25 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function ImageSkeleton() {
+  return (
+    <div className="absolute inset-0 flex flex-col justify-center gap-2 px-4 py-6" aria-hidden>
+      <div className="h-3 w-full max-w-[85%] overflow-hidden rounded-md bg-[var(--line)]">
+        <div className="image-skeleton-shine h-full w-1/2 rounded-md bg-[var(--line-strong)]" />
+      </div>
+      <div className="h-3 w-full max-w-[70%] overflow-hidden rounded-md bg-[var(--line)]">
+        <div className="image-skeleton-shine h-full w-1/2 rounded-md bg-[var(--line-strong)]" />
+      </div>
+      <div className="h-3 w-full max-w-[90%] overflow-hidden rounded-md bg-[var(--line)]">
+        <div className="image-skeleton-shine h-full w-1/2 rounded-md bg-[var(--line-strong)]" />
+      </div>
+      <div className="mt-2 h-2 w-1/2 max-w-[40%] overflow-hidden rounded bg-[var(--line)]">
+        <div className="image-skeleton-shine h-full w-1/2 rounded bg-[var(--line-strong)]" />
+      </div>
+    </div>
+  );
+}
+
 function DownloadBtn({ assetId, size = "sm" }: { assetId: string; size?: "sm" | "md" }) {
   const cls =
     size === "md"
@@ -183,11 +202,7 @@ function ImageCard({
         className="block w-full cursor-zoom-in"
       >
         <div className="relative aspect-video w-full bg-[var(--surface)]">
-          {!loaded && (
-            <div className="absolute inset-0 flex items-center justify-center text-xs text-[var(--muted)]">
-              加载中...
-            </div>
-          )}
+          {!loaded && <ImageSkeleton />}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={useThumb ? thumbUrl(asset.id) : assetUrl(asset.id)}

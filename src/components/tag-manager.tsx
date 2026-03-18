@@ -4,7 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 
 export type TagItem = { tag: string; count: number };
 
-export function TagManager({ initialTags }: { initialTags?: TagItem[] | null } = {}) {
+export function TagManager({
+  initialTags,
+  onTagClick,
+}: {
+  initialTags?: TagItem[] | null;
+  onTagClick?: (tag: string) => void;
+} = {}) {
   const [tags, setTags] = useState<TagItem[]>(initialTags ?? []);
   const [filter, setFilter] = useState("");
   const hasInitial = initialTags != null;
@@ -63,11 +69,21 @@ export function TagManager({ initialTags }: { initialTags?: TagItem[] | null } =
               key={item.tag}
               className="group flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--foreground)] transition hover:border-[var(--line-strong)]"
             >
-              {item.tag}
-              <span className="text-xs text-[var(--muted)]">({item.count})</span>
               <button
                 type="button"
-                onClick={() => handleDelete(item.tag)}
+                onClick={() => onTagClick?.(item.tag)}
+                className={[
+                  "flex items-center gap-1.5 text-left transition",
+                  onTagClick ? "cursor-pointer hover:text-[var(--accent)]" : "cursor-default",
+                ].join(" ")}
+                title={onTagClick ? `查看带「${item.tag}」的记录` : undefined}
+              >
+                {item.tag}
+                <span className="text-xs text-[var(--muted)]">({item.count})</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleDelete(item.tag); }}
                 className="ml-1 hidden text-[var(--muted)] hover:text-rose-500 group-hover:inline"
                 title="删除标签"
               >

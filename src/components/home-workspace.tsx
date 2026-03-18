@@ -129,7 +129,9 @@ export function HomeWorkspace({
   const [selectedRecordId, setSelectedRecordId] = useState(initialRecords[0]?.id || "");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [docSubFilter, setDocSubFilter] = useState<DocSubFilter>("");
+  const [historyTagFilter, setHistoryTagFilter] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [searchAutoOpen, setSearchAutoOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [detailModalId, setDetailModalId] = useState<string | null>(null);
@@ -321,7 +323,7 @@ export function HomeWorkspace({
 
   /** 离线优先：先乐观更新 UI，再后台 PATCH；失败时回滚并抛出，由 RecordPane 轻量提示 */
   const handleUpdate = useCallback(
-    (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => {
+    (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => {
       let prev: KnowledgeRecord | undefined;
       setRecords((p) => {
         prev = p.find((r) => r.id === id);
@@ -355,6 +357,7 @@ export function HomeWorkspace({
 
   const filteredRecordsBase = useMemo(() => {
     return records.filter((r) => {
+      if (historyTagFilter && !(r.keywords || []).includes(historyTagFilter)) return false;
       if (historyFilter === "synced") return r.syncRuns.some((run) => run.status === "synced");
       if (historyFilter === "all") return true;
       if (historyFilter === "document" && docSubFilter) {
@@ -368,7 +371,7 @@ export function HomeWorkspace({
       if (historyFilter === "document") return r.recordType === "document" || r.recordType === "pdf";
       return r.recordType === historyFilter;
     });
-  }, [historyFilter, docSubFilter, records]);
+  }, [historyFilter, historyTagFilter, docSubFilter, records]);
 
   const filteredRecords = useMemo(
     () => [...localPendingRecords, ...filteredRecordsBase],
@@ -409,7 +412,7 @@ export function HomeWorkspace({
           className="fixed z-30 hidden lg:block transition-all duration-200"
           style={{ width: sidebarWidth, top: 24, left: 24, bottom: 24 }}
         >
-          <div className="flex h-full flex-col rounded-2xl border border-[var(--line)] bg-[var(--sidebar-bg)] px-3 py-5 shadow-sm">
+          <div className="flex h-full flex-col rounded-2xl border border-[var(--line)] bg-[var(--sidebar-bg)] px-5 py-5 shadow-sm">
             {!sidebarCollapsed && (
               <div className="mb-8 px-3">
                 <h1 className="text-lg font-bold tracking-tight text-[var(--foreground)]">
@@ -432,7 +435,7 @@ export function HomeWorkspace({
                   title={sidebarCollapsed ? tab.label : undefined}
                   className={[
                     "relative flex w-full items-center rounded-xl transition",
-                    sidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5 text-left",
+                    sidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-5 py-2.5 text-left",
                     activeTab === tab.id
                       ? "bg-[var(--sidebar-active)] font-semibold text-[var(--foreground)]"
                       : "text-[var(--muted-strong)] hover:bg-[var(--sidebar-active)] hover:text-[var(--foreground)]",
@@ -459,7 +462,7 @@ export function HomeWorkspace({
             {/* Account center */}
             <div className={[
               "mb-2 flex items-center rounded-xl border border-[var(--line)] bg-[var(--surface)]/50 transition",
-              sidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
+              sidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-5 py-2.5",
             ].join(" ")}>
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-400 to-cyan-400 text-[11px] font-bold text-white">
                 {userEmail ? userEmail[0].toUpperCase() : "U"}
@@ -593,7 +596,7 @@ export function HomeWorkspace({
               {activeTab === "record" && (
                 <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
                   <div className="mb-4 flex items-center justify-between gap-2">
-                    <h2 className="text-sm font-medium text-[var(--foreground)]">新建信息</h2>
+                    <h2 className="text-sm font-medium text-[var(--foreground)]">记录信息</h2>
                     <SyncIndicator />
                   </div>
                   <InboxForm
@@ -603,7 +606,7 @@ export function HomeWorkspace({
                       setTimeout(() => refreshRecords(), 5000);
                       setTimeout(() => refreshRecords(), 12000);
                     }}
-                    onSwitchToSearch={() => setActiveTab("history")}
+                    onSwitchToSearch={() => { setActiveTab("history"); setSearchAutoOpen(true); }}
                   />
                 </div>
               )}
@@ -611,20 +614,24 @@ export function HomeWorkspace({
               {activeTab === "history" && (
                 <HistoryTab
                   records={filteredRecords}
-                  total={total}
+                  total={historyTagFilter != null ? filteredRecords.length : total}
                   hasMore={records.length < total}
                   loadingMore={loadingMore}
                   selectedRecord={selectedRecord}
                   historyFilter={historyFilter}
                   docSubFilter={docSubFilter}
-                  onFilterChange={handleHistoryFilterChange}
+                  historyTagFilter={historyTagFilter}
+                  onFilterChange={(f) => { setHistoryTagFilter(null); handleHistoryFilterChange(f); }}
                   onDocSubFilterChange={setDocSubFilter}
+                  onClearTagFilter={() => setHistoryTagFilter(null)}
                   onSelectRecord={setSelectedRecordId}
                   onLoadMore={loadMore}
                   onDelete={handleDeleteRequest}
                   onUpdate={handleUpdate}
                   onOpenDetail={setDetailModalId}
                   onRefresh={refreshRecords}
+                  initialSearchActive={searchAutoOpen}
+                  onSearchActiveChange={setSearchAutoOpen}
                 />
               )}
 
@@ -642,12 +649,22 @@ export function HomeWorkspace({
                   initialTodos={prefetchedTodos?.todos}
                   initialTotal={prefetchedTodos?.total}
                   initialPriorityFilter={todosInitialPriority}
+                  getRecordById={(id) => records.find((r) => r.id === id) ?? null}
+                  onGoToRecord={(id) => { setActiveTab("history"); setSelectedRecordId(id); }}
                 />
               )}
               {activeTab === "reports" && (
                 <ReportPanel initialData={prefetchedReport} initialPeriod="week" />
               )}
-              {activeTab === "tags" && <TagManager initialTags={prefetchedTags} />}
+              {activeTab === "tags" && (
+                <TagManager
+                  initialTags={prefetchedTags}
+                  onTagClick={(tag) => {
+                    setHistoryTagFilter(tag);
+                    setActiveTab("history");
+                  }}
+                />
+              )}
               {activeTab === "settings" && (
                 <IntegrationsPanel initialSettings={integrationSettings} initialStatus={integrationStatus} />
               )}
@@ -712,6 +729,17 @@ export function HomeWorkspace({
 /* History Tab                                         */
 /* ────────────────────────────────────────────────── */
 
+const SEARCH_HISTORY_KEY = "ai-box-search-history";
+const MAX_SEARCH_HISTORY = 10;
+
+function getSearchHistory(): string[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(window.localStorage.getItem(SEARCH_HISTORY_KEY) || "[]"); } catch { return []; }
+}
+function saveSearchHistory(history: string[]) {
+  window.localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_SEARCH_HISTORY)));
+}
+
 function HistoryTab({
   records,
   total,
@@ -720,14 +748,18 @@ function HistoryTab({
   selectedRecord,
   historyFilter,
   docSubFilter,
+  historyTagFilter,
   onFilterChange,
   onDocSubFilterChange,
+  onClearTagFilter,
   onSelectRecord,
   onLoadMore,
   onDelete,
   onUpdate,
   onOpenDetail,
   onRefresh,
+  initialSearchActive,
+  onSearchActiveChange,
 }: {
   records: KnowledgeRecord[];
   total: number;
@@ -736,23 +768,40 @@ function HistoryTab({
   selectedRecord: KnowledgeRecord | null;
   historyFilter: HistoryFilter;
   docSubFilter: DocSubFilter;
+  historyTagFilter: string | null;
   onFilterChange: (f: HistoryFilter) => void;
   onDocSubFilterChange: (f: DocSubFilter) => void;
+  onClearTagFilter: () => void;
   onSelectRecord: (id: string) => void;
   onLoadMore: () => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void;
   onOpenDetail: (id: string) => void;
   onRefresh: () => Promise<void>;
+  initialSearchActive?: boolean;
+  onSearchActiveChange?: (v: boolean) => void;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchActive, setSearchActive] = useState(false);
+  const [searchActive, setSearchActiveRaw] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchAnswer, setSearchAnswer] = useState("");
   const [searchCitations, setSearchCitations] = useState<Array<{ recordId: string; title: string; snippet: string; sourceLabel: string; score: number; reason?: string }>>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [searchHistory, setSearchHistory] = useState<string[]>(() => getSearchHistory());
+
+  const setSearchActive = useCallback((v: boolean) => {
+    setSearchActiveRaw(v);
+    onSearchActiveChange?.(v);
+  }, [onSearchActiveChange]);
+
+  useEffect(() => {
+    if (initialSearchActive) {
+      setSearchActiveRaw(true);
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
+  }, [initialSearchActive]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -769,33 +818,111 @@ function HistoryTab({
     return () => observer.disconnect();
   }, [hasMore, onLoadMore]);
 
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+  const [answerLoading, setAnswerLoading] = useState(false);
+
+  const handleSearch = useCallback(async (q?: string) => {
+    const query = (q ?? searchQuery).trim();
+    if (!query) return;
+    if (!q) setSearchQuery(query);
     setSearchActive(true);
     setSearchLoading(true);
+    setSearchAnswer("");
+    setSearchCitations([]);
+    const updated = [query, ...searchHistory.filter((h) => h !== query)].slice(0, MAX_SEARCH_HISTORY);
+    setSearchHistory(updated);
+    saveSearchHistory(updated);
     try {
-      const res = await fetch("/api/search", {
+      const citRes = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q: searchQuery.trim(), history: [] }),
+        body: JSON.stringify({ q: query, history: [], skipAnswer: true }),
       });
-      const data = await res.json();
-      setSearchAnswer(data.answer || "");
-      setSearchCitations(data.citations || []);
-      if (data.citations?.length > 0) {
-        onSelectRecord(data.citations[0].recordId);
+      const citData = await citRes.json();
+      const cits = citData.citations || [];
+      setSearchCitations(cits);
+      setSearchLoading(false);
+      if (cits.length > 0) {
+        onSelectRecord(cits[0].recordId);
       }
-    } finally {
+
+      setAnswerLoading(true);
+      try {
+        const ansRes = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ q: query, history: [] }),
+        });
+        const ansData = await ansRes.json();
+        setSearchAnswer(ansData.answer || "");
+      } finally {
+        setAnswerLoading(false);
+      }
+    } catch {
       setSearchLoading(false);
     }
-  }, [searchQuery, onSelectRecord]);
+  }, [searchQuery, searchHistory, onSelectRecord, setSearchActive]);
 
   const clearSearch = useCallback(() => {
     setSearchActive(false);
     setSearchQuery("");
     setSearchAnswer("");
     setSearchCitations([]);
+  }, [setSearchActive]);
+
+  const removeHistoryItem = useCallback((item: string) => {
+    const updated = searchHistory.filter((h) => h !== item);
+    setSearchHistory(updated);
+    saveSearchHistory(updated);
+  }, [searchHistory]);
+
+  const clearAllHistory = useCallback(() => {
+    setSearchHistory([]);
+    saveSearchHistory([]);
   }, []);
+
+  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+  const [syncAllRunning, setSyncAllRunning] = useState(false);
+
+  const syncSingleRecord = useCallback(async (recordId: string) => {
+    setSyncingIds((prev) => new Set(prev).add(recordId));
+    try {
+      await fetch(`/api/records/${recordId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: "notion" }),
+      });
+      await onRefresh();
+    } finally {
+      setSyncingIds((prev) => { const s = new Set(prev); s.delete(recordId); return s; });
+    }
+  }, [onRefresh]);
+
+  const syncAllUnsynced = useCallback(async () => {
+    const unsynced = records.filter(
+      (r) => !(r as KnowledgeRecord & { _localPending?: boolean })._localPending &&
+        !r.syncRuns.some((run) => run.status === "synced"),
+    );
+    if (unsynced.length === 0) return;
+    setSyncAllRunning(true);
+    for (const r of unsynced) {
+      setSyncingIds((prev) => new Set(prev).add(r.id));
+      try {
+        await fetch(`/api/records/${r.id}/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: "notion" }),
+        });
+      } catch {}
+      setSyncingIds((prev) => { const s = new Set(prev); s.delete(r.id); return s; });
+    }
+    await onRefresh();
+    setSyncAllRunning(false);
+  }, [records, onRefresh]);
+
+  const unsyncedCount = records.filter(
+    (r) => !(r as KnowledgeRecord & { _localPending?: boolean })._localPending &&
+      !r.syncRuns.some((run) => run.status === "synced"),
+  ).length;
 
   return (
     <div className="flex h-full flex-col">
@@ -842,8 +969,34 @@ function HistoryTab({
           );
         })}
 
+        {!searchActive && historyTagFilter && (
+          <span className="flex items-center gap-1 rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)]">
+            标签: {historyTagFilter}
+            <button
+              type="button"
+              onClick={onClearTagFilter}
+              className="rounded p-0.5 hover:bg-[var(--surface-strong)]"
+              title="清除标签筛选"
+            >
+              ×
+            </button>
+          </span>
+        )}
         {!searchActive && <span className="text-xs text-[var(--muted)]">{total} 条</span>}
         {!searchActive && <RefreshButton onClick={onRefresh} />}
+        {!searchActive && unsyncedCount > 0 && (
+          <button
+            type="button"
+            onClick={() => void syncAllUnsynced()}
+            disabled={syncAllRunning}
+            className="flex items-center gap-1 rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-500 transition hover:bg-rose-500/20 disabled:opacity-50"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
+            </svg>
+            {syncAllRunning ? "同步中..." : `同步全部 (${unsyncedCount})`}
+          </button>
+        )}
 
         {searchActive ? (
           <div className="ai-border flex flex-1 items-center gap-2 rounded-xl bg-[var(--card)] p-1">
@@ -861,7 +1014,7 @@ function HistoryTab({
             />
             <button
               type="button"
-              onClick={handleSearch}
+              onClick={() => void handleSearch()}
               disabled={searchLoading || !searchQuery.trim()}
               className="shrink-0 rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-xs font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
             >
@@ -890,42 +1043,69 @@ function HistoryTab({
       </div>
 
       {/* AI answer banner */}
+      {searchActive && answerLoading && !searchAnswer && (
+        <div className="mb-4 flex shrink-0 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-5 py-4">
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--foreground)] border-t-transparent" />
+          <span className="text-[13px] text-[var(--muted)]">AI 正在生成回答...</span>
+        </div>
+      )}
       {searchActive && searchAnswer && (
         <div className="mb-4 shrink-0 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-5 py-4">
           <p className="text-[13px] leading-7 text-[var(--foreground)]">{searchAnswer}</p>
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[400px_minmax(0,1fr)]">
+      <div className={[
+        "grid min-h-0 flex-1 gap-5 overflow-hidden",
+        searchActive ? "" : "xl:grid-cols-[400px_minmax(0,1fr)]",
+      ].join(" ")}>
         {/* Left: independently scrollable list */}
         <div ref={scrollContainerRef} className="hide-scrollbar min-h-0 overflow-y-auto">
-          {searchActive && searchCitations.length > 0 ? (
+          {searchActive && !searchLoading && searchCitations.length === 0 && !searchAnswer && searchHistory.length > 0 ? (
+            <div className="px-2 py-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-[var(--muted)]">搜索历史</span>
+                <button type="button" onClick={clearAllHistory} className="text-[11px] text-[var(--muted)] transition hover:text-[var(--foreground)]">清空</button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {searchHistory.map((h) => (
+                  <span key={h} className="group flex items-center gap-1 rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)]">
+                    <button
+                      type="button"
+                      onClick={() => { setSearchQuery(h); void handleSearch(h); }}
+                      className="hover:text-[var(--foreground)]"
+                    >
+                      {h}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeHistoryItem(h)}
+                      className="ml-0.5 hidden text-[var(--muted)] hover:text-[var(--foreground)] group-hover:inline"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : searchActive && searchCitations.length > 0 ? (
             <div>
               <p className="px-1 py-1.5 text-[11px] font-medium text-[var(--muted)]">搜索到 {searchCitations.length} 条相关记录</p>
-              {searchCitations.map((c) => {
-                const active = selectedRecord?.id === c.recordId;
-                return (
-                  <button
-                    key={c.recordId}
-                    type="button"
-                    onClick={() => onSelectRecord(c.recordId)}
-                    className={[
-                      "relative w-full border-b border-dashed px-3 py-2.5 text-left transition",
-                      active
-                        ? "border-[var(--line-strong)] bg-[var(--surface-strong)]"
-                        : "border-[var(--line)] hover:bg-[var(--surface)]",
-                    ].join(" ")}
-                  >
-                    {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-[var(--foreground)]" />}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-medium text-[var(--muted)]">{c.sourceLabel}</span>
-                    </div>
-                    <p className="mt-1 truncate text-[14px] font-semibold leading-snug text-[var(--foreground)]">{c.title}</p>
-                    <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted)]">{c.snippet}</p>
-                    {c.reason && <p className="mt-1 text-[10px] text-[var(--muted)]">{c.reason}</p>}
-                  </button>
-                );
-              })}
+              {searchCitations.map((c) => (
+                <button
+                  key={c.recordId}
+                  type="button"
+                  onClick={() => onSelectRecord(c.recordId)}
+                  className="relative w-full border-b border-dashed border-[var(--line)] px-3 py-2.5 text-left transition hover:bg-[var(--surface)]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-[var(--muted)]">{c.sourceLabel}</span>
+                  </div>
+                  <p className="mt-1 truncate text-[14px] font-semibold leading-snug text-[var(--foreground)]">{c.title}</p>
+                  <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted)]">{c.snippet}</p>
+                  {c.reason && <p className="mt-1 text-[10px] text-[var(--muted)]">{c.reason}</p>}
+                </button>
+              ))}
             </div>
           ) : searchActive && !searchLoading && searchCitations.length === 0 && searchAnswer ? (
             <div className="flex flex-col items-center py-16 text-center">
@@ -975,11 +1155,22 @@ function HistoryTab({
                         !(record as KnowledgeRecord & { _localPending?: boolean })._localPending &&
                         !record.syncRuns.some((r) => r.status === "synced") && (
                         <div className="mt-1.5 flex justify-end">
-                          <span className="shrink-0 text-rose-400" title="未同步到云端">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
-                              <line x1="1" y1="1" x2="23" y2="23" />
-                            </svg>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => { e.stopPropagation(); void syncSingleRecord(record.id); }}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); void syncSingleRecord(record.id); } }}
+                            className={["shrink-0 cursor-pointer text-rose-400 transition hover:text-rose-300", syncingIds.has(record.id) ? "animate-pulse" : ""].join(" ")}
+                            title="点击同步到云端"
+                          >
+                            {syncingIds.has(record.id) ? (
+                              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-rose-400 border-t-transparent" />
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                              </svg>
+                            )}
                           </span>
                         </div>
                       )}
@@ -995,11 +1186,22 @@ function HistoryTab({
                           ))}
                           {!(record as KnowledgeRecord & { _localPending?: boolean })._localPending &&
                             !record.syncRuns.some((r) => r.status === "synced") && (
-                            <span className="ml-auto shrink-0 text-rose-400" title="未同步到云端">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
-                                <line x1="1" y1="1" x2="23" y2="23" />
-                              </svg>
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => { e.stopPropagation(); void syncSingleRecord(record.id); }}
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); void syncSingleRecord(record.id); } }}
+                              className={["ml-auto shrink-0 cursor-pointer text-rose-400 transition hover:text-rose-300", syncingIds.has(record.id) ? "animate-pulse" : ""].join(" ")}
+                              title="点击同步到云端"
+                            >
+                              {syncingIds.has(record.id) ? (
+                                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-rose-400 border-t-transparent" />
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
+                                  <line x1="1" y1="1" x2="23" y2="23" />
+                                </svg>
+                              )}
                             </span>
                           )}
                         </div>
@@ -1029,21 +1231,23 @@ function HistoryTab({
           )}
         </div>
 
-        {/* Right: independently scrollable detail pane */}
-        <div className="min-h-0 overflow-hidden">
-          {selectedRecord ? (
-            <RecordPane
-              record={selectedRecord}
-              onDelete={onDelete}
-              onUpdate={onUpdate}
-              onOpenDetail={onOpenDetail}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--line)]">
-              <p className="text-sm text-[var(--muted)]">选择左侧资料查看详情</p>
-            </div>
-          )}
-        </div>
+        {/* Right: independently scrollable detail pane (hidden during search) */}
+        {!searchActive && (
+          <div className="min-h-0 overflow-hidden">
+            {selectedRecord ? (
+              <RecordPane
+                record={selectedRecord}
+                onDelete={onDelete}
+                onUpdate={onUpdate}
+                onOpenDetail={onOpenDetail}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--line)]">
+                <p className="text-sm text-[var(--muted)]">选择左侧资料查看详情</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1060,7 +1264,7 @@ function FavoritesTab({
   initialRecords,
 }: {
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void;
   onOpenDetail: (id: string) => void;
   initialRecords?: KnowledgeRecord[] | null;
 }) {
@@ -1096,7 +1300,7 @@ function FavoritesTab({
   }, []);
 
   const handleUpdateFavorite = useCallback(
-    (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => {
+    (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => {
       let prevRecord: KnowledgeRecord | null = null;
       setRecords((prev) => {
         const r = prev.find((x) => x.id === id);
@@ -1218,7 +1422,7 @@ function RecordPane({
 }: {
   record: KnowledgeRecord;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void | Promise<unknown>;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void | Promise<unknown>;
   onOpenDetail: (id: string) => void;
   favorited?: boolean;
   onToggleFavorite?: () => void;
@@ -1228,6 +1432,8 @@ function RecordPane({
   const [editSource, setEditSource] = useState(record.sourceLabel);
   const [editNote, setEditNote] = useState(record.contextNote);
   const [editContentText, setEditContentText] = useState(record.contentText || record.extractedText || "");
+  const [editKeywords, setEditKeywords] = useState<string[]>(record.keywords || []);
+  const [editTagInput, setEditTagInput] = useState("");
   const [saveError, setSaveError] = useState("");
   const [isFav, setIsFav] = useState(initialFavorited ?? false);
   const [syncing, setSyncing] = useState("");
@@ -1240,7 +1446,8 @@ function RecordPane({
     setEditSource(record.sourceLabel);
     setEditNote(record.contextNote);
     setEditContentText(record.contentText || record.extractedText || "");
-  }, [record.id, record.title, record.sourceLabel, record.contextNote, record.contentText, record.extractedText]);
+    setEditKeywords(record.keywords || []);
+  }, [record.id, record.title, record.sourceLabel, record.contextNote, record.contentText, record.extractedText, record.keywords]);
 
   useEffect(() => {
     if (initialFavorited !== undefined) {
@@ -1257,25 +1464,40 @@ function RecordPane({
   }, [record.id, initialFavorited]);
 
   const handleSave = () => {
-    const fields: Record<string, string> = {};
+    const fields: Record<string, string | string[]> = {};
     if (editTitle !== record.title) fields.title = editTitle;
     if (editSource !== record.sourceLabel) fields.sourceLabel = editSource;
     if (editNote !== record.contextNote) fields.contextNote = editNote;
     const origText = record.contentText || record.extractedText || "";
     if (editContentText !== origText) fields.contentText = editContentText;
+    const origKw = record.keywords || [];
+    if (JSON.stringify([...editKeywords].sort()) !== JSON.stringify([...origKw].sort())) fields.keywords = editKeywords;
     if (Object.keys(fields).length === 0) {
       setEditing(false);
       return;
     }
     setSaveError("");
     setEditing(false);
-    const result = onUpdate(record.id, fields);
+    const result = onUpdate(record.id, fields as { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] });
     if (result && typeof (result as Promise<unknown>).then === "function") {
       (result as Promise<unknown>).catch(() => {
         setSaveError("同步失败，将自动重试");
         setTimeout(() => setSaveError(""), 4000);
       });
     }
+  };
+
+  const addTagFromInput = () => {
+    const raw = editTagInput.trim().split(/[\s,，]+/).filter(Boolean);
+    const added = raw.filter((t) => !editKeywords.includes(t));
+    if (added.length > 0) {
+      setEditKeywords((prev) => [...prev, ...added].slice(0, 20));
+      setEditTagInput("");
+    }
+  };
+
+  const removeEditTag = (kw: string) => {
+    setEditKeywords((prev) => prev.filter((k) => k !== kw));
   };
 
   const isFlomoSynced = record.syncRuns.some((r) => r.target === "flomo" && r.status === "synced");
@@ -1439,18 +1661,50 @@ function RecordPane({
         )}
 
         {/* Manual tags */}
-        {record.keywords.length > 0 && (
+        {(editing || record.keywords.length > 0) && (
           <>
             <div className="my-5 border-t border-dashed border-[var(--line)]" />
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">标签</p>
-              <div className="flex flex-wrap gap-2">
-                {record.keywords.map((kw) => (
-                  <span key={kw} className="rounded-md bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted-strong)]">
-                    {kw}
-                  </span>
-                ))}
-              </div>
+              {editing ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {editKeywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="inline-flex items-center gap-1 rounded-md bg-[var(--surface)] pl-2.5 pr-1 py-1 text-xs font-medium text-[var(--muted-strong)]"
+                    >
+                      {kw}
+                      <button
+                        type="button"
+                        onClick={() => removeEditTag(kw)}
+                        className="rounded p-0.5 hover:bg-[var(--line)]"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    value={editTagInput}
+                    onChange={(e) => setEditTagInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTagFromInput(); } }}
+                    placeholder="添加标签（空格或逗号分隔）"
+                    className="min-w-[120px] rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+                  />
+                  {editTagInput.trim() && (
+                    <button type="button" onClick={addTagFromInput} className="rounded-md bg-[var(--foreground)] px-2 py-0.5 text-xs text-[var(--background)]">
+                      添加
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {record.keywords.map((kw) => (
+                    <span key={kw} className="rounded-md bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted-strong)]">
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}
@@ -1524,7 +1778,7 @@ function RecordPane({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />
               </svg>
-              {syncing === "notion" ? "同步中..." : isSynced ? "已同步" : "Notion"}
+              {syncing === "notion" ? "同步中..." : "Notion"}
             </button>
 
             <button
@@ -1543,7 +1797,7 @@ function RecordPane({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 19l-7-5V8l7 5v6z" /><path d="M12 13l7-5v6l-7 5v-6z" /><path d="M5 8l7-5 7 5-7 5-7-5z" />
               </svg>
-              {syncing === "flomo" ? "同步中..." : isFlomoSynced ? "已同步" : "flomo"}
+              {syncing === "flomo" ? "同步中..." : "flomo"}
             </button>
           </div>
 

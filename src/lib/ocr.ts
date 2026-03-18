@@ -13,14 +13,19 @@ export class OcrError extends Error {
   }
 }
 
+/**
+ * @param requestOcr - 若为 true 则本次请求要求执行 OCR（不读 settings.ocrEnabled）；若为 false 则直接返回空；undefined 时使用 settings.ocrEnabled。
+ */
 export async function ocrImage(
   userId: string,
   buffer: Buffer,
   mimeType: string,
+  requestOcr?: boolean,
 ): Promise<OcrResult> {
   const settings = await getIntegrationSettings(userId);
-  if (!settings.ocrEnabled) {
-    throw new OcrError("OCR 未启用，请在设置中开启。");
+  const enabled = requestOcr !== undefined ? requestOcr : settings.ocrEnabled;
+  if (!enabled) {
+    return { text: "", keywords: [], description: "" };
   }
   if (!settings.visionModelBaseUrl || !settings.visionModelApiKey || !settings.visionModelName) {
     throw new OcrError("OCR 配置不完整，请在设置中填写 Vision 模型的 URL、API Key 和模型名称。");

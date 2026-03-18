@@ -6,6 +6,8 @@ import { requireUserId } from "@/lib/supabase/server";
 import type { RecordType, StoredUpload, SyncTarget } from "@/lib/types";
 
 export const runtime = "nodejs";
+/** 创建记录含 OCR + AI 分析，可能较慢，避免超时 */
+export const maxDuration = 120;
 
 const explicitTimePattern =
   /(\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}月\d{1,2}日|\d{1,2}[:：]\d{2}|(?:今|明|后)?(?:早上|上午|中午|下午|傍晚|晚上|今晚|今早|凌晨)?\s*(?:\d{1,2}|[零〇一二两三四五六七八九十]{1,3})\s*(?:点半|点钟|点|时)(?:\s*(?:半|整|[0-5]?\d分))?|今天|明天|后天|今晚|今早|今天下午|今天晚上|本周|下周|周[一二三四五六日天]|星期[一二三四五六日天]|月底|月初|前完成|前提交|前回复)/;
@@ -118,6 +120,7 @@ export async function POST(request: Request) {
     const recordTypeHint = String(formData.get("recordTypeHint") || "") as RecordType | "";
     const enableAiSummary = String(formData.get("enableAiSummary") || "true") !== "false";
     const enableAiTodo = String(formData.get("enableAiTodo") || "true") !== "false";
+    const enableOcr = String(formData.get("enableOcr") || "true") !== "false";
     const linkToTodo = String(formData.get("linkToTodo") || "false") === "true";
     const syncToFlomo = String(formData.get("syncToFlomo") || "false") === "true";
     const userTagsRaw = String(formData.get("userTags") || "");
@@ -167,7 +170,7 @@ export async function POST(request: Request) {
       },
       uploads,
       fileMeta,
-      { enableAiSummary, enableAiTodo, linkToTodo, syncToFlomo },
+      { enableAiSummary, enableAiTodo, enableOcr, linkToTodo, syncToFlomo },
     );
 
     if (record) {
@@ -179,6 +182,8 @@ export async function POST(request: Request) {
     if (err instanceof Error && err.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    throw err;
+    const msg = err instanceof Error ? err.message : "创建记录失败";
+    console.error("[records] POST error:", err);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
