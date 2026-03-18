@@ -84,11 +84,12 @@ export async function createKnowledgeRecord(
   input: RecordInput,
   uploads: StoredUpload[],
   fileMeta?: Array<{ tags?: string[]; description?: string }>,
-  opts?: { enableAiSummary?: boolean; enableAiTodo?: boolean; linkToTodo?: boolean },
+  opts?: { enableAiSummary?: boolean; enableAiTodo?: boolean; linkToTodo?: boolean; syncToFlomo?: boolean },
 ) {
   const enableAiSummary = opts?.enableAiSummary !== false;
   const enableAiTodo = opts?.enableAiTodo !== false;
   const linkToTodo = opts?.linkToTodo === true;
+  const syncToFlomo = opts?.syncToFlomo === true;
   const supabase = getSupabaseAdmin();
   const recordId = createId("rec");
   const createdAt = nowIso();
@@ -277,6 +278,13 @@ export async function createKnowledgeRecord(
     await createTodoFromRecord(userId, created);
   } else if (enableAiTodo && analysis.actionItems.length > 0) {
     await extractTodosFromRecord(userId, created);
+  }
+
+  if (syncToFlomo) {
+    try {
+      const { syncRecordToFlomo } = await import("@/lib/flomo");
+      await syncRecordToFlomo(userId, created);
+    } catch { /* flomo sync is best-effort */ }
   }
 
   return created;

@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 const settingsSchema = z.object({
   aiProvider: z.enum(["openai", "glm", "deepseek", ""]).optional().default(""),
   aiApiKey: z.string().optional().default(""),
+  aiSummaryPrompt: z.string().optional().default(""),
+  aiTodoPrompt: z.string().optional().default(""),
   storageMode: z.enum(["local", "oss"]),
   notionToken: z.string(),
   notionParentPageId: z.string(),
@@ -34,6 +36,7 @@ const settingsSchema = z.object({
   imapUser: z.string().optional().default(""),
   imapPass: z.string().optional().default(""),
   imapSecure: z.boolean().optional().default(true),
+  flomoWebhookUrl: z.string().optional().default(""),
 });
 
 export async function GET() {

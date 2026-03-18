@@ -33,6 +33,7 @@ const syncTargetLabels: Record<SyncRun["target"], string> = {
   notion: "Notion",
   "ticktick-email": "滴答清单",
   "feishu-doc": "飞书文档",
+  flomo: "flomo",
 };
 
 const syncStatusStyles: Record<SyncRun["status"], { label: string; dot: string }> = {

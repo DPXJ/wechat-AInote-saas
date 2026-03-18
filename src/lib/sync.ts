@@ -264,10 +264,22 @@ export async function syncRecord(userId: string, recordId: string, target: SyncT
   const settings = await getIntegrationSettings(userId);
 
   try {
-    const externalRef =
-      target === "notion"
-        ? await syncToNotion(record, settings)
-        : await syncToTickTickEmail(record, settings);
+    let externalRef: string;
+    let syncMessage: string;
+
+    if (target === "flomo") {
+      const { syncRecordToFlomo } = await import("@/lib/flomo");
+      const result = await syncRecordToFlomo(userId, record);
+      if (!result.ok) throw new Error(result.message);
+      externalRef = "flomo";
+      syncMessage = "已同步到 flomo。";
+    } else if (target === "notion") {
+      externalRef = await syncToNotion(record, settings);
+      syncMessage = "已同步到 Notion。";
+    } else {
+      externalRef = await syncToTickTickEmail(record, settings);
+      syncMessage = "已投递到滴答清单。";
+    }
 
     await addSyncRun(userId, {
       recordId,
@@ -275,7 +287,7 @@ export async function syncRecord(userId: string, recordId: string, target: SyncT
       status: "synced",
       externalRef,
       payload: { title: record.title },
-      message: target === "notion" ? "已同步到 Notion。" : "已投递到滴答清单。",
+      message: syncMessage,
     });
 
     return { externalRef };

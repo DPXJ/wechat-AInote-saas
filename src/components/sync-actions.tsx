@@ -8,6 +8,7 @@ const targets: Array<{ id: SyncTarget; label: string; enabled: boolean }> = [
   { id: "notion", label: "同步到 Notion", enabled: true },
   { id: "ticktick-email", label: "邮件投递到滴答", enabled: true },
   { id: "feishu-doc", label: "飞书文档（预留）", enabled: false },
+  { id: "flomo", label: "同步到 flomo", enabled: true },
 ];
 
 export function SyncActions({ recordId }: { recordId: string }) {

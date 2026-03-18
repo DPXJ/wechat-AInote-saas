@@ -16,6 +16,12 @@
     "@notionhq/client": "^5.12.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.99.1",
+    "@tiptap/extension-placeholder": "^3.20.4",
+    "@tiptap/extension-task-item": "^3.20.4",
+    "@tiptap/extension-task-list": "^3.20.4",
+    "@tiptap/pm": "^3.20.4",
+    "@tiptap/react": "^3.20.4",
+    "@tiptap/starter-kit": "^3.20.4",
     "ali-oss": "^6.23.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
@@ -31,6 +37,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tiptap-markdown": "^0.9.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

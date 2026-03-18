@@ -11,7 +11,7 @@ const analysisSchema = z.object({
   keywords: z.array(z.string()).max(8),
   actionItems: z.array(z.string()).max(6),
   suggestedTargets: z
-    .array(z.enum(["notion", "ticktick-email", "feishu-doc"]))
+    .array(z.enum(["notion", "ticktick-email", "feishu-doc", "flomo"]))
     .max(3),
 });
 
@@ -93,11 +93,26 @@ function buildFallbackAnalysis(input: AnalysisInput): AnalysisOutput {
   };
 }
 
+const SYSTEM_SUMMARY_BASE =
+  "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；keywords 固定 5 个关键词（仅供搜索索引）；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。";
+
+const DEFAULT_SUMMARY_INSTRUCTIONS =
+  "摘要要求 30-50 字，精炼概括核心要点，适合搜索回显。待办项（actionItems）每条需要详细描述：包含具体要做的事情、涉及的人或对象、建议完成时间或截止日期、相关背景信息，描述要清晰完整，方便直接作为待办事项执行，不要过于简略。";
+
+const DEFAULT_TODO_INSTRUCTIONS =
+  "提取所有行动项，每条待办需包含：1) 具体要做的事情 2) 涉及的人或对象 3) 建议完成时间或截止日期 4) 相关背景信息。描述要清晰完整，方便直接作为待办事项执行，不要过于简略。";
+
+export { DEFAULT_SUMMARY_INSTRUCTIONS, DEFAULT_TODO_INSTRUCTIONS };
+
 export async function analyzeRecord(userId: string, input: AnalysisInput): Promise<AnalysisOutput> {
   const config = await getAiConfig(userId);
   if (!config) {
     return buildFallbackAnalysis(input);
   }
+
+  const settings = await getIntegrationSettings(userId);
+  const userInstructions = (settings.aiSummaryPrompt || "").trim() || DEFAULT_SUMMARY_INSTRUCTIONS;
+  const summaryPrompt = `${SYSTEM_SUMMARY_BASE}\n\n补充要求：${userInstructions}`;
 
   const client = buildOpenAIClient({ apiKey: config.apiKey, baseURL: config.baseURL });
 
@@ -122,8 +137,7 @@ export async function analyzeRecord(userId: string, input: AnalysisInput): Promi
       messages: [
         {
           role: "system",
-          content:
-            "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；summary 为 30-50 字的精炼摘要，概括核心要点，适合搜索回显；keywords 固定 5 个关键词（仅供搜索索引）；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。",
+          content: summaryPrompt,
         },
         {
           role: "user",

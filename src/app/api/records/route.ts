@@ -119,6 +119,7 @@ export async function POST(request: Request) {
     const enableAiSummary = String(formData.get("enableAiSummary") || "true") !== "false";
     const enableAiTodo = String(formData.get("enableAiTodo") || "true") !== "false";
     const linkToTodo = String(formData.get("linkToTodo") || "false") === "true";
+    const syncToFlomo = String(formData.get("syncToFlomo") || "false") === "true";
     const userTagsRaw = String(formData.get("userTags") || "");
     const userTags = userTagsRaw
       .split(/\s+/)
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
       },
       uploads,
       fileMeta,
-      { enableAiSummary, enableAiTodo, linkToTodo },
+      { enableAiSummary, enableAiTodo, linkToTodo, syncToFlomo },
     );
 
     if (record) {

@@ -29,6 +29,7 @@ export interface PendingRecordPayload {
   enableAiSummary?: boolean;
   enableAiTodo?: boolean;
   linkToTodo?: boolean;
+  syncToFlomo?: boolean;
 }
 
 export interface PendingRecord {
@@ -158,6 +159,7 @@ export function buildFormDataFromPending(pending: PendingRecord): FormData {
   formData.set("enableAiSummary", String(payload.enableAiSummary !== false));
   formData.set("enableAiTodo", String(payload.enableAiTodo !== false));
   formData.set("linkToTodo", String(payload.linkToTodo === true));
+  formData.set("syncToFlomo", String(payload.syncToFlomo === true));
   payload.files.forEach((file, idx) => {
     const blob = new Blob([file.content], { type: file.type || "application/octet-stream" });
     formData.append("files", blob, file.name);

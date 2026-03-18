@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { IntegrationSettings, IntegrationStatus } from "@/lib/types";
+import { DEFAULT_SUMMARY_INSTRUCTIONS, DEFAULT_TODO_INSTRUCTIONS } from "@/lib/ai";
 
 type ActionTarget = "notion" | "smtp" | "ticktick-email";
-type SettingsTab = "ai" | "notion" | "ticktick" | "ocr" | "imap" | "backup";
+type SettingsTab = "ai" | "notion" | "ticktick" | "flomo" | "ocr" | "imap" | "backup";
 
 const actionLabels: Record<ActionTarget, string> = {
   notion: "测试 Notion",
@@ -21,6 +22,7 @@ function SettingsTabIcon({ id }: { id: string }) {
     case "imap": return <svg {...p}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 7l-10 7L2 7" /></svg>;
     case "backup": return <svg {...p}><path d="M12 2v6M12 22v-6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M22 12h-6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24" /></svg>;
     case "ai": return <svg {...p}><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" /></svg>;
+    case "flomo": return <svg {...p}><path d="M12 19l-7-5V8l7 5v6z" /><path d="M12 13l7-5v6l-7 5v-6z" /><path d="M5 8l7-5 7 5-7 5-7-5z" /></svg>;
     default: return null;
   }
 }
@@ -29,6 +31,7 @@ const settingsTabs: Array<{ id: SettingsTab; label: string }> = [
   { id: "ai", label: "AI 摘要" },
   { id: "notion", label: "Notion" },
   { id: "ticktick", label: "滴答清单" },
+  { id: "flomo", label: "flomo" },
   { id: "ocr", label: "OCR 识别" },
   { id: "imap", label: "邮件收录" },
   { id: "backup", label: "数据备份" },
@@ -180,6 +183,38 @@ export function IntegrationsPanel({
             <p className="text-[12px] text-[var(--muted)]">
               模型名称使用默认值，无需额外配置。保存后新收录的记录将自动使用 AI 生成标题与摘要。
             </p>
+
+            <div className="space-y-3 border-t border-[var(--line)] pt-4">
+              <p className="text-xs font-semibold text-[var(--foreground)]">AI 分析补充要求</p>
+              <p className="text-[11px] text-[var(--muted)]">
+                系统会自动处理输出格式，你只需用自然语言描述对摘要和待办的额外要求，例如"摘要控制在 30 字以内"、"待办要标注优先级"等。
+              </p>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs font-medium text-[var(--muted)]">摘要与分析要求</label>
+                  <button type="button" onClick={() => updateField("aiSummaryPrompt", DEFAULT_SUMMARY_INSTRUCTIONS)} className="text-[11px] text-[var(--muted)] hover:text-[var(--foreground)]">恢复默认</button>
+                </div>
+                <textarea
+                  value={settings.aiSummaryPrompt || DEFAULT_SUMMARY_INSTRUCTIONS}
+                  onChange={(e) => updateField("aiSummaryPrompt", e.target.value)}
+                  rows={4}
+                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs font-medium text-[var(--muted)]">待办识别要求</label>
+                  <button type="button" onClick={() => updateField("aiTodoPrompt", DEFAULT_TODO_INSTRUCTIONS)} className="text-[11px] text-[var(--muted)] hover:text-[var(--foreground)]">恢复默认</button>
+                </div>
+                <textarea
+                  value={settings.aiTodoPrompt || DEFAULT_TODO_INSTRUCTIONS}
+                  onChange={(e) => updateField("aiTodoPrompt", e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <SaveBtn saving={saving} onSave={handleSave} />
             </div>
@@ -224,6 +259,34 @@ export function IntegrationsPanel({
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <SaveBtn saving={saving} onSave={handleSave} />
               <Btn onClick={() => runTest("ticktick-email")} disabled={Boolean(busy)} label={busy === "ticktick-email" ? "测试中..." : "测试连接"} primary />
+            </div>
+          </>
+        )}
+
+        {activeTab === "flomo" && (
+          <>
+            <p className="text-sm text-[var(--muted-strong)]">
+              配置 flomo webhook 后，可将记录一键同步到 flomo 笔记。
+            </p>
+            <div className="rounded-lg bg-[var(--surface)] px-4 py-3 text-[13px] text-[var(--muted-strong)] space-y-2">
+              <p className="font-medium text-[var(--foreground)]">获取 Webhook URL</p>
+              <ol className="list-decimal list-inside space-y-1 text-[12px]">
+                <li>打开 flomo 网页版或 App → 设置（齿轮图标）</li>
+                <li>找到 <strong>API</strong> 菜单项，点击进入</li>
+                <li>复制页面中显示的 Webhook URL（格式如 https://flomoapp.com/iwh/xxx/yyy）</li>
+              </ol>
+            </div>
+            <div>
+              <Field
+                label="flomo Webhook URL"
+                value={settings.flomoWebhookUrl || ""}
+                onChange={(v) => updateField("flomoWebhookUrl", v)}
+                placeholder="https://flomoapp.com/iwh/xxx/yyy"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <SaveBtn saving={saving} onSave={handleSave} />
+              <FlomoTestBtn webhookUrl={settings.flomoWebhookUrl || ""} onSave={saveSettings} />
             </div>
           </>
         )}
@@ -428,6 +491,52 @@ function ImapFetchBtn() {
         className="rounded-lg border border-[var(--line)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[var(--line-strong)] disabled:opacity-50"
       >
         {loading ? "收取中..." : "立即收取邮件"}
+      </button>
+      {result && <span className="text-xs text-[var(--muted-strong)]">{result}</span>}
+    </div>
+  );
+}
+
+function FlomoTestBtn({ webhookUrl, onSave }: { webhookUrl: string; onSave: () => Promise<{ ok: boolean; msg: string }> }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState("");
+
+  async function handleTest() {
+    if (!webhookUrl.trim()) {
+      setResult("请先填写 Webhook URL");
+      return;
+    }
+    const saveResult = await onSave();
+    if (!saveResult.ok) { setResult(saveResult.msg); return; }
+    setLoading(true);
+    setResult("");
+    try {
+      const res = await fetch(webhookUrl.trim(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "AI 信迹连通性测试 — 如果你在 flomo 看到这条笔记，说明 webhook 配置正确。" }),
+      });
+      if (res.ok) {
+        setResult("测试成功，已发送到 flomo");
+      } else {
+        setResult(`测试失败 (${res.status})`);
+      }
+    } catch {
+      setResult("请求失败，请检查 URL 是否正确");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handleTest}
+        disabled={loading}
+        className="rounded-lg border border-[var(--line)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[var(--line-strong)] disabled:opacity-50"
+      >
+        {loading ? "测试中..." : "测试连接"}
       </button>
       {result && <span className="text-xs text-[var(--muted-strong)]">{result}</span>}
     </div>

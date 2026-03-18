@@ -7,7 +7,7 @@ export type RecordType =
   | "video"
   | "mixed";
 
-export type SyncTarget = "notion" | "ticktick-email" | "feishu-doc";
+export type SyncTarget = "notion" | "ticktick-email" | "feishu-doc" | "flomo";
 
 export type SyncStatus = "pending" | "synced" | "failed";
 
@@ -137,6 +137,8 @@ export type AiProvider = "openai" | "glm" | "deepseek" | "";
 export interface IntegrationSettings {
   aiProvider: AiProvider;
   aiApiKey: string;
+  aiSummaryPrompt: string;
+  aiTodoPrompt: string;
   storageMode: "local" | "oss";
   notionToken: string;
   notionParentPageId: string;
@@ -163,6 +165,7 @@ export interface IntegrationSettings {
   imapUser: string;
   imapPass: string;
   imapSecure: boolean;
+  flomoWebhookUrl: string;
 }
 
 export interface IntegrationStatusItem {

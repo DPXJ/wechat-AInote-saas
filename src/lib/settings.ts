@@ -6,6 +6,8 @@ import { nowIso } from "@/lib/utils";
 const settingKeys = [
   "aiProvider",
   "aiApiKey",
+  "aiSummaryPrompt",
+  "aiTodoPrompt",
   "storageMode",
   "notionToken",
   "notionParentPageId",
@@ -32,6 +34,7 @@ const settingKeys = [
   "imapUser",
   "imapPass",
   "imapSecure",
+  "flomoWebhookUrl",
 ] as const;
 
 type SettingKey = (typeof settingKeys)[number];
@@ -39,6 +42,8 @@ type SettingKey = (typeof settingKeys)[number];
 const envDefaults: IntegrationSettings = {
   aiProvider: "",
   aiApiKey: "",
+  aiSummaryPrompt: "",
+  aiTodoPrompt: "",
   storageMode: appConfig.storageMode === "oss" ? "oss" : "local",
   notionToken: "",
   notionParentPageId: "",
@@ -65,6 +70,7 @@ const envDefaults: IntegrationSettings = {
   imapUser: "",
   imapPass: "",
   imapSecure: true,
+  flomoWebhookUrl: "",
 };
 
 function normalizeBoolean(value: string | boolean | null | undefined) {
@@ -84,6 +90,8 @@ export async function getIntegrationSettings(userId: string): Promise<Integratio
   return {
     aiProvider: (stored.get("aiProvider") as IntegrationSettings["aiProvider"]) ?? envDefaults.aiProvider,
     aiApiKey: stored.get("aiApiKey") ?? envDefaults.aiApiKey,
+    aiSummaryPrompt: stored.get("aiSummaryPrompt") ?? envDefaults.aiSummaryPrompt,
+    aiTodoPrompt: stored.get("aiTodoPrompt") ?? envDefaults.aiTodoPrompt,
     storageMode: stored.get("storageMode") === "oss" ? "oss" : envDefaults.storageMode,
     notionToken: stored.get("notionToken") ?? envDefaults.notionToken,
     notionParentPageId: stored.get("notionParentPageId") ?? envDefaults.notionParentPageId,
@@ -110,6 +118,7 @@ export async function getIntegrationSettings(userId: string): Promise<Integratio
     imapUser: stored.get("imapUser") ?? envDefaults.imapUser,
     imapPass: stored.get("imapPass") ?? envDefaults.imapPass,
     imapSecure: normalizeBoolean(stored.get("imapSecure") ?? String(envDefaults.imapSecure)),
+    flomoWebhookUrl: stored.get("flomoWebhookUrl") ?? envDefaults.flomoWebhookUrl,
   };
 }
 
@@ -120,6 +129,8 @@ export async function saveIntegrationSettings(userId: string, input: Integration
   const entries: Array<{ key: string; value: string }> = [
     { key: "aiProvider", value: (input.aiProvider || "").trim() },
     { key: "aiApiKey", value: input.aiApiKey || "" },
+    { key: "aiSummaryPrompt", value: input.aiSummaryPrompt || "" },
+    { key: "aiTodoPrompt", value: input.aiTodoPrompt || "" },
     { key: "storageMode", value: input.storageMode },
     { key: "notionToken", value: input.notionToken.trim() },
     { key: "notionParentPageId", value: input.notionParentPageId.trim() },
@@ -146,6 +157,7 @@ export async function saveIntegrationSettings(userId: string, input: Integration
     { key: "imapUser", value: (input.imapUser || "").trim() },
     { key: "imapPass", value: input.imapPass || "" },
     { key: "imapSecure", value: String(input.imapSecure ?? true) },
+    { key: "flomoWebhookUrl", value: (input.flomoWebhookUrl || "").trim() },
   ];
 
   for (const entry of entries) {

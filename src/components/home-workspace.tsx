@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { AssetGallery } from "@/components/asset-gallery";
 import { InboxForm } from "@/components/inbox-form";
 import { IntegrationsPanel } from "@/components/integrations-panel";
@@ -592,7 +593,7 @@ export function HomeWorkspace({
               {activeTab === "record" && (
                 <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
                   <div className="mb-4 flex items-center justify-between gap-2">
-                    <h2 className="text-sm font-medium text-[var(--foreground)]">新建文档</h2>
+                    <h2 className="text-sm font-medium text-[var(--foreground)]">新建信息</h2>
                     <SyncIndicator />
                   </div>
                   <InboxForm
@@ -970,6 +971,18 @@ function HistoryTab({
                       <p className="mt-1 line-clamp-1 text-[12px] leading-relaxed text-[var(--muted)]">
                         {record.summary}
                       </p>
+                      {record.keywords.length === 0 &&
+                        !(record as KnowledgeRecord & { _localPending?: boolean })._localPending &&
+                        !record.syncRuns.some((r) => r.status === "synced") && (
+                        <div className="mt-1.5 flex justify-end">
+                          <span className="shrink-0 text-rose-400" title="未同步到云端">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
+                              <line x1="1" y1="1" x2="23" y2="23" />
+                            </svg>
+                          </span>
+                        </div>
+                      )}
                       {record.keywords.length > 0 && (
                         <div className="mt-1.5 flex items-center gap-1 overflow-hidden">
                           {record.keywords.slice(0, 3).map((kw) => (
@@ -980,8 +993,14 @@ function HistoryTab({
                               {kw}
                             </span>
                           ))}
-                          {record.syncRuns.some((r) => r.status === "synced") && (
-                            <span className="ml-auto inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                          {!(record as KnowledgeRecord & { _localPending?: boolean })._localPending &&
+                            !record.syncRuns.some((r) => r.status === "synced") && (
+                            <span className="ml-auto shrink-0 text-rose-400" title="未同步到云端">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                              </svg>
+                            </span>
                           )}
                         </div>
                       )}
@@ -1259,7 +1278,9 @@ function RecordPane({
     }
   };
 
-  const handleSync = async (target: "notion" | "ticktick-email") => {
+  const isFlomoSynced = record.syncRuns.some((r) => r.target === "flomo" && r.status === "synced");
+
+  const handleSync = async (target: "notion" | "ticktick-email" | "flomo") => {
     setSyncing(target);
     setSyncMsg("正在同步...");
     try {
@@ -1381,8 +1402,8 @@ function RecordPane({
                 placeholder="输入或编辑文本内容…"
               />
             ) : (
-              <div className="prose-custom text-[15px] leading-8 text-[var(--foreground)]">
-                <ReactMarkdown>{record.contentText || record.extractedText}</ReactMarkdown>
+              <div className="prose-custom pr-2 text-[15px] leading-8 text-[var(--foreground)]">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{record.contentText || record.extractedText}</ReactMarkdown>
               </div>
             )}
           </div>
@@ -1504,6 +1525,25 @@ function RecordPane({
                 <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />
               </svg>
               {syncing === "notion" ? "同步中..." : isSynced ? "已同步" : "Notion"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSync("flomo")}
+              disabled={!!syncing}
+              className={[
+                "flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] transition",
+                isFlomoSynced
+                  ? "text-emerald-500"
+                  : "text-[var(--muted-strong)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+                syncing ? "opacity-50" : "",
+              ].join(" ")}
+              title={isFlomoSynced ? "已同步到 flomo" : "同步到 flomo"}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 19l-7-5V8l7 5v6z" /><path d="M12 13l7-5v6l-7 5v-6z" /><path d="M5 8l7-5 7 5-7 5-7-5z" />
+              </svg>
+              {syncing === "flomo" ? "同步中..." : isFlomoSynced ? "已同步" : "flomo"}
             </button>
           </div>
 

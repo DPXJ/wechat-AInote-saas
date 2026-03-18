@@ -6,7 +6,7 @@ import { requireUserId } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 const bodySchema = z.object({
-  target: z.enum(["notion", "ticktick-email", "feishu-doc"]),
+  target: z.enum(["notion", "ticktick-email", "feishu-doc", "flomo"]),
 });
 
 export async function POST(
