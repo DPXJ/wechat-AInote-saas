@@ -17,7 +17,9 @@ import {
   getPendingRecordsForDisplay,
   pendingToRecordLike,
   subscribeSyncStatus,
+  syncPendingRecordsToCloud,
 } from "@/lib/local-record-store";
+import { syncPendingTodosToCloud } from "@/lib/local-todo-store";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import type {
   IntegrationSettings,
@@ -151,6 +153,20 @@ export function HomeWorkspace({
     return unsub;
   }, []);
 
+  // 页面加载时自动同步本地待同步数据到云端，避免「数据丢失」
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([syncPendingRecordsToCloud(), syncPendingTodosToCloud()]).then(
+      ([recordsResult, todosResult]) => {
+        if (cancelled) return;
+        const synced = (recordsResult?.synced ?? 0) + (todosResult?.synced ?? 0);
+        if (synced > 0) router.refresh();
+      },
+    );
+    return () => { cancelled = true; };
+  }, [router]);
+
+
   useEffect(() => {
     const abort = new AbortController();
     Promise.all([
@@ -249,16 +265,32 @@ export function HomeWorkspace({
     setTotal(data.total);
   }, [records.length]);
 
+  const loadMoreInFlightRef = useRef(false);
   const loadMore = useCallback(async () => {
-    if (loadingMore || records.length >= total) return;
+    if (loadMoreInFlightRef.current || loadingMore || records.length >= total) return;
+    loadMoreInFlightRef.current = true;
     setLoadingMore(true);
     try {
-      const res = await fetch(`/api/records?limit=${PAGE_SIZE}&offset=${records.length}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(`/api/records?limit=${PAGE_SIZE}&offset=${records.length}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
       const data = await res.json();
-      setRecords((prev) => [...prev, ...data.records]);
-      setTotal(data.total);
+      if (!res.ok) {
+        setLoadingMore(false);
+        return;
+      }
+      const next = Array.isArray(data.records) ? data.records : [];
+      setRecords((prev) => [...prev, ...next]);
+      setTotal(typeof data.total === "number" ? data.total : total);
+    } catch {
+      // 超时或网络错误，避免一直卡在加载中
     } finally {
       setLoadingMore(false);
+      loadMoreInFlightRef.current = false;
     }
   }, [loadingMore, records.length, total]);
 
@@ -286,6 +318,7 @@ export function HomeWorkspace({
     return () => window.removeEventListener("keydown", handler);
   }, [deleteConfirmId]);
 
+  /** 离线优先：先乐观更新 UI，再后台 PATCH；失败时回滚并抛出，由 RecordPane 轻量提示 */
   const handleUpdate = useCallback(
     (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => {
       let prev: KnowledgeRecord | undefined;
@@ -712,6 +745,7 @@ function HistoryTab({
   onRefresh: () => Promise<void>;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchActive, setSearchActive] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -722,10 +756,13 @@ function HistoryTab({
   useEffect(() => {
     if (!hasMore) return;
     const el = sentinelRef.current;
+    const root = scrollContainerRef.current ?? null;
     if (!el) return;
     const observer = new IntersectionObserver(
-      (entries) => { if (entries[0].isIntersecting) onLoadMore(); },
-      { rootMargin: "200px" },
+      (entries) => {
+        if (entries[0].isIntersecting) onLoadMore();
+      },
+      { root, rootMargin: "200px", threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -860,7 +897,7 @@ function HistoryTab({
 
       <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[400px_minmax(0,1fr)]">
         {/* Left: independently scrollable list */}
-        <div className="hide-scrollbar min-h-0 overflow-y-auto">
+        <div ref={scrollContainerRef} className="hide-scrollbar min-h-0 overflow-y-auto">
           {searchActive && searchCitations.length > 0 ? (
             <div>
               <p className="px-1 py-1.5 text-[11px] font-medium text-[var(--muted)]">搜索到 {searchCitations.length} 条相关记录</p>
@@ -1039,6 +1076,36 @@ function FavoritesTab({
     setRecords((prev) => prev.filter((r) => r.id !== recordId));
   }, []);
 
+  const handleUpdateFavorite = useCallback(
+    (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => {
+      let prevRecord: KnowledgeRecord | null = null;
+      setRecords((prev) => {
+        const r = prev.find((x) => x.id === id);
+        if (r) prevRecord = r;
+        return prev.map((r) => (r.id === id ? { ...r, ...fields } : r));
+      });
+      return fetch(`/api/records/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.record) {
+            setRecords((prev) => prev.map((r) => (r.id === id ? data.record : r)));
+          }
+          return data.record;
+        })
+        .catch(() => {
+          if (prevRecord) {
+            setRecords((prev) => prev.map((r) => (r.id === id ? prevRecord! : r)));
+          }
+          throw new Error("同步失败");
+        });
+    },
+    [],
+  );
+
   if (loading && records.length === 0) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -1101,7 +1168,7 @@ function FavoritesTab({
               <RecordPane
                 record={selectedRecord}
                 onDelete={onDelete}
-                onUpdate={onUpdate}
+                onUpdate={handleUpdateFavorite}
                 onOpenDetail={onOpenDetail}
                 favorited
                 onToggleFavorite={() => handleUnfavorite(selectedRecord.id)}
@@ -1132,7 +1199,7 @@ function RecordPane({
 }: {
   record: KnowledgeRecord;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void;
+  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string }) => void | Promise<unknown>;
   onOpenDetail: (id: string) => void;
   favorited?: boolean;
   onToggleFavorite?: () => void;
@@ -1142,7 +1209,7 @@ function RecordPane({
   const [editSource, setEditSource] = useState(record.sourceLabel);
   const [editNote, setEditNote] = useState(record.contextNote);
   const [editContentText, setEditContentText] = useState(record.contentText || record.extractedText || "");
-  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [isFav, setIsFav] = useState(initialFavorited ?? false);
   const [syncing, setSyncing] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
@@ -1171,18 +1238,25 @@ function RecordPane({
   }, [record.id, initialFavorited]);
 
   const handleSave = () => {
-    setSaving(true);
     const fields: Record<string, string> = {};
     if (editTitle !== record.title) fields.title = editTitle;
     if (editSource !== record.sourceLabel) fields.sourceLabel = editSource;
     if (editNote !== record.contextNote) fields.contextNote = editNote;
     const origText = record.contentText || record.extractedText || "";
     if (editContentText !== origText) fields.contentText = editContentText;
-    if (Object.keys(fields).length > 0) {
-      onUpdate(record.id, fields);
+    if (Object.keys(fields).length === 0) {
+      setEditing(false);
+      return;
     }
-    setSaving(false);
+    setSaveError("");
     setEditing(false);
+    const result = onUpdate(record.id, fields);
+    if (result && typeof (result as Promise<unknown>).then === "function") {
+      (result as Promise<unknown>).catch(() => {
+        setSaveError("同步失败，将自动重试");
+        setTimeout(() => setSaveError(""), 4000);
+      });
+    }
   };
 
   const handleSync = async (target: "notion" | "ticktick-email") => {
@@ -1433,14 +1507,17 @@ function RecordPane({
             </button>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            {saveError && (
+              <span className="text-[12px] text-rose-500">{saveError}</span>
+            )}
             {editing ? (
               <>
                 <button type="button" onClick={() => setEditing(false)} className="rounded-lg px-3 py-1.5 text-[12px] text-[var(--muted)] transition hover:bg-[var(--surface)]">
                   取消
                 </button>
-                <button type="button" onClick={handleSave} disabled={saving} className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50">
-                  {saving ? "保存中..." : "保存"}
+                <button type="button" onClick={handleSave} className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition hover:opacity-90">
+                  保存
                 </button>
               </>
             ) : (
