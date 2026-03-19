@@ -94,9 +94,16 @@ function Lightbox({
   onNavigate: (id: string) => void;
 }) {
   const [zoom, setZoom] = useState(1);
+  const [fullImgError, setFullImgError] = useState(false);
   const fullImageUrl = assetUrl(asset.id);
-  const { src: fullSrc, isLoading: fullLoading } = useCachedImage(fullImageUrl);
+  const { src: fullSrc, isLoading: fullLoading, error: fullError } = useCachedImage(fullImageUrl);
+  const lightboxImgSrc = (fullSrc && !fullError) ? fullSrc : (fullError ? fullImageUrl : null);
+  const showFullImg = lightboxImgSrc && !fullImgError;
   const imageAssets = assets.filter((a) => isImage(a.mimeType));
+
+  useEffect(() => {
+    setFullImgError(false);
+  }, [asset.id]);
   const currentIdx = imageAssets.findIndex((a) => a.id === asset.id);
   const hasPrev = currentIdx > 0;
   const hasNext = currentIdx < imageAssets.length - 1;
@@ -235,16 +242,17 @@ function Lightbox({
           className="flex shrink-0 items-center justify-center transition-transform duration-150"
           style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}
         >
-          {fullLoading && (
+          {fullLoading && !fullError && (
             <div className="flex h-64 w-96 items-center justify-center rounded-xl bg-[var(--surface)]">
               <ImageSkeleton />
             </div>
           )}
-          {fullSrc && (
+          {showFullImg && (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={fullSrc}
+              src={lightboxImgSrc}
               alt={asset.originalName}
+              onError={() => setFullImgError(true)}
               className="rounded-xl object-contain shadow-2xl"
               style={{
                 maxHeight: "calc(100vh - 8rem)",
@@ -254,6 +262,12 @@ function Lightbox({
               }}
               draggable={false}
             />
+          )}
+          {!fullLoading && !showFullImg && (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl bg-[var(--surface)] px-8 py-12">
+              <span className="text-4xl text-[var(--muted)]">🖼️</span>
+              <span className="text-sm text-[var(--muted)]">图片加载失败</span>
+            </div>
           )}
         </div>
       </div>
@@ -290,6 +304,12 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
   );
 }
 
+/** 兼容接口返回 snake_case 的情况 */
+function getOcrText(asset: RecordAsset): string {
+  const a = asset as RecordAsset & { ocr_text?: string };
+  return (asset.ocrText ?? a.ocr_text ?? "").trim();
+}
+
 function ImageCard({
   asset,
   onLightbox,
@@ -299,16 +319,20 @@ function ImageCard({
   onLightbox: (id: string) => void;
   useThumb?: boolean;
 }) {
+  const [imgLoadError, setImgLoadError] = useState(false);
   const imageUrl = useThumb ? thumbUrl(asset.id) : assetUrl(asset.id);
   const { src, isLoading, error } = useCachedImage(imageUrl);
-  const hasDescOrOcr = Boolean(asset.description?.trim() || asset.ocrText?.trim());
-  const copyText = [asset.description?.trim(), asset.ocrText?.trim()].filter(Boolean).join("\n\n");
-  const showSkeleton = isLoading || error;
-  const showImg = src && !error;
+  const ocrText = getOcrText(asset);
+  const desc = (asset.description ?? "").trim();
+  const hasDescOrOcr = Boolean(desc || ocrText);
+  const copyText = [desc, ocrText].filter(Boolean).join("\n\n");
+  const showSkeleton = isLoading && !error;
+  const imgSrc = (src && !error) ? src : (error ? imageUrl : null);
+  const showImg = imgSrc && !imgLoadError;
 
   return (
     <div className="group relative flex overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--card)]">
-      {/* 左侧：缩略图优先走缓存，命中则秒出图，否则骨架屏直到加载完成 */}
+      {/* 左侧：缓存命中或原生加载；失败时回退到原 URL；img onError 时显示占位 */}
       <button
         type="button"
         onClick={() => onLightbox(asset.id)}
@@ -319,11 +343,18 @@ function ImageCard({
           {showImg && (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={src}
+              src={imgSrc}
               alt={asset.originalName}
               loading="lazy"
+              onError={() => setImgLoadError(true)}
               className="h-full w-full object-contain transition duration-300 opacity-100"
             />
+          )}
+          {!showSkeleton && !showImg && (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-3 py-4 text-center">
+              <span className="text-[24px] text-[var(--muted)]">🖼️</span>
+              <span className="text-xs text-[var(--muted)]">图片加载失败</span>
+            </div>
           )}
         </div>
       </button>
@@ -334,7 +365,7 @@ function ImageCard({
             <span className="min-w-0 truncate text-[13px] text-[var(--muted-strong)]">
               {asset.originalName}
             </span>
-            {asset.ocrText ? (
+            {ocrText ? (
               <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">OCR</span>
             ) : (
               <span className="shrink-0 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">OCR</span>
@@ -352,12 +383,8 @@ function ImageCard({
               <CopyBtn text={copyText} label="复制描述与 OCR 文字" />
             </div>
             <div className="mt-1 min-h-0 flex-1 overflow-y-auto space-y-1.5 pr-1">
-              {asset.description?.trim() && (
-                <p className="text-[var(--muted-strong)]">{asset.description.trim()}</p>
-              )}
-              {asset.ocrText?.trim() && (
-                <p className="text-[var(--muted-strong)] whitespace-pre-wrap">{asset.ocrText.trim()}</p>
-              )}
+              {desc && <p className="text-[var(--muted-strong)]">{desc}</p>}
+              {ocrText && <p className="text-[var(--muted-strong)] whitespace-pre-wrap">{ocrText}</p>}
             </div>
           </div>
         ) : null}

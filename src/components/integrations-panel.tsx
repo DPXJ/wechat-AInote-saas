@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { IntegrationSettings, IntegrationStatus } from "@/lib/types";
 import { DEFAULT_SUMMARY_INSTRUCTIONS, DEFAULT_TODO_INSTRUCTIONS } from "@/lib/ai";
+import { getImageCacheUsage, clearImageCache } from "@/lib/image-cache";
 
 type ActionTarget = "notion" | "smtp" | "ticktick-email";
 type SettingsTab = "ai" | "notion" | "ticktick" | "flomo" | "ocr" | "imap" | "backup";
@@ -12,20 +13,6 @@ const actionLabels: Record<ActionTarget, string> = {
   smtp: "测试 SMTP",
   "ticktick-email": "测试连接",
 };
-
-function SettingsTabIcon({ id }: { id: string }) {
-  const p = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  switch (id) {
-    case "notion": return <svg {...p}><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>;
-    case "ticktick": return <svg {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M9 12l2 2 4-4" /></svg>;
-    case "ocr": return <svg {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
-    case "imap": return <svg {...p}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 7l-10 7L2 7" /></svg>;
-    case "backup": return <svg {...p}><path d="M12 2v6M12 22v-6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M22 12h-6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24" /></svg>;
-    case "ai": return <svg {...p}><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" /></svg>;
-    case "flomo": return <svg {...p}><path d="M12 19l-7-5V8l7 5v6z" /><path d="M12 13l7-5v6l-7 5v-6z" /><path d="M5 8l7-5 7 5-7 5-7-5z" /></svg>;
-    default: return null;
-  }
-}
 
 const settingsTabs: Array<{ id: SettingsTab; label: string }> = [
   { id: "ai", label: "AI 摘要" },
@@ -151,29 +138,30 @@ export function IntegrationsPanel({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      {/* Tab navigation */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--line)] overflow-x-auto">
-        {settingsTabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => { setActiveTab(tab.id); setMsg(""); }}
-            className={[
-              "flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition",
-              activeTab === tab.id
-                ? "border-[var(--foreground)] text-[var(--foreground)]"
-                : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]",
-            ].join(" ")}
-          >
-            <SettingsTabIcon id={tab.id} />
-            <span>{tab.label}</span>
-          </button>
-        ))}
-      </div>
+    <div className="mx-auto w-full max-w-5xl min-w-0">
+      {/* 整块为一张卡片：标签栏 + 内容区同宽、标签不换行 */}
+      <div className="rounded-xl border border-[var(--line)] bg-[var(--card)] overflow-hidden">
+        <div className="flex flex-nowrap items-end gap-0 border-b border-[var(--line)] overflow-x-auto overflow-y-hidden bg-[var(--card)]">
+          {settingsTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => { setActiveTab(tab.id); setMsg(""); }}
+              className={[
+                "shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition",
+                activeTab === tab.id
+                  ? "border-[var(--foreground)] text-[var(--foreground)]"
+                  : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]",
+              ].join(" ")}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-      {/* Tab panels */}
-      <div className="rounded-xl border border-[var(--line)] bg-[var(--card)] p-5 space-y-4">
+        {/* 配置区：统一 max-w-4xl，与滴答清单输入区域宽度一致 */}
+        <div className="p-6">
+          <div className="mx-auto w-full max-w-4xl min-w-0 space-y-4">
         {activeTab === "ai" && (
           <>
             <div className="flex items-center gap-2">
@@ -390,6 +378,8 @@ export function IntegrationsPanel({
             {msg}
           </p>
         )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -577,6 +567,50 @@ function FlomoTestBtn({ webhookUrl }: { webhookUrl: string }) {
   );
 }
 
+function ImageCacheUsage() {
+  const [usage, setUsage] = useState<{ count: number; estimatedQuota?: number } | null>(null);
+  const [clearing, setClearing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getImageCacheUsage().then((u) => { if (!cancelled) setUsage(u); });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function handleClear() {
+    if (!confirm("确定清空本地图片缓存？再次查看记录时图片会重新加载。")) return;
+    setClearing(true);
+    try {
+      await clearImageCache();
+      const u = await getImageCacheUsage();
+      setUsage(u);
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  if (usage === null) return null;
+  return (
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
+      <p className="text-xs font-medium text-[var(--muted)]">本地图片缓存</p>
+      <p className="mt-0.5 text-sm text-[var(--foreground)]">
+        已缓存 <span className="font-medium">{usage.count}</span> 张图片
+        {usage.estimatedQuota != null && (
+          <span className="ml-2 text-[var(--muted)]">· 本页可用配额约 {usage.estimatedQuota} MB</span>
+        )}
+      </p>
+      <button
+        type="button"
+        onClick={handleClear}
+        disabled={usage.count === 0 || clearing}
+        className="mt-2 rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] disabled:opacity-50"
+      >
+        {clearing ? "清空中..." : "清空缓存"}
+      </button>
+    </div>
+  );
+}
+
 function BackupSection() {
   const [restoring, setRestoring] = useState(false);
   const [msg, setMsg] = useState("");
@@ -627,6 +661,10 @@ function BackupSection() {
         </label>
       </div>
       {msg && <p className="text-xs text-[var(--muted-strong)]">{msg}</p>}
+
+      <div className="border-t border-[var(--line)] pt-4">
+        <ImageCacheUsage />
+      </div>
     </div>
   );
 }

@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AssetGallery } from "@/components/asset-gallery";
 import { InboxForm } from "@/components/inbox-form";
+import { MarkdownEditor } from "@/components/markdown-editor";
 import { IntegrationsPanel } from "@/components/integrations-panel";
 import { StatsBar } from "@/components/stats-bar";
 import { TodoPanel } from "@/components/todo-panel";
@@ -1820,7 +1822,7 @@ function RecordPane({
   favorited?: boolean;
   onToggleFavorite?: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(record.title);
   const [editSource, setEditSource] = useState(record.sourceLabel);
   const [editNote, setEditNote] = useState(record.contextNote);
@@ -1834,13 +1836,29 @@ function RecordPane({
   const isSynced = record.syncRuns.some((r) => r.status === "synced");
 
   useEffect(() => {
-    setEditing(false);
     setEditTitle(record.title);
     setEditSource(record.sourceLabel);
     setEditNote(record.contextNote);
     setEditContentText(record.contentText || record.extractedText || "");
     setEditKeywords(record.keywords || []);
   }, [record.id, record.title, record.sourceLabel, record.contextNote, record.contentText, record.extractedText, record.keywords]);
+
+  useEffect(() => {
+    if (editModalOpen) {
+      setEditTitle(record.title);
+      setEditSource(record.sourceLabel);
+      setEditNote(record.contextNote);
+      setEditContentText(record.contentText || record.extractedText || "");
+      setEditKeywords(record.keywords || []);
+    }
+  }, [editModalOpen, record.id, record.title, record.sourceLabel, record.contextNote, record.contentText, record.extractedText, record.keywords]);
+
+  useEffect(() => {
+    if (!editModalOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setEditModalOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editModalOpen]);
 
   useEffect(() => {
     if (initialFavorited !== undefined) {
@@ -1866,11 +1884,11 @@ function RecordPane({
     const origKw = record.keywords || [];
     if (JSON.stringify([...editKeywords].sort()) !== JSON.stringify([...origKw].sort())) fields.keywords = editKeywords;
     if (Object.keys(fields).length === 0) {
-      setEditing(false);
+      setEditModalOpen(false);
       return;
     }
     setSaveError("");
-    setEditing(false);
+    setEditModalOpen(false);
     const result = onUpdate(record.id, fields as { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] });
     if (result && typeof (result as Promise<unknown>).then === "function") {
       (result as Promise<unknown>).catch(() => {
@@ -1952,38 +1970,16 @@ function RecordPane({
       <div className="hide-scrollbar flex-1 overflow-y-auto px-7 py-6">
         {/* Meta info */}
         <div className="flex items-center gap-2 text-[13px] text-[var(--muted)]">
-          {editing ? (
-            <div className="input-focus-bar">
-              <input
-                value={editSource}
-                onChange={(e) => setEditSource(e.target.value)}
-                className="rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-0.5 text-[13px] text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                placeholder="来源"
-              />
-            </div>
-          ) : (
-            <span>{record.sourceLabel}</span>
-          )}
+          <span>{record.sourceLabel}</span>
           <span className="text-[var(--line-strong)]">·</span>
           <span>{recordTypeLabels[record.recordType]}</span>
           <span className="text-[var(--line-strong)]">·</span>
           <span>{formatDateTime(record.createdAt)}</span>
         </div>
 
-        {editing ? (
-          <div className="input-focus-bar mt-3">
-            <input
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xl font-bold text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-              placeholder="标题"
-            />
-          </div>
-        ) : (
-          <h2 className="mt-3 text-xl font-bold leading-snug text-[var(--foreground)]">
-            {record.title}
-          </h2>
-        )}
+        <h2 className="mt-3 text-xl font-bold leading-snug text-[var(--foreground)]">
+          {record.title}
+        </h2>
 
         {/* AI 摘要 / 摘要 */}
         {record.summary && (
@@ -2006,23 +2002,13 @@ function RecordPane({
 
         <div className="my-5 border-t border-dashed border-[var(--line)]" />
 
-        {/* 文本内容 */}
-        {(record.contentText || record.extractedText || editing) && (
+        {/* 文本内容（只读；编辑请点「编辑」打开大弹窗） */}
+        {(record.contentText || record.extractedText) && (
           <div>
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">文本内容</p>
-            {editing ? (
-              <textarea
-                value={editContentText}
-                onChange={(e) => setEditContentText(e.target.value)}
-                rows={6}
-                className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[15px] leading-7 text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                placeholder="输入或编辑文本内容…"
-              />
-            ) : (
-              <div className="prose-custom pr-2 text-[15px] leading-8 text-[var(--foreground)]">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{record.contentText || record.extractedText}</ReactMarkdown>
-              </div>
-            )}
+            <div className="prose-custom pr-2 text-[15px] leading-8 text-[var(--foreground)]">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{record.contentText || record.extractedText}</ReactMarkdown>
+            </div>
           </div>
         )}
 
@@ -2035,71 +2021,23 @@ function RecordPane({
         )}
 
         {/* Manual tags */}
-        {(editing || record.keywords.length > 0) && (
+        {record.keywords.length > 0 && (
           <>
             <div className="my-5 border-t border-dashed border-[var(--line)]" />
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">标签</p>
-              {editing ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {editKeywords.map((kw) => (
-                    <span
-                      key={kw}
-                      className="inline-flex items-center gap-1 rounded-md bg-[var(--surface)] pl-2.5 pr-1 py-1 text-xs font-medium text-[var(--muted-strong)]"
-                    >
-                      {kw}
-                      <button
-                        type="button"
-                        onClick={() => removeEditTag(kw)}
-                        className="rounded p-0.5 hover:bg-[var(--line)]"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    value={editTagInput}
-                    onChange={(e) => setEditTagInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTagFromInput(); } }}
-                    placeholder="添加标签（空格或逗号分隔）"
-                    className="min-w-[120px] rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-                  />
-                  {editTagInput.trim() && (
-                    <button type="button" onClick={addTagFromInput} className="rounded-md bg-[var(--foreground)] px-2 py-0.5 text-xs text-[var(--background)]">
-                      添加
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {record.keywords.map((kw) => (
-                    <span key={kw} className="rounded-md bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted-strong)]">
-                      {kw}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {record.keywords.map((kw) => (
+                  <span key={kw} className="rounded-md bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted-strong)]">
+                    {kw}
+                  </span>
+                ))}
+              </div>
             </div>
           </>
         )}
 
-        {editing ? (
-          <>
-            <div className="my-5 border-t border-dashed border-[var(--line)]" />
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">备注</p>
-              <div className="input-focus-bar">
-                <textarea
-                  value={editNote}
-                  onChange={(e) => setEditNote(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  placeholder="备注信息（可选）"
-                />
-              </div>
-            </div>
-          </>
-        ) : record.contextNote ? (
+        {record.contextNote ? (
           <>
             <div className="my-5 border-t border-dashed border-[var(--line)]" />
             <div className="rounded-xl bg-[var(--surface)] px-4 py-3.5">
@@ -2172,53 +2110,147 @@ function RecordPane({
             {saveError && (
               <span className="text-[12px] text-rose-500">{saveError}</span>
             )}
-            {editing ? (
-              <>
-                <button type="button" onClick={() => setEditing(false)} className="rounded-lg px-3 py-1.5 text-[12px] text-[var(--muted)] transition hover:bg-[var(--surface)]">
-                  取消
-                </button>
-                <button type="button" onClick={handleSave} className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition hover:opacity-90">
-                  保存
-                </button>
-              </>
+            {(record.contentText || record.extractedText) && (
+              <button
+                type="button"
+                onClick={handleCopy}
+                className={[
+                  "rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition",
+                  copied
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "text-[var(--muted-strong)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+                ].join(" ")}
+              >
+                {copied ? "已复制" : "复制"}
+              </button>
+            )}
+            {(record as KnowledgeRecord & { _localPending?: boolean })._localPending ? (
+              <span className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted)]">待同步</span>
             ) : (
+              <button type="button" onClick={() => onOpenDetail(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
+                详情
+              </button>
+            )}
+            {(record as KnowledgeRecord & { _localPending?: boolean })._localPending ? null : (
               <>
-                {(record.contentText || record.extractedText) && (
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    className={[
-                      "rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition",
-                      copied
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "text-[var(--muted-strong)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
-                    ].join(" ")}
-                  >
-                    {copied ? "已复制" : "复制"}
-                  </button>
-                )}
-                {(record as KnowledgeRecord & { _localPending?: boolean })._localPending ? (
-                  <span className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted)]">待同步</span>
-                ) : (
-                  <button type="button" onClick={() => onOpenDetail(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
-                    详情
-                  </button>
-                )}
-                {(record as KnowledgeRecord & { _localPending?: boolean })._localPending ? null : (
-                  <>
-                    <button type="button" onClick={() => setEditing(true)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
-                      编辑
-                    </button>
-                    <button type="button" onClick={() => onDelete(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-rose-500 transition hover:bg-rose-500/10">
-                      删除
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditTitle(record.title);
+                    setEditSource(record.sourceLabel);
+                    setEditNote(record.contextNote);
+                    setEditContentText(record.contentText || record.extractedText || "");
+                    setEditKeywords(record.keywords || []);
+                    setEditModalOpen(true);
+                  }}
+                  className="rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                >
+                  编辑
+                </button>
+                <button type="button" onClick={() => onDelete(record.id)} className="rounded-lg px-2.5 py-1.5 text-[12px] text-rose-500 transition hover:bg-rose-500/10">
+                  删除
+                </button>
               </>
             )}
           </div>
         </div>
       </div>
+
+      {/* 编辑大弹窗：标题、来源、文本内容（大区域）、标签、备注 */}
+      {editModalOpen && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setEditModalOpen(false); }}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 border-b border-[var(--line)] px-6 py-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-[var(--foreground)]">编辑记录</h3>
+                <button type="button" onClick={() => setEditModalOpen(false)} className="rounded-lg p-1.5 text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]">
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--muted)]">来源</label>
+                <input
+                  value={editSource}
+                  onChange={(e) => setEditSource(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                  placeholder="来源"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--muted)]">标题</label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-base font-semibold text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                  placeholder="标题"
+                />
+              </div>
+              <div className="flex-1 min-h-0 flex flex-col">
+                <label className="mb-1 block text-xs font-medium text-[var(--muted)]">文本内容（支持 Markdown）</label>
+                <MarkdownEditor
+                  key={record.id}
+                  value={editContentText}
+                  onChange={setEditContentText}
+                  placeholder="输入文本或 Markdown，支持直接粘贴截图…"
+                  minHeight="min-h-[36vh]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--muted)]">标签</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {editKeywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="inline-flex items-center gap-1 rounded-md bg-[var(--surface)] pl-2.5 pr-1 py-1 text-xs font-medium text-[var(--muted-strong)]"
+                    >
+                      {kw}
+                      <button type="button" onClick={() => removeEditTag(kw)} className="rounded p-0.5 hover:bg-[var(--line)]">×</button>
+                    </span>
+                  ))}
+                  <input
+                    value={editTagInput}
+                    onChange={(e) => setEditTagInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTagFromInput(); } }}
+                    placeholder="添加标签（空格或逗号分隔）"
+                    className="min-w-[120px] rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+                  />
+                  {editTagInput.trim() && (
+                    <button type="button" onClick={addTagFromInput} className="rounded-md bg-[var(--foreground)] px-2 py-0.5 text-xs text-[var(--background)]">添加</button>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--muted)]">备注（可选）</label>
+                <textarea
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  rows={3}
+                  placeholder="备注信息"
+                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+            </div>
+            <div className="shrink-0 flex items-center justify-end gap-2 border-t border-[var(--line)] px-6 py-4">
+              {saveError && <span className="mr-2 text-xs text-rose-500">{saveError}</span>}
+              <button type="button" onClick={() => setEditModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-[var(--muted)] transition hover:bg-[var(--surface)]">
+                取消
+              </button>
+              <button type="button" onClick={handleSave} className="rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition hover:opacity-90">
+                保存
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

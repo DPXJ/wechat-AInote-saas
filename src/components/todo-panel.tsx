@@ -13,7 +13,7 @@ import {
   syncPendingTodosToCloud,
 } from "@/lib/local-todo-store";
 
-type TodoFilter = "all" | "pending" | "done" | "deleted";
+type TodoFilter = "all" | "pending" | "done";
 type DateRangeFilter = "" | "today" | "last7";
 
 const priorityConfig: Record<TodoPriority, { label: string; dot: string; bg: string }> = {
@@ -241,8 +241,13 @@ export function TodoPanel({
       setLocalTodos((curr) => curr.filter((t) => t.id !== id));
       return;
     }
-    await fetch(`/api/todos/${id}`, { method: "DELETE", cache: "no-store" });
-    await fetchTodos();
+    // 乐观删除：先从列表移除再请求，删除即进入“回收站”（不再在待办内展示）
+    setServerTodos((prev) => prev.filter((t) => t.id !== id));
+    try {
+      await fetch(`/api/todos/${id}`, { method: "DELETE", cache: "no-store" });
+    } catch {
+      await fetchTodos();
+    }
   };
 
   const handleHardDelete = async (id: string) => {
@@ -275,7 +280,8 @@ export function TodoPanel({
   const allTodos = useMemo(() => [...localTodos, ...serverTodos], [localTodos, serverTodos]);
 
   const filteredTodos = useMemo(() => {
-    let base = allTodos;
+    // 不展示已删除项，删除后相当于进入回收站
+    let base = allTodos.filter((t) => t.status !== "deleted");
     if (filter !== "all") {
       base = base.filter((t) => t.status === filter);
     }
@@ -377,13 +383,12 @@ export function TodoPanel({
           </button>
         </div>
 
-        {/* Filter tabs + date filter */}
+        {/* Filter tabs + date filter（已删除不在此展示，删除后进入回收站逻辑） */}
         <div className="flex flex-wrap items-center gap-2">
           {([
             { id: "all", label: "全部" },
             { id: "pending", label: "待处理" },
             { id: "done", label: "已完成" },
-            { id: "deleted", label: "已删除" },
           ] as const).map((f) => (
             <button
               key={f.id}

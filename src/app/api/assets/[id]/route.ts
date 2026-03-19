@@ -20,7 +20,18 @@ export async function GET(
         return new Response("Not Found", { status: 404 });
       }
       if (result.content.kind === "redirect") {
-        return Response.redirect(result.content.url, 302);
+        // 代理回源：客户端 fetch 同源 200+body 才能写入 Cache API，避免 302 后跨源 opaque 无法缓存
+        const proxyRes = await fetch(result.content.url, { cache: "force-cache" });
+        if (!proxyRes.ok) {
+          return Response.redirect(result.content.url, 302);
+        }
+        const buffer = await proxyRes.arrayBuffer();
+        return new Response(buffer, {
+          headers: {
+            "Content-Type": result.asset.mimeType,
+            "Cache-Control": "public, max-age=86400",
+          },
+        });
       }
       return new Response(result.content.buffer, {
         headers: {
@@ -36,7 +47,22 @@ export async function GET(
     }
 
     if (result.content.kind === "redirect") {
-      return Response.redirect(result.content.url, 302);
+      // 原图也走代理：避免前端 fetch 跟随 302 跨源拿不到 body，导致预览/全屏显示失败
+      const proxyRes = await fetch(result.content.url, { cache: "force-cache" });
+      if (!proxyRes.ok) {
+        return Response.redirect(result.content.url, 302);
+      }
+      const buffer = await proxyRes.arrayBuffer();
+      const disposition = forceDownload ? "attachment" : "inline";
+      return new Response(buffer, {
+        headers: {
+          "Content-Type": result.asset.mimeType,
+          "Content-Disposition": `${disposition}; filename="${encodeURIComponent(
+            result.asset.originalName,
+          )}"`,
+          "Cache-Control": "private, max-age=3600",
+        },
+      });
     }
 
     const disposition = forceDownload ? "attachment" : "inline";

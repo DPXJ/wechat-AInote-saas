@@ -62,3 +62,12 @@ export async function getImageCacheUsage(): Promise<{ count: number; estimatedQu
     return { count: 0 };
   }
 }
+
+/** 清空本地图片缓存，释放空间 */
+export async function clearImageCache(): Promise<void> {
+  try {
+    await caches.delete(CACHE_NAME);
+  } catch {
+    // ignore
+  }
+}

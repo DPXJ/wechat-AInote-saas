@@ -51,8 +51,8 @@ export function useCachedImage(url: string | null): {
           return;
         }
         const fetchedBlob = await res.blob();
-        if (cancelledRef.current) return;
-        await setCachedImage(url, fetchedBlob, res.headers.get("Content-Type") || undefined);
+        const mime = res.headers.get("Content-Type") || undefined;
+        await setCachedImage(url, fetchedBlob, mime);
         if (cancelledRef.current) return;
         const objectUrl = URL.createObjectURL(fetchedBlob);
         blobUrlRef.current = objectUrl;
