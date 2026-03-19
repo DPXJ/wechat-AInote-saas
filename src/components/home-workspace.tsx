@@ -34,7 +34,7 @@ import type {
 import type { ReportData } from "@/components/report-panel";
 import { formatDateTime, formatDateOnly, formatTime } from "@/lib/utils";
 
-type WorkspaceTab = "record" | "history" | "favorites" | "todos" | "reports" | "tags" | "settings";
+type WorkspaceTab = "record" | "history" | "favorites" | "todos" | "reports" | "tags" | "trash" | "settings";
 type HistoryFilter = "all" | "text" | "image" | "video" | "audio" | "document" | "synced";
 type DocSubFilter = "" | "pdf" | "word" | "excel" | "md";
 
@@ -51,6 +51,7 @@ function TabIcon({ id, className = "w-[18px] h-[18px]" }: { id: string; classNam
     case "reports": return <svg {...props}><path d="M3 3v18h18" /><path d="M7 17V13M11 17V9M15 17V5M19 17v-6" /></svg>;
     case "tags": return <svg {...props}><path d="M4 4h6l10 10-6 6L4 10V4z" /><circle cx="8.5" cy="8.5" r="1.5" /></svg>;
     case "settings": return <svg {...props}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>;
+    case "trash": return <svg {...props}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>;
     default: return null;
   }
 }
@@ -62,6 +63,7 @@ const tabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "favorites", label: "收藏" },
   { id: "reports", label: "报告" },
   { id: "tags", label: "标签" },
+  { id: "trash", label: "回收站" },
   { id: "settings", label: "设置" },
 ];
 
@@ -142,6 +144,7 @@ export function HomeWorkspace({
   const [prefetchedFavorites, setPrefetchedFavorites] = useState<KnowledgeRecord[] | null>(null);
   const [prefetchedReport, setPrefetchedReport] = useState<ReportData | null>(null);
   const [prefetchedTags, setPrefetchedTags] = useState<Array<{ tag: string; count: number }> | null>(null);
+  const [prefetchedTrash, setPrefetchedTrash] = useState<Array<KnowledgeRecord & { deletedAt: string }> | null>(null);
   const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [todosInitialPriority, setTodosInitialPriority] = useState<TodoPriority | "">("");
@@ -208,6 +211,10 @@ export function HomeWorkspace({
       fetch("/api/tags", { signal: abort.signal })
         .then((r) => r.json())
         .then((d) => setPrefetchedTags(d.tags || []))
+        .catch(() => {}),
+      fetch("/api/records/trash?limit=50", { signal: abort.signal })
+        .then((r) => r.json())
+        .then((d) => setPrefetchedTrash(d.records || []))
         .catch(() => {}),
     ]);
     return () => abort.abort();
@@ -683,6 +690,13 @@ export function HomeWorkspace({
                     setHistoryTagFilter(tag);
                     setActiveTab("history");
                   }}
+                />
+              )}
+              {activeTab === "trash" && (
+                <TrashTab
+                  initialRecords={prefetchedTrash}
+                  onRestore={() => { setActiveTab("history"); refreshRecords(); }}
+                  onGoToHistory={() => { setActiveTab("history"); }}
                 />
               )}
               {activeTab === "settings" && (
@@ -1287,6 +1301,206 @@ function HistoryTab({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────── */
+/* Trash Tab (回收站，参考 flomo)                        */
+/* ────────────────────────────────────────────────── */
+
+function formatDeletedAt(iso: string) {
+  const d = new Date(iso);
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+  if (days === 0) return "今天删除";
+  if (days === 1) return "昨天删除";
+  if (days < 7) return `${days} 天前删除`;
+  if (days < 30) return `${Math.floor(days / 7)} 周前删除`;
+  return formatDateTime(iso);
+}
+
+function TrashTab({
+  initialRecords,
+  onRestore,
+  onGoToHistory,
+}: {
+  initialRecords?: Array<KnowledgeRecord & { deletedAt: string }> | null;
+  onRestore: () => void;
+  onGoToHistory: () => void;
+}) {
+  const hasInitial = initialRecords != null;
+  const [records, setRecords] = useState<(KnowledgeRecord & { deletedAt: string })[]>(initialRecords ?? []);
+  const [loading, setLoading] = useState(!hasInitial);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [emptyConfirmOpen, setEmptyConfirmOpen] = useState(false);
+
+  const fetchTrash = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/records/trash?limit=50");
+      const data = await res.json();
+      setRecords(data.records || []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (initialRecords != null) {
+      setRecords(initialRecords);
+      setLoading(false);
+      return;
+    }
+    fetchTrash();
+  }, [initialRecords]);
+
+  const handleRestore = useCallback(async (id: string) => {
+    setRestoringId(id);
+    try {
+      const res = await fetch(`/api/records/${id}/restore`, { method: "POST" });
+      if (res.ok) {
+        setRecords((prev) => prev.filter((r) => r.id !== id));
+        onRestore();
+      }
+    } finally {
+      setRestoringId(null);
+    }
+  }, [onRestore]);
+
+  const handlePermanentDelete = useCallback(async (id: string) => {
+    if (!confirm("确定永久删除该记录？此操作不可恢复。")) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch("/api/records/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "hardDelete", ids: [id] }),
+      });
+      if (res.ok) setRecords((prev) => prev.filter((r) => r.id !== id));
+    } finally {
+      setDeletingId(null);
+    }
+  }, []);
+
+  const handleEmptyTrash = useCallback(async () => {
+    setEmptyConfirmOpen(false);
+    if (records.length === 0) return;
+    const res = await fetch("/api/records/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "hardDelete", ids: records.map((r) => r.id) }),
+    });
+    if (res.ok) {
+      setRecords([]);
+      onRestore();
+    }
+  }, [records, onRestore]);
+
+  if (loading && records.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24">
+        <span className="text-sm text-[var(--muted)]">加载中...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-4 flex shrink-0 items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-[var(--foreground)]">回收站</span>
+          <span className="text-xs text-[var(--muted)]">{records.length} 条</span>
+        </div>
+        {records.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setEmptyConfirmOpen(true)}
+            className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface)]"
+          >
+            清空回收站
+          </button>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-[var(--muted)]">删除的记录将在此保留约 30 天，之后会自动清理。可恢复或永久删除。</p>
+
+      {records.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center py-24 text-center">
+          <span className="text-3xl text-[var(--muted)]">🗑</span>
+          <p className="mt-3 text-sm text-[var(--muted)]">回收站为空</p>
+          <button
+            type="button"
+            onClick={onGoToHistory}
+            className="mt-2 text-xs text-[var(--muted-strong)] underline hover:no-underline"
+          >
+            返回历史
+          </button>
+        </div>
+      ) : (
+        <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
+          <ul className="space-y-2">
+            {records.map((record) => (
+              <li
+                key={record.id}
+                className="flex items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)]/50 p-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-[var(--foreground)]">{record.title || "未命名"}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-[var(--muted)]">{record.summary}</p>
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">
+                    {record.deletedAt ? formatDeletedAt(record.deletedAt) : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleRestore(record.id)}
+                    disabled={restoringId === record.id}
+                    className="rounded-lg bg-[var(--surface-strong)] px-2.5 py-1.5 text-xs text-[var(--foreground)] transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {restoringId === record.id ? "恢复中..." : "恢复"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePermanentDelete(record.id)}
+                    disabled={deletingId === record.id}
+                    className="rounded-lg border border-rose-500/50 px-2.5 py-1.5 text-xs text-rose-500 transition hover:bg-rose-500/10 disabled:opacity-50"
+                  >
+                    {deletingId === record.id ? "删除中..." : "永久删除"}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {emptyConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setEmptyConfirmOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--line)] bg-[var(--card)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-medium text-[var(--foreground)]">确定清空回收站？</p>
+            <p className="mt-2 text-xs text-[var(--muted)]">将永久删除当前 {records.length} 条记录，不可恢复。</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEmptyConfirmOpen(false)}
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] hover:bg-[var(--surface)]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleEmptyTrash}
+                className="rounded-lg bg-rose-500 px-3 py-1.5 text-sm text-white hover:opacity-90"
+              >
+                清空
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

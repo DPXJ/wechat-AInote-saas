@@ -54,6 +54,8 @@ export interface KnowledgeRecord {
   updatedAt: string;
   assets: RecordAsset[];
   syncRuns: SyncRun[];
+  /** 仅回收站列表返回：删除时间 */
+  deletedAt?: string;
 }
 
 export interface RecordInput {

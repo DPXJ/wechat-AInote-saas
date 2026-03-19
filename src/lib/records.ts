@@ -379,9 +379,10 @@ export async function listDeletedRecords(
     syncsByRecord.set(s.record_id, list);
   }
 
-  const records = ((rows || []) as RecordRow[]).map((row) =>
-    mapRecord(row, assetsByRecord.get(row.id) || [], syncsByRecord.get(row.id) || []),
-  );
+  const records = ((rows || []) as RecordRow[]).map((row) => {
+    const rec = mapRecord(row, assetsByRecord.get(row.id) || [], syncsByRecord.get(row.id) || []);
+    return { ...rec, deletedAt: row.deleted_at as string };
+  });
   return { records, total: total ?? 0 };
 }
 
@@ -470,6 +471,7 @@ export async function deleteKnowledgeRecord(userId: string, recordId: string) {
   await softDeleteRecord(userId, recordId);
 }
 
+/** 永久删除：先删 OSS/本地附件文件，再删 DB 中 chunks / sync_runs / assets / favorites / records。 */
 export async function hardDeleteRecord(userId: string, recordId: string) {
   const supabase = getSupabaseAdmin();
   const { data: assets } = await supabase
