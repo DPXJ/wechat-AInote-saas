@@ -32,6 +32,7 @@ import type {
   TodoPriority,
 } from "@/lib/types";
 import type { ReportData } from "@/components/report-panel";
+import { sanitizeSummary } from "@/lib/ai";
 import { formatDateTime, formatDateOnly, formatTime } from "@/lib/utils";
 
 type WorkspaceTab = "record" | "history" | "favorites" | "todos" | "reports" | "tags" | "trash" | "settings";
@@ -39,6 +40,8 @@ type HistoryFilter = "all" | "text" | "image" | "video" | "audio" | "document" |
 type DocSubFilter = "" | "pdf" | "word" | "excel" | "md";
 
 const PAGE_SIZE = 20;
+
+type GlobalTone = "info" | "success" | "error";
 
 function TabIcon({ id, className = "w-[18px] h-[18px]" }: { id: string; className?: string }) {
   const props = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className };
@@ -148,6 +151,42 @@ export function HomeWorkspace({
   const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [todosInitialPriority, setTodosInitialPriority] = useState<TodoPriority | "">("");
+
+  const [globalToast, setGlobalToast] = useState<{ status: string; tone: GlobalTone } | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("ai-box-global-status");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { status: string; tone?: GlobalTone };
+        if (parsed?.status) setGlobalToast({ status: parsed.status, tone: parsed.tone || "info" });
+      } catch {
+        // ignore
+      } finally {
+        sessionStorage.removeItem("ai-box-global-status");
+      }
+    }
+
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { message?: string; tone?: GlobalTone } | undefined;
+      const message = detail?.message;
+      if (!message) return;
+      const tone = (detail?.tone || "info") as GlobalTone;
+      setGlobalToast({ status: message, tone });
+      try {
+        sessionStorage.setItem(
+          "ai-box-global-status",
+          JSON.stringify({ status: message, tone, ts: Date.now() }),
+        );
+      } catch {
+        // ignore
+      }
+      setTimeout(() => setGlobalToast(null), 4500);
+    };
+
+    window.addEventListener("ai-box-global-status", handler as EventListener);
+    return () => window.removeEventListener("ai-box-global-status", handler as EventListener);
+  }, []);
 
   useEffect(() => {
     const refreshPending = () => {
@@ -324,15 +363,18 @@ export function HomeWorkspace({
     }
   }, [loadingMore, records.length, total]);
 
+  /** 乐观删除：先立即从列表移除并关弹窗，再后台请求；失败时刷新列表恢复 */
   const performDelete = useCallback(
-    async (id: string) => {
-      await fetch(`/api/records/${id}`, { method: "DELETE" });
+    (id: string) => {
       setRecords((prev) => prev.filter((r) => r.id !== id));
-      setTotal((prev) => prev - 1);
+      setTotal((prev) => Math.max(0, prev - 1));
       if (selectedRecordId === id) setSelectedRecordId("");
       if (detailModalId === id) setDetailModalId(null);
+      fetch(`/api/records/${id}`, { method: "DELETE" }).then((res) => {
+        if (!res.ok) refreshRecords();
+      }).catch(() => refreshRecords());
     },
-    [selectedRecordId, detailModalId],
+    [selectedRecordId, detailModalId, refreshRecords],
   );
 
   const handleDeleteRequest = useCallback((id: string) => {
@@ -429,6 +471,54 @@ export function HomeWorkspace({
         <div className="orb orb-2" />
         <div className="orb orb-3" />
       </div>
+
+      {globalToast && (
+        <div
+          className="pointer-events-none fixed left-1/2 top-6 z-50 -translate-x-1/2"
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className={[
+              "pointer-events-auto flex animate-toast-in items-center gap-3 rounded-2xl border px-5 py-3.5 text-sm font-medium shadow-xl backdrop-blur-md",
+              globalToast.tone === "success"
+                ? "border-emerald-500/30 bg-emerald-500/95 text-white dark:bg-emerald-600/95"
+                : globalToast.tone === "error"
+                  ? "border-rose-500/30 bg-rose-500/95 text-white dark:bg-rose-600/95"
+                  : "border-[var(--line-strong)] bg-[var(--card)]/95 text-[var(--foreground)]",
+            ].join(" ")}
+          >
+            {globalToast.tone === "info" && (
+              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            )}
+            {globalToast.tone === "success" && (
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="shrink-0"
+              >
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            )}
+            {globalToast.tone === "error" && <span className="shrink-0 text-base leading-none">!</span>}
+            <span className="min-w-0 flex-1">{globalToast.status}</span>
+            <button
+              type="button"
+              onClick={() => setGlobalToast(null)}
+              className="-mr-1 rounded-lg p-1 opacity-70 transition hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/50"
+              aria-label="关闭"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       <div
         className="relative z-[1] mx-auto grid min-h-screen max-w-[1440px]"
@@ -742,10 +832,11 @@ export function HomeWorkspace({
               </button>
               <button
                 type="button"
-                onClick={async () => {
+                onClick={() => {
                   const id = deleteConfirmId;
+                  if (!id) return;
                   setDeleteConfirmId(null);
-                  await performDelete(id);
+                  performDelete(id);
                 }}
                 className="rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-600"
               >
@@ -1201,7 +1292,7 @@ function HistoryTab({
                         {record.title}
                       </p>
                       <p className="mt-1 line-clamp-1 text-[12px] leading-relaxed text-[var(--muted)]">
-                        {record.summary}
+                        {sanitizeSummary(record.summary ?? "")}
                       </p>
                       {record.keywords.length === 0 &&
                         !(record as KnowledgeRecord & { _localPending?: boolean })._localPending &&
@@ -1335,7 +1426,9 @@ function TrashTab({
   const [loading, setLoading] = useState(!hasInitial);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteModalId, setDeleteModalId] = useState<string | null>(null);
   const [emptyConfirmOpen, setEmptyConfirmOpen] = useState(false);
+  const [emptyDeleting, setEmptyDeleting] = useState(false);
 
   const fetchTrash = useCallback(async () => {
     setLoading(true);
@@ -1370,32 +1463,41 @@ function TrashTab({
     }
   }, [onRestore]);
 
-  const handlePermanentDelete = useCallback(async (id: string) => {
-    if (!confirm("确定永久删除该记录？此操作不可恢复。")) return;
+  const handlePermanentDeleteRequest = useCallback((id: string) => {
+    setDeleteModalId(id);
+  }, []);
+
+  /** 确认后立即关闭弹窗，在后台执行永久删除，列表该项显示「删除中...」直到完成 */
+  const handleConfirmPermanentDelete = useCallback((id: string) => {
+    setDeleteModalId(null);
     setDeletingId(id);
+    fetch("/api/records/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "hardDelete", ids: [id] }),
+    })
+      .then((res) => {
+        if (res.ok) setRecords((prev) => prev.filter((r) => r.id !== id));
+      })
+      .finally(() => setDeletingId(null));
+  }, []);
+
+  const handleEmptyTrash = useCallback(async () => {
+    if (records.length === 0) return;
+    setEmptyDeleting(true);
     try {
       const res = await fetch("/api/records/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "hardDelete", ids: [id] }),
+        body: JSON.stringify({ action: "hardDelete", ids: records.map((r) => r.id) }),
       });
-      if (res.ok) setRecords((prev) => prev.filter((r) => r.id !== id));
+      if (res.ok) {
+        setRecords([]);
+        onRestore();
+      }
     } finally {
-      setDeletingId(null);
-    }
-  }, []);
-
-  const handleEmptyTrash = useCallback(async () => {
-    setEmptyConfirmOpen(false);
-    if (records.length === 0) return;
-    const res = await fetch("/api/records/batch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "hardDelete", ids: records.map((r) => r.id) }),
-    });
-    if (res.ok) {
-      setRecords([]);
-      onRestore();
+      setEmptyDeleting(false);
+      setEmptyConfirmOpen(false);
     }
   }, [records, onRestore]);
 
@@ -1448,7 +1550,7 @@ function TrashTab({
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-[var(--foreground)]">{record.title || "未命名"}</p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-[var(--muted)]">{record.summary}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-[var(--muted)]">{sanitizeSummary(record.summary ?? "")}</p>
                   <p className="mt-1 text-[11px] text-[var(--muted)]">
                     {record.deletedAt ? formatDeletedAt(record.deletedAt) : ""}
                   </p>
@@ -1464,7 +1566,7 @@ function TrashTab({
                   </button>
                   <button
                     type="button"
-                    onClick={() => handlePermanentDelete(record.id)}
+                    onClick={() => handlePermanentDeleteRequest(record.id)}
                     disabled={deletingId === record.id}
                     className="rounded-lg border border-rose-500/50 px-2.5 py-1.5 text-xs text-rose-500 transition hover:bg-rose-500/10 disabled:opacity-50"
                   >
@@ -1478,24 +1580,63 @@ function TrashTab({
       )}
 
       {emptyConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setEmptyConfirmOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => {
+            if (emptyDeleting) return;
+            setEmptyConfirmOpen(false);
+          }}
+        >
           <div className="w-full max-w-sm rounded-2xl border border-[var(--line)] bg-[var(--card)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-medium text-[var(--foreground)]">确定清空回收站？</p>
             <p className="mt-2 text-xs text-[var(--muted)]">将永久删除当前 {records.length} 条记录，不可恢复。</p>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setEmptyConfirmOpen(false)}
-                className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] hover:bg-[var(--surface)]"
+                onClick={() => !emptyDeleting && setEmptyConfirmOpen(false)}
+                disabled={emptyDeleting}
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] hover:bg-[var(--surface)] disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={handleEmptyTrash}
+                disabled={emptyDeleting}
+                className="rounded-lg bg-rose-500 px-3 py-1.5 text-sm text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {emptyDeleting ? "删除中..." : "清空"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteModalId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteModalId(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[var(--line)] bg-[var(--card)] p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-medium text-[var(--foreground)]">确定永久删除该记录？</p>
+            <p className="mt-2 text-xs text-[var(--muted)]">删除后不可恢复，将在后台执行。</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteModalId(null)}
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-strong)] hover:bg-[var(--surface)]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmPermanentDelete(deleteModalId)}
                 className="rounded-lg bg-rose-500 px-3 py-1.5 text-sm text-white hover:opacity-90"
               >
-                清空
+                永久删除
               </button>
             </div>
           </div>
@@ -1630,7 +1771,7 @@ function FavoritesTab({
                       {record.title}
                     </p>
                     <p className="mt-1 line-clamp-1 text-[12px] leading-relaxed text-[var(--muted)]">
-                      {record.summary}
+                      {sanitizeSummary(record.summary ?? "")}
                     </p>
                   </button>
                 );
@@ -1852,7 +1993,9 @@ function RecordPane({
                 ? "摘要（原文，未启用 AI）"
                 : "AI 摘要"}
             </p>
-            <p className="text-[13px] leading-6 text-[var(--muted-strong)]">{record.summary}</p>
+            <p className="text-[13px] leading-6 text-[var(--muted-strong)] whitespace-pre-line">
+              {sanitizeSummary(record.summary)}
+            </p>
             {record.summary === (record.contentText || record.extractedText || "").trim() && (
               <p className="mt-2 text-[11px] text-[var(--muted)]">
                 在 设置 → AI 摘要 中配置 OpenAI 可启用智能标题与摘要生成。

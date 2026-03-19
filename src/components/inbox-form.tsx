@@ -149,6 +149,19 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
     setStatusTone(tone);
   }
 
+  // 跨页面/跨 Tab 的同步提示：避免用户切换菜单后 toast 被销毁。
+  function emitGlobalStatus(message: string, tone: StatusTone = "info") {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("ai-box-global-status", {
+          detail: { message, tone },
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+
   function attachFiles(incoming: File[], sourceText: string) {
     if (incoming.length === 0) return;
     setFiles((current) => mergeFiles(current, incoming));
@@ -243,21 +256,32 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       setSubmitting(false);
       updateStatus("已收录，等待同步到云端", "success");
 
+      emitGlobalStatus("正在同步中（数据库 + OSS）...", "info");
       syncPendingRecordsToCloud()
         .then(({ synced, failed, syncWarnings }) => {
           if (synced > 0) {
             const base = `收录已同步到云端（数据库与附件已保存）${synced > 1 ? `，${synced} 条` : ""}`;
             if (syncWarnings.length > 0) {
-              updateStatus(`${base}；但第三方同步失败：${syncWarnings.join("；")}`, "error");
+              const msg = `${base}；但第三方同步失败：${syncWarnings.join("；")}`;
+              updateStatus(msg, "error");
+              emitGlobalStatus(msg, "error");
             } else {
               updateStatus(`${base}`, "success");
+              emitGlobalStatus(`${base}`, "success");
             }
             onCreated?.("");
             router.refresh();
           }
-          if (failed > 0) updateStatus(`${failed} 条上传云端失败，可点击右上角云图标重试`, "error");
+          if (failed > 0) {
+            const msg = `${failed} 条上传云端失败，可点击右上角云图标重试`;
+            updateStatus(msg, "error");
+            emitGlobalStatus(msg, "error");
+          }
         })
-        .catch(() => updateStatus("同步异常，可稍后点击云图标重试", "error"));
+        .catch(() => {
+          updateStatus("同步异常，可稍后点击云图标重试", "error");
+          emitGlobalStatus("同步异常，可稍后点击云图标重试", "error");
+        });
     } catch (e) {
       setSubmitting(false);
       updateStatus(e instanceof Error ? e.message : "提交失败，请重试", "error");

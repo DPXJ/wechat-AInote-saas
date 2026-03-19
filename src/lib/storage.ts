@@ -111,7 +111,9 @@ function buildObjectKey(
   const prefix = (pathPrefix || appConfig.ossPathPrefix || "").trim().replace(/^\/+|\/+$/g, "");
   const typeFolder = mimeToFolder(mimeType);
 
-  return [prefix, typeFolder, datePrefix, `${fileId}-${safeName}`].filter(Boolean).join("/");
+  // 把原始文件名放在最后一段 key（OSS 控制台更容易展示“真实文件名”）。
+  // 唯一标识放到文件夹层级：prefix/typeFolder/datePrefix/<fileId>/<safeName>
+  return [prefix, typeFolder, datePrefix, fileId, safeName].filter(Boolean).join("/");
 }
 
 function joinUrl(base: string, key: string) {

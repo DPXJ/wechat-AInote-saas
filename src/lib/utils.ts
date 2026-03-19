@@ -81,12 +81,21 @@ export function trimText(value: string, limit = 280) {
 }
 
 export function sanitizeFileName(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/[^\w.\-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .toLowerCase();
+  // 用于 OSS objectKey 的文件名段：尽量保留原始（包括中文），仅做必要的“路径/非法字符”处理。
+  // 注意：真正唯一性由 objectKey 的其它部分保证；这里的目标是让 OSS 列表里能看到更接近原名的文件名。
+  const v = (value || "").trim();
+  if (!v) return "upload.bin";
+
+  // 防止路径穿越（把 / \ 替换掉）
+  const noPathSeparators = v.replace(/[\\/]+/g, "-");
+
+  // Windows/URL 常见非法字符（保守替换），保留其它 unicode 字符
+  return noPathSeparators
+    .replace(/[<>:"|?*\u0000-\u001F]/g, "_")
+    // 避免 objectKey 出现空格导致 URL/签名行为差异
+    .replace(/\s+/g, "_")
+    .replace(/^\.+|\.+$/g, "")
+    .normalize("NFC");
 }
 
 export function tokenize(value: string) {

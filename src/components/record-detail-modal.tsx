@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AssetGallery } from "@/components/asset-gallery";
 import { RecordQuickActions } from "@/components/record-quick-actions";
 import { SyncPreview } from "@/components/sync-preview";
+import { sanitizeSummary } from "@/lib/ai";
 import type { KnowledgeRecord, RecordAsset, RecordType, SyncRun } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
 
@@ -157,7 +158,9 @@ export function RecordDetailModal({
                   <h2 className="mt-3 text-2xl font-bold leading-snug text-[var(--foreground)]">{record.title}</h2>
                 )}
 
-                <p className="mt-3 text-[15px] leading-8 text-[var(--muted-strong)]">{record.summary}</p>
+                <p className="mt-3 text-[15px] leading-8 text-[var(--muted-strong)] whitespace-pre-line">
+                {sanitizeSummary(record.summary)}
+              </p>
 
                 {record.keywords.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">

@@ -94,13 +94,23 @@ function buildFallbackAnalysis(input: AnalysisInput): AnalysisOutput {
 }
 
 const SYSTEM_SUMMARY_BASE =
-  "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；keywords 固定 5 个关键词（仅供搜索索引）；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。";
+  "你是资料整理助手。请输出 JSON，字段为 title, summary, keywords, actionItems, suggestedTargets。title 不超过 30 字的简洁标题（如原始标题已足够好可省略此字段）；keywords 固定 5 个关键词（仅供搜索索引）；如果内容更偏资料沉淀，suggestedTargets 包含 notion；如果有行动项，包含 ticktick-email。summary 必须是一段纯文本，不要使用反斜杠、不要使用 markdown 或列表符号，30-50 字精炼概括核心要点即可。";
 
 const DEFAULT_SUMMARY_INSTRUCTIONS =
-  "摘要要求 30-50 字，精炼概括核心要点，适合搜索回显。待办项（actionItems）每条需要详细描述：包含具体要做的事情、涉及的人或对象、建议完成时间或截止日期、相关背景信息，描述要清晰完整，方便直接作为待办事项执行，不要过于简略。";
+  "摘要（summary）要求：一段 30-50 字的纯文本，精炼概括核心要点，适合搜索回显；不要逐条罗列原文，不要使用反斜杠或换行符。待办项（actionItems）每条需要详细描述：包含具体要做的事情、涉及的人或对象、建议完成时间或截止日期、相关背景信息，描述要清晰完整，方便直接作为待办事项执行，不要过于简略。";
 
 const DEFAULT_TODO_INSTRUCTIONS =
   "提取所有行动项，每条待办需包含：1) 具体要做的事情 2) 涉及的人或对象 3) 建议完成时间或截止日期 4) 相关背景信息。描述要清晰完整，方便直接作为待办事项执行，不要过于简略。";
+
+/** 清洗模型返回的 summary：去掉反斜杠分隔符、多余空白，避免界面显示成 "1、... \ 2、..."。供生成端与展示端复用。 */
+export function sanitizeSummary(s: string): string {
+  if (!s || typeof s !== "string") return s;
+  return s
+    .replace(/\\\s*(\d、|[\d]+[.．])/g, " $1")
+    .replace(/\\+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export { DEFAULT_SUMMARY_INSTRUCTIONS, DEFAULT_TODO_INSTRUCTIONS };
 
@@ -133,6 +143,7 @@ export async function analyzeRecord(userId: string, input: AnalysisInput): Promi
     const response = await client.chat.completions.create({
       model: config.textModel,
       temperature: 0.2,
+      max_tokens: 2048,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -158,7 +169,9 @@ export async function analyzeRecord(userId: string, input: AnalysisInput): Promi
     if (!parsed.success) {
       return buildFallbackAnalysis(input);
     }
-    return parsed.data;
+    const out = parsed.data;
+    out.summary = sanitizeSummary(out.summary);
+    return out;
   } catch {
     return buildFallbackAnalysis(input);
   }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useCachedImage } from "@/hooks/use-cached-image";
 import type { RecordAsset } from "@/lib/types";
 
 function isImage(mime: string) {
@@ -93,6 +94,8 @@ function Lightbox({
   onNavigate: (id: string) => void;
 }) {
   const [zoom, setZoom] = useState(1);
+  const fullImageUrl = assetUrl(asset.id);
+  const { src: fullSrc, isLoading: fullLoading } = useCachedImage(fullImageUrl);
   const imageAssets = assets.filter((a) => isImage(a.mimeType));
   const currentIdx = imageAssets.findIndex((a) => a.id === asset.id);
   const hasPrev = currentIdx > 0;
@@ -221,7 +224,7 @@ function Lightbox({
         </button>
       )}
 
-      {/* 图片区域：留白 + 完整显示 + 支持缩放 */}
+      {/* 图片区域：优先缓存原图，命中则秒出；未命中时显示骨架直到加载完成 */}
       <div
         className="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto p-4 pt-16 pb-8"
         onClick={(e) => e.stopPropagation()}
@@ -232,19 +235,26 @@ function Lightbox({
           className="flex shrink-0 items-center justify-center transition-transform duration-150"
           style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={assetUrl(asset.id)}
-            alt={asset.originalName}
-            className="rounded-xl object-contain shadow-2xl"
-            style={{
-              maxHeight: "calc(100vh - 8rem)",
-              maxWidth: "calc(100vw - 4rem)",
-              width: "auto",
-              height: "auto",
-            }}
-            draggable={false}
-          />
+          {fullLoading && (
+            <div className="flex h-64 w-96 items-center justify-center rounded-xl bg-[var(--surface)]">
+              <ImageSkeleton />
+            </div>
+          )}
+          {fullSrc && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={fullSrc}
+              alt={asset.originalName}
+              className="rounded-xl object-contain shadow-2xl"
+              style={{
+                maxHeight: "calc(100vh - 8rem)",
+                maxWidth: "calc(100vw - 4rem)",
+                width: "auto",
+                height: "auto",
+              }}
+              draggable={false}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -289,31 +299,32 @@ function ImageCard({
   onLightbox: (id: string) => void;
   useThumb?: boolean;
 }) {
-  const [loaded, setLoaded] = useState(false);
+  const imageUrl = useThumb ? thumbUrl(asset.id) : assetUrl(asset.id);
+  const { src, isLoading, error } = useCachedImage(imageUrl);
   const hasDescOrOcr = Boolean(asset.description?.trim() || asset.ocrText?.trim());
   const copyText = [asset.description?.trim(), asset.ocrText?.trim()].filter(Boolean).join("\n\n");
+  const showSkeleton = isLoading || error;
+  const showImg = src && !error;
 
   return (
     <div className="group relative flex overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--card)]">
-      {/* 左侧：缩小后的图片，圆角+留白+完整显示+增高 */}
+      {/* 左侧：缩略图优先走缓存，命中则秒出图，否则骨架屏直到加载完成 */}
       <button
         type="button"
         onClick={() => onLightbox(asset.id)}
         className="shrink-0 cursor-zoom-in p-2.5"
       >
         <div className="relative h-56 w-40 overflow-hidden rounded-xl bg-[var(--surface)] sm:h-64 sm:w-44">
-          {!loaded && <ImageSkeleton />}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={useThumb ? thumbUrl(asset.id) : assetUrl(asset.id)}
-            alt={asset.originalName}
-            loading="lazy"
-            onLoad={() => setLoaded(true)}
-            className={[
-              "h-full w-full object-contain transition duration-300",
-              loaded ? "opacity-100" : "opacity-0",
-            ].join(" ")}
-          />
+          {showSkeleton && <ImageSkeleton />}
+          {showImg && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={src}
+              alt={asset.originalName}
+              loading="lazy"
+              className="h-full w-full object-contain transition duration-300 opacity-100"
+            />
+          )}
         </div>
       </button>
       {/* 右侧：文件名 + 描述/OCR + 复制 */}

@@ -509,6 +509,8 @@ export function TodoPanel({
                           onOpenDetail={() => setDetailTodo(todo)}
                           onSynced={fetchTodos}
                           onSetTime={fetchTodos}
+                          getRecordById={getRecordById}
+                          onGoToRecord={onGoToRecord}
                         />
                       </div>
                     );
@@ -558,6 +560,8 @@ function TodoCard({
   onOpenDetail,
   onSynced,
   onSetTime,
+  getRecordById,
+  onGoToRecord,
 }: {
   todo: Todo;
   completing?: boolean;
@@ -569,11 +573,15 @@ function TodoCard({
   onOpenDetail: () => void;
   onSynced: () => void;
   onSetTime?: () => void;
+  getRecordById?: (id: string) => KnowledgeRecord | null;
+  onGoToRecord?: (recordId: string) => void;
 }) {
   const pc = priorityConfig[todo.priority];
   const isDeleted = todo.status === "deleted";
   const timeHint = extractTimeHint(todo.content);
   const needsResync = todo.syncedAt && todo.updatedAt > todo.syncedAt;
+  const sourceRecord = todo.recordId ? getRecordById?.(todo.recordId) : null;
+  const sourceTitle = sourceRecord?.title || sourceRecord?.summary?.slice(0, 40) || "记录";
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [priorityAnchor, setPriorityAnchor] = useState<DOMRect | null>(null);
   const priorityBtnRef = useRef<HTMLButtonElement>(null);
@@ -661,6 +669,27 @@ function TodoCard({
               )}
               <span>{formatBeijingTime(todo.createdAt)}</span>
             </div>
+            {todo.recordId && (
+              <div className="mt-1 text-[11px]">
+                {onGoToRecord ? (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onGoToRecord(todo.recordId!); }}
+                    className="inline-flex items-center gap-1 text-purple-500 hover:underline"
+                  >
+                    来自：《{sourceTitle}》
+                  </button>
+                ) : (
+                  <Link
+                    href={`/?tab=history&record=${todo.recordId}`}
+                    className="inline-flex items-center gap-1 text-purple-500 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    来自：《{sourceTitle}》
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
