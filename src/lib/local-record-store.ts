@@ -193,13 +193,14 @@ export function subscribeSyncStatus(fn: SyncStatusListener): () => void {
   };
 }
 
-/** 同步所有待同步记录到云端 */
+/** 同步所有待同步记录到云端（数据库 + OSS）。若勾选了 Notion/Flomo 且同步失败，返回 syncWarnings，记录本身已保存。 */
 export async function syncPendingRecordsToCloud(
   onProgress?: (localId: string, status: "syncing" | "synced" | "failed") => void,
-): Promise<{ synced: number; failed: number }> {
+): Promise<{ synced: number; failed: number; syncWarnings: string[] }> {
   const list = await getPendingRecordsForSync();
   let synced = 0;
   let failed = 0;
+  const syncWarnings: string[] = [];
   for (const record of list) {
     await setPendingRecordStatus(record.localId, "syncing");
     const remaining = await getPendingRecordsForSync();
@@ -215,6 +216,7 @@ export async function syncPendingRecordsToCloud(
         failed += 1;
         continue;
       }
+      if (Array.isArray(data.syncWarnings)) syncWarnings.push(...data.syncWarnings);
       await removePendingRecord(record.localId);
       onProgress?.(record.localId, "synced");
       synced += 1;
@@ -227,7 +229,7 @@ export async function syncPendingRecordsToCloud(
   }
   const remaining = await getPendingRecordsForSync();
   notifySyncStatus(remaining.length, false);
-  return { synced, failed };
+  return { synced, failed, syncWarnings };
 }
 
 /** 供历史列表展示：所有本地待同步记录（含 syncing/failed） */

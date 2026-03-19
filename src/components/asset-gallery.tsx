@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { RecordAsset } from "@/lib/types";
 
 function isImage(mime: string) {
@@ -76,6 +77,10 @@ function FileIcon({ mime }: { mime: string }) {
   return <span className="text-lg">📎</span>;
 }
 
+const LIGHTBOX_MIN_ZOOM = 0.5;
+const LIGHTBOX_MAX_ZOOM = 4;
+const LIGHTBOX_ZOOM_STEP = 0.25;
+
 function Lightbox({
   asset,
   assets,
@@ -87,10 +92,16 @@ function Lightbox({
   onClose: () => void;
   onNavigate: (id: string) => void;
 }) {
+  const [zoom, setZoom] = useState(1);
   const imageAssets = assets.filter((a) => isImage(a.mimeType));
   const currentIdx = imageAssets.findIndex((a) => a.id === asset.id);
   const hasPrev = currentIdx > 0;
   const hasNext = currentIdx < imageAssets.length - 1;
+
+  // 切换图片时重置缩放
+  useEffect(() => {
+    setZoom(1);
+  }, [asset.id]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -112,6 +123,26 @@ function Lightbox({
     };
   }, [handleKeyDown]);
 
+  const zoomIn = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setZoom((z) => Math.min(LIGHTBOX_MAX_ZOOM, z + LIGHTBOX_ZOOM_STEP));
+  };
+  const zoomOut = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setZoom((z) => Math.max(LIGHTBOX_MIN_ZOOM, z - LIGHTBOX_ZOOM_STEP));
+  };
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY > 0 ? -LIGHTBOX_ZOOM_STEP : LIGHTBOX_ZOOM_STEP;
+      setZoom((z) =>
+        Math.max(LIGHTBOX_MIN_ZOOM, Math.min(LIGHTBOX_MAX_ZOOM, z + delta)),
+      );
+    },
+    [],
+  );
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
@@ -128,6 +159,25 @@ function Lightbox({
           )}
         </span>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={zoomOut}
+            className="rounded-lg bg-black/50 px-3 py-1.5 text-sm text-white/80 transition hover:bg-black/70 hover:text-white"
+            title="缩小"
+          >
+            −
+          </button>
+          <span className="min-w-[3rem] rounded-lg bg-black/50 px-2 py-1.5 text-center text-sm text-white/80">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={zoomIn}
+            className="rounded-lg bg-black/50 px-3 py-1.5 text-sm text-white/80 transition hover:bg-black/70 hover:text-white"
+            title="放大"
+          >
+            +
+          </button>
           <a
             href={downloadUrl(asset.id)}
             onClick={(e) => e.stopPropagation()}
@@ -171,15 +221,62 @@ function Lightbox({
         </button>
       )}
 
-      {/* Image */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={assetUrl(asset.id)}
-        alt={asset.originalName}
+      {/* 图片区域：留白 + 完整显示 + 支持缩放 */}
+      <div
+        className="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto p-4 pt-16 pb-8"
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
-      />
+        onWheel={handleWheel}
+        style={{ maxHeight: "100vh" }}
+      >
+        <div
+          className="flex shrink-0 items-center justify-center transition-transform duration-150"
+          style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={assetUrl(asset.id)}
+            alt={asset.originalName}
+            className="rounded-xl object-contain shadow-2xl"
+            style={{
+              maxHeight: "calc(100vh - 8rem)",
+              maxWidth: "calc(100vw - 4rem)",
+              width: "auto",
+              height: "auto",
+            }}
+            draggable={false}
+          />
+        </div>
+      </div>
     </div>
+  );
+}
+
+function CopyBtn({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text.trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {}
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={label || "复制"}
+      className="shrink-0 rounded p-1.5 text-[var(--muted)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
+    >
+      {copied ? (
+        <span className="text-[10px] text-emerald-500">已复制</span>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -193,15 +290,18 @@ function ImageCard({
   useThumb?: boolean;
 }) {
   const [loaded, setLoaded] = useState(false);
+  const hasDescOrOcr = Boolean(asset.description?.trim() || asset.ocrText?.trim());
+  const copyText = [asset.description?.trim(), asset.ocrText?.trim()].filter(Boolean).join("\n\n");
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--card)]">
+    <div className="group relative flex overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--card)]">
+      {/* 左侧：缩小后的图片，圆角+留白+完整显示+增高 */}
       <button
         type="button"
         onClick={() => onLightbox(asset.id)}
-        className="block w-full cursor-zoom-in"
+        className="shrink-0 cursor-zoom-in p-2.5"
       >
-        <div className="relative aspect-video w-full bg-[var(--surface)]">
+        <div className="relative h-56 w-40 overflow-hidden rounded-xl bg-[var(--surface)] sm:h-64 sm:w-44">
           {!loaded && <ImageSkeleton />}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -210,29 +310,46 @@ function ImageCard({
             loading="lazy"
             onLoad={() => setLoaded(true)}
             className={[
-              "h-full w-full object-cover transition duration-300",
+              "h-full w-full object-contain transition duration-300",
               loaded ? "opacity-100" : "opacity-0",
             ].join(" ")}
           />
         </div>
       </button>
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-[13px] text-[var(--muted-strong)]">
-            {asset.originalName}
-          </span>
-          {asset.ocrText ? (
-            <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">OCR</span>
-          ) : (
-            <span className="shrink-0 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">OCR</span>
-          )}
+      {/* 右侧：文件名 + 描述/OCR + 复制 */}
+      <div className="flex min-w-0 flex-1 flex-col py-2.5 pr-3 pl-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 truncate text-[13px] text-[var(--muted-strong)]">
+              {asset.originalName}
+            </span>
+            {asset.ocrText ? (
+              <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">OCR</span>
+            ) : (
+              <span className="shrink-0 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">OCR</span>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-xs text-[var(--muted)]">{formatSize(asset.byteSize)}</span>
+            <DownloadBtn assetId={asset.id} />
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-xs text-[var(--muted)]">
-            {formatSize(asset.byteSize)}
-          </span>
-          <DownloadBtn assetId={asset.id} />
-        </div>
+        {hasDescOrOcr ? (
+          <div className="mt-2 flex min-h-0 flex-1 flex-col rounded-lg bg-[var(--surface)] px-2.5 py-2 text-[11px] leading-5">
+            <div className="flex shrink-0 items-start justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">图片描述 / OCR</span>
+              <CopyBtn text={copyText} label="复制描述与 OCR 文字" />
+            </div>
+            <div className="mt-1 min-h-0 flex-1 overflow-y-auto space-y-1.5 pr-1">
+              {asset.description?.trim() && (
+                <p className="text-[var(--muted-strong)]">{asset.description.trim()}</p>
+              )}
+              {asset.ocrText?.trim() && (
+                <p className="text-[var(--muted-strong)] whitespace-pre-wrap">{asset.ocrText.trim()}</p>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -392,18 +509,9 @@ export function AssetGallery({ assets, useThumbnails }: { assets: RecordAsset[];
         附件 ({assets.length})
       </p>
 
-      {/* Image grid */}
+      {/* Image grid：每行一张图，左图右描述 */}
       {images.length > 0 && (
-        <div
-          className={[
-            "grid gap-3",
-            images.length === 1
-              ? "grid-cols-1 max-w-md"
-              : images.length === 2
-                ? "grid-cols-2"
-                : "grid-cols-2 lg:grid-cols-3",
-          ].join(" ")}
-        >
+        <div className="grid grid-cols-1 gap-3">
           {images.map((asset) => (
             <ImageCard
               key={asset.id}
@@ -451,15 +559,17 @@ export function AssetGallery({ assets, useThumbnails }: { assets: RecordAsset[];
         </div>
       )}
 
-      {/* Lightbox overlay */}
-      {lightboxAsset && (
-        <Lightbox
-          asset={lightboxAsset}
-          assets={assets}
-          onClose={() => setLightboxId(null)}
-          onNavigate={setLightboxId}
-        />
-      )}
+      {/* Lightbox：挂到 body 实现真正全屏，不受预览区宽度限制 */}
+      {lightboxAsset &&
+        createPortal(
+          <Lightbox
+            asset={lightboxAsset}
+            assets={assets}
+            onClose={() => setLightboxId(null)}
+            onNavigate={setLightboxId}
+          />,
+          document.body,
+        )}
     </section>
   );
 }

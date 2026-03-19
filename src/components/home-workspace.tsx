@@ -16,11 +16,12 @@ import { SyncIndicator } from "@/components/sync-indicator";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import {
   getPendingRecordsForDisplay,
+  getPendingRecordsForSync,
   pendingToRecordLike,
   subscribeSyncStatus,
   syncPendingRecordsToCloud,
 } from "@/lib/local-record-store";
-import { syncPendingTodosToCloud } from "@/lib/local-todo-store";
+import { getPendingTodosForSync, syncPendingTodosToCloud } from "@/lib/local-todo-store";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import type {
   IntegrationSettings,
@@ -156,7 +157,7 @@ export function HomeWorkspace({
     return unsub;
   }, []);
 
-  // 页面加载时自动同步本地待同步数据到云端，避免「数据丢失」
+  // 页面加载时自动同步本地待同步数据到云端
   useEffect(() => {
     let cancelled = false;
     Promise.all([syncPendingRecordsToCloud(), syncPendingTodosToCloud()]).then(
@@ -167,6 +168,25 @@ export function HomeWorkspace({
       },
     );
     return () => { cancelled = true; };
+  }, [router]);
+
+  // 定时轮询：有待同步数据时每隔一段时间自动尝试同步，避免遗忘手动同步导致数据丢失
+  useEffect(() => {
+    const INTERVAL_MS = 2 * 60 * 1000;
+    const timer = setInterval(async () => {
+      const [records, todos] = await Promise.all([
+        getPendingRecordsForSync(),
+        getPendingTodosForSync(),
+      ]);
+      if (records.length === 0 && todos.length === 0) return;
+      const [recordsResult, todosResult] = await Promise.all([
+        syncPendingRecordsToCloud(),
+        syncPendingTodosToCloud(),
+      ]);
+      const synced = (recordsResult?.synced ?? 0) + (todosResult?.synced ?? 0);
+      if (synced > 0) router.refresh();
+    }, INTERVAL_MS);
+    return () => clearInterval(timer);
   }, [router]);
 
 
@@ -882,21 +902,25 @@ function HistoryTab({
 
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [syncAllRunning, setSyncAllRunning] = useState(false);
+  const [syncAllError, setSyncAllError] = useState<string>("");
 
   const syncSingleRecord = useCallback(async (recordId: string) => {
     setSyncingIds((prev) => new Set(prev).add(recordId));
     try {
-      await fetch(`/api/records/${recordId}/sync`, {
+      const res = await fetch(`/api/records/${recordId}/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: "notion" }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setSyncAllError(data.error || "同步失败");
       await onRefresh();
     } finally {
       setSyncingIds((prev) => { const s = new Set(prev); s.delete(recordId); return s; });
     }
   }, [onRefresh]);
 
+  /** 同步全部：仅针对「已存在云端、但未同步到 Notion」的记录，逐条调用 POST /api/records/[id]/sync → Notion。不包含本地待同步（那部分由 SyncIndicator 上传到云端）。 */
   const syncAllUnsynced = useCallback(async () => {
     const unsynced = records.filter(
       (r) => !(r as KnowledgeRecord & { _localPending?: boolean })._localPending &&
@@ -904,17 +928,25 @@ function HistoryTab({
     );
     if (unsynced.length === 0) return;
     setSyncAllRunning(true);
+    setSyncAllError("");
+    let firstError = "";
     for (const r of unsynced) {
       setSyncingIds((prev) => new Set(prev).add(r.id));
       try {
-        await fetch(`/api/records/${r.id}/sync`, {
+        const res = await fetch(`/api/records/${r.id}/sync`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ target: "notion" }),
         });
-      } catch {}
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok && !firstError) firstError = data.error || "同步失败";
+      } catch (_e) {
+        if (!firstError) firstError = "网络错误";
+      }
       setSyncingIds((prev) => { const s = new Set(prev); s.delete(r.id); return s; });
     }
+    if (firstError) setSyncAllError(firstError);
+    setTimeout(() => setSyncAllError(""), 6000);
     await onRefresh();
     setSyncAllRunning(false);
   }, [records, onRefresh]);
@@ -989,13 +1021,19 @@ function HistoryTab({
             type="button"
             onClick={() => void syncAllUnsynced()}
             disabled={syncAllRunning}
+            title="将未同步到 Notion 的记录批量同步到 Notion（数据库与 OSS 已保存）"
             className="flex items-center gap-1 rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-500 transition hover:bg-rose-500/20 disabled:opacity-50"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
             </svg>
-            {syncAllRunning ? "同步中..." : `同步全部 (${unsyncedCount})`}
+            {syncAllRunning ? "同步中..." : `同步到 Notion (${unsyncedCount})`}
           </button>
+        )}
+        {syncAllError && (
+          <span className="max-w-[240px] truncate text-[11px] text-rose-400" title={syncAllError}>
+            {syncAllError}
+          </span>
         )}
 
         {searchActive ? (
@@ -1057,7 +1095,7 @@ function HistoryTab({
 
       <div className={[
         "grid min-h-0 flex-1 gap-5 overflow-hidden",
-        searchActive ? "" : "xl:grid-cols-[400px_minmax(0,1fr)]",
+        searchActive ? "" : "xl:grid-cols-[360px_minmax(0,1fr)]",
       ].join(" ")}>
         {/* Left: independently scrollable list */}
         <div ref={scrollContainerRef} className="hide-scrollbar min-h-0 overflow-y-auto">
@@ -1161,7 +1199,7 @@ function HistoryTab({
                             onClick={(e) => { e.stopPropagation(); void syncSingleRecord(record.id); }}
                             onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); void syncSingleRecord(record.id); } }}
                             className={["shrink-0 cursor-pointer text-rose-400 transition hover:text-rose-300", syncingIds.has(record.id) ? "animate-pulse" : ""].join(" ")}
-                            title="点击同步到云端"
+                            title="未同步到 Notion，点击同步"
                           >
                             {syncingIds.has(record.id) ? (
                               <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-rose-400 border-t-transparent" />
@@ -1192,7 +1230,7 @@ function HistoryTab({
                               onClick={(e) => { e.stopPropagation(); void syncSingleRecord(record.id); }}
                               onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); void syncSingleRecord(record.id); } }}
                               className={["ml-auto shrink-0 cursor-pointer text-rose-400 transition hover:text-rose-300", syncingIds.has(record.id) ? "animate-pulse" : ""].join(" ")}
-                              title="点击同步到云端"
+                              title="未同步到 Notion，点击同步"
                             >
                               {syncingIds.has(record.id) ? (
                                 <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-rose-400 border-t-transparent" />
@@ -1350,7 +1388,7 @@ function FavoritesTab({
           <p className="mt-3 text-sm text-[var(--muted)]">暂无收藏，在记录详情中点击 ★ 添加收藏。</p>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[400px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[360px_minmax(0,1fr)]">
           <div className="hide-scrollbar min-h-0 overflow-y-auto">
             <div>
               {records.map((record) => {
@@ -1631,33 +1669,12 @@ function RecordPane({
           </div>
         )}
 
-        {/* Show OCR/description for image records */}
-        {record.assets.some((a) => a.ocrText || a.description) && (
-          <div className="mt-4 space-y-3">
-            {record.assets.filter((a) => a.ocrText || a.description).map((asset) => (
-              <div key={asset.id} className="rounded-xl bg-[var(--surface)] px-4 py-3">
-                {asset.description && (
-                  <div className="mb-2">
-                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">图片描述</p>
-                    <p className="text-sm leading-6 text-[var(--muted-strong)]">{asset.description}</p>
-                  </div>
-                )}
-                {asset.ocrText && (
-                  <div>
-                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">OCR 识别文字</p>
-                    <p className="text-sm leading-6 text-[var(--muted-strong)] whitespace-pre-wrap">{asset.ocrText}</p>
-                  </div>
-                )}
-                {asset.tags.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {asset.tags.map((t) => (
-                      <span key={t} className="rounded bg-[var(--background)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">{t}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        {/* 附件（图片等）：图片卡内已含描述与 OCR，视觉上与图片同区 */}
+        {record.assets.length > 0 && (
+          <>
+            <div className="my-5 border-t border-dashed border-[var(--line)]" />
+            <AssetGallery assets={record.assets} useThumbnails />
+          </>
         )}
 
         {/* Manual tags */}
@@ -1734,13 +1751,6 @@ function RecordPane({
             </div>
           </>
         ) : null}
-
-        {record.assets.length > 0 && (
-          <>
-            <div className="my-5 border-t border-dashed border-[var(--line)]" />
-            <AssetGallery assets={record.assets} useThumbnails />
-          </>
-        )}
       </div>
 
       {/* Fixed footer */}

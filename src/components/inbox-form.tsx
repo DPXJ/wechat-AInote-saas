@@ -244,13 +244,18 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       updateStatus("已收录，等待同步到云端", "success");
 
       syncPendingRecordsToCloud()
-        .then(({ synced, failed }) => {
+        .then(({ synced, failed, syncWarnings }) => {
           if (synced > 0) {
-            updateStatus(`收录已同步到云端（${synced} 条）`, "success");
+            const base = `收录已同步到云端（数据库与附件已保存）${synced > 1 ? `，${synced} 条` : ""}`;
+            if (syncWarnings.length > 0) {
+              updateStatus(`${base}；但第三方同步失败：${syncWarnings.join("；")}`, "error");
+            } else {
+              updateStatus(`${base}`, "success");
+            }
             onCreated?.("");
             router.refresh();
           }
-          if (failed > 0) updateStatus(`${failed} 条同步失败，可点击右上角云图标重试`, "error");
+          if (failed > 0) updateStatus(`${failed} 条上传云端失败，可点击右上角云图标重试`, "error");
         })
         .catch(() => updateStatus("同步异常，可稍后点击云图标重试", "error"));
     } catch (e) {

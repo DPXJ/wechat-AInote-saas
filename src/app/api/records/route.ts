@@ -54,42 +54,42 @@ function shouldAutoSyncTickTick(record: {
   );
 }
 
-async function runBackgroundSync(
+/** 创建记录后执行第三方同步（Notion / Flomo），收集失败信息返回给前端；数据库与 OSS 已成功才走到这里。 */
+async function runPostCreateSync(
+  userId: string,
+  record: { id: string; contentText: string; extractedText: string; contextNote: string; actionItems: string[] },
+  options: { syncToFlomo: boolean },
+): Promise<string[]> {
+  const syncWarnings: string[] = [];
+
+  if (await canAutoSyncNotion(userId)) {
+    try {
+      await syncRecord(userId, record.id, "notion");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "同步失败";
+      syncWarnings.push(`Notion: ${msg}`);
+    }
+  }
+
+  if (options.syncToFlomo) {
+    try {
+      await syncRecord(userId, record.id, "flomo");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "同步失败";
+      syncWarnings.push(`Flomo: ${msg}`);
+    }
+  }
+
+  return syncWarnings;
+}
+
+/** 滴答清单为可选后台同步，不阻塞响应、不写入 syncWarnings */
+async function runBackgroundTickTick(
   userId: string,
   record: { id: string; contentText: string; extractedText: string; contextNote: string; actionItems: string[] },
 ) {
-  try {
-    if (await canAutoSyncNotion(userId)) {
-      await runAutoSync(userId, record.id, "notion");
-    }
-    if (await canAutoSyncTickTick(userId)) {
-      if (shouldAutoSyncTickTick(record)) {
-        await runAutoSync(userId, record.id, "ticktick-email");
-      }
-    }
-  } catch {
-    // background sync failures are non-critical
-  }
-}
-
-async function runAutoSync(userId: string, recordId: string, target: SyncTarget) {
-  try {
-    await syncRecord(userId, recordId, target);
-    return {
-      target,
-      status: "synced" as const,
-      message:
-        target === "notion"
-          ? "已自动同步到 Notion。"
-          : "识别到明确时间，已自动投递到滴答清单。",
-    };
-  } catch (error) {
-    return {
-      target,
-      status: "failed" as const,
-      message: error instanceof Error ? error.message : "自动同步失败。",
-    };
-  }
+  if (!(await canAutoSyncTickTick(userId)) || !shouldAutoSyncTickTick(record)) return;
+  syncRecord(userId, record.id, "ticktick-email").catch(() => {});
 }
 
 export async function GET(request: Request) {
@@ -173,11 +173,12 @@ export async function POST(request: Request) {
       { enableAiSummary, enableAiTodo, enableOcr, linkToTodo, syncToFlomo },
     );
 
-    if (record) {
-      runBackgroundSync(userId, record).catch(() => {});
-    }
+    const syncWarnings: string[] = record
+      ? await runPostCreateSync(userId, record, { syncToFlomo })
+      : [];
+    if (record) runBackgroundTickTick(userId, record).catch(() => {});
 
-    return NextResponse.json({ record, autoSync: [] });
+    return NextResponse.json({ record, syncWarnings });
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

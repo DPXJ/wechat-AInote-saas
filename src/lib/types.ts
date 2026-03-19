@@ -17,6 +17,7 @@ export interface RecordAsset {
   originalName: string;
   mimeType: string;
   byteSize: number;
+  /** 存储引用：格式为 oss:${objectKey} 或 local:${相对路径}。数据库只存此 key，不存文件二进制；实际文件在 OSS 或本地磁盘，通过 readStoredUpload(storageKey) 读取。 */
   storageKey: string;
   tags: string[];
   description: string;

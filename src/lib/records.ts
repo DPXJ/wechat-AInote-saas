@@ -282,12 +282,7 @@ export async function createKnowledgeRecord(
     await extractTodosFromRecord(userId, created);
   }
 
-  if (syncToFlomo) {
-    try {
-      const { syncRecordToFlomo } = await import("@/lib/flomo");
-      await syncRecordToFlomo(userId, created);
-    } catch { /* flomo sync is best-effort */ }
-  }
+  // Notion / Flomo 同步改由 API 层在创建后统一执行并返回 syncWarnings，此处仅负责数据库 + OSS + 待办
 
   return created;
 }

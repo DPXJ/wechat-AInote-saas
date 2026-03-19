@@ -1,5 +1,30 @@
+import { readStoredUpload } from "@/lib/storage";
 import { getIntegrationSettings } from "@/lib/settings";
 import type { KnowledgeRecord } from "@/lib/types";
+
+const FLOMO_IMAGE_URLS_LIMIT = 9;
+
+/** 获取记录中图片的可访问 URL（仅 OSS 或可签名时可得；本地存储无公网 URL 则返回空） */
+async function getImageUrlsForRecord(
+  userId: string,
+  record: KnowledgeRecord,
+): Promise<string[]> {
+  const imageAssets = (record.assets || []).filter((a) => a.mimeType.startsWith("image/"));
+  if (imageAssets.length === 0) return [];
+
+  const urls: string[] = [];
+  for (const asset of imageAssets.slice(0, FLOMO_IMAGE_URLS_LIMIT)) {
+    try {
+      const result = await readStoredUpload(asset.storageKey, {}, userId);
+      if (result.kind === "redirect" && result.url) {
+        urls.push(result.url);
+      }
+    } catch {
+      // 本地存储或读取失败时无 URL，跳过
+    }
+  }
+  return urls;
+}
 
 export async function syncRecordToFlomo(
   userId: string,
@@ -14,14 +39,30 @@ export async function syncRecordToFlomo(
 
   const tags = record.keywords.map((kw) => `#${kw}`).join(" ");
   const title = record.title ? `${record.title}\n\n` : "";
-  const body = record.contentText || record.extractedText || record.summary || "";
+  let body = record.contentText || record.extractedText || record.summary || "";
+
+  const imageAssets = (record.assets || []).filter((a) => a.mimeType.startsWith("image/"));
+  if (imageAssets.length > 0) {
+    const imageParts = imageAssets.map((a) => {
+      const lines: string[] = [`📷 [图片] ${a.originalName}`];
+      if (a.description?.trim()) lines.push(`描述: ${a.description.trim()}`);
+      if (a.ocrText?.trim()) lines.push(`OCR: ${a.ocrText.trim()}`);
+      return lines.join("\n");
+    });
+    body = body ? `${body}\n\n--- 附图 ---\n${imageParts.join("\n\n")}` : `--- 附图 ---\n${imageParts.join("\n\n")}`;
+  }
+
   const content = `${title}${body}${tags ? `\n\n${tags}` : ""}`;
+
+  const imageUrls = await getImageUrlsForRecord(userId, record);
+  const payload: { content: string; image_urls?: string[] } = { content };
+  if (imageUrls.length > 0) payload.image_urls = imageUrls;
 
   try {
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {

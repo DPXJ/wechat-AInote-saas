@@ -1,3 +1,7 @@
+/**
+ * 附件存储：实际文件写入 OSS 或本地磁盘，数据库只存引用（storage_key）。
+ * storage_key 格式：oss:${objectKey} 或 local:${相对路径}；读取时由 readStoredUpload 根据前缀解析并返回 URL 或 buffer。
+ */
 import OSS from "ali-oss";
 import fs from "node:fs/promises";
 import path from "node:path";
