@@ -61,6 +61,29 @@ function TabIcon({ id, className = "w-[18px] h-[18px]" }: { id: string; classNam
   }
 }
 
+/** 待办数字：无底色，仅红色大字，等宽数字、抗锯齿 */
+function PendingTodoCountBadge({
+  count,
+  className = "",
+}: {
+  count: number;
+  className?: string;
+}) {
+  const text = count > 99 ? "99+" : String(count);
+  return (
+    <span
+      className={[
+        "inline-flex shrink-0 items-baseline justify-center text-base font-bold tabular-nums leading-none tracking-tight text-rose-500 antialiased dark:text-rose-400",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {text}
+    </span>
+  );
+}
+
 const tabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "record", label: "开始记录" },
   { id: "todos", label: "待办" },
@@ -565,14 +588,15 @@ export function HomeWorkspace({
                     <span className="flex flex-1 items-center justify-between text-[14px]">
                       {tab.label}
                       {tab.id === "todos" && pendingTodoCount > 0 && (
-                        <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                          {pendingTodoCount > 99 ? "99+" : pendingTodoCount}
-                        </span>
+                        <PendingTodoCountBadge count={pendingTodoCount} />
                       )}
                     </span>
                   )}
                   {sidebarCollapsed && tab.id === "todos" && pendingTodoCount > 0 && (
-                    <span className="absolute right-1 top-0.5 h-2 w-2 rounded-full bg-rose-500" />
+                    <PendingTodoCountBadge
+                      count={pendingTodoCount}
+                      className="absolute right-0 top-0 text-sm"
+                    />
                   )}
                 </button>
               ))}
@@ -679,7 +703,10 @@ export function HomeWorkspace({
                 <TabIcon id={tab.id} className="w-5 h-5" />
                 <span>{tab.label}</span>
                 {tab.id === "todos" && pendingTodoCount > 0 && (
-                  <span className="absolute right-1 top-0.5 h-2 w-2 rounded-full bg-rose-500" />
+                  <PendingTodoCountBadge
+                    count={pendingTodoCount}
+                    className="absolute right-1 top-0 text-base"
+                  />
                 )}
               </button>
             ))}
@@ -708,9 +735,9 @@ export function HomeWorkspace({
 
             <div
               className={[
-                "content-card flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)]/80 shadow-sm backdrop-blur-sm",
-                activeTab === "todos" ? "overflow-y-auto p-5 pb-8 lg:p-6 lg:pb-10" : "overflow-hidden p-5 lg:p-6",
-              ].join(" ")}
+                "content-card flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)]/80 shadow-sm backdrop-blur-sm overflow-hidden",
+                activeTab !== "todos" && "p-5 lg:p-6",
+              ].filter(Boolean).join(" ")}
             >
               {activeTab === "record" && (
                 <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
@@ -764,13 +791,15 @@ export function HomeWorkspace({
               )}
 
               {activeTab === "todos" && (
-                <TodoPanel
-                  initialTodos={prefetchedTodos?.todos}
-                  initialTotal={prefetchedTodos?.total}
-                  initialPriorityFilter={todosInitialPriority}
-                  getRecordById={(id) => records.find((r) => r.id === id) ?? null}
-                  onGoToRecord={(id) => { setActiveTab("history"); setSelectedRecordId(id); }}
-                />
+                <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-5 pb-[max(5.5rem,calc(5rem+env(safe-area-inset-bottom)))] lg:p-6 lg:pb-[max(6rem,calc(5rem+env(safe-area-inset-bottom)))]">
+                  <TodoPanel
+                    initialTodos={prefetchedTodos?.todos}
+                    initialTotal={prefetchedTodos?.total}
+                    initialPriorityFilter={todosInitialPriority}
+                    getRecordById={(id) => records.find((r) => r.id === id) ?? null}
+                    onGoToRecord={(id) => { setActiveTab("history"); setSelectedRecordId(id); }}
+                  />
+                </div>
               )}
               {activeTab === "reports" && (
                 <ReportPanel initialData={prefetchedReport} initialPeriod="week" />
@@ -2156,7 +2185,7 @@ function RecordPane({
         </div>
       </div>
 
-      {/* 编辑大弹窗：标题、来源、文本内容（大区域）、标签、备注 */}
+      {/* 编辑大弹窗：标题、文本内容、标签、备注、来源（来源置底） */}
       {editModalOpen && typeof document !== "undefined" && createPortal(
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
@@ -2175,15 +2204,6 @@ function RecordPane({
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--muted)]">来源</label>
-                <input
-                  value={editSource}
-                  onChange={(e) => setEditSource(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  placeholder="来源"
-                />
-              </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--muted)]">标题</label>
                 <input
@@ -2235,6 +2255,15 @@ function RecordPane({
                   rows={3}
                   placeholder="备注信息"
                   className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--muted)]">来源</label>
+                <input
+                  value={editSource}
+                  onChange={(e) => setEditSource(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                  placeholder="来源"
                 />
               </div>
             </div>

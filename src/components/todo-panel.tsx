@@ -347,7 +347,7 @@ export function TodoPanel({
   }, [allTodos]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex w-full shrink-0 flex-col">
       {/* Fixed header: title + create + filters */}
       <div className="shrink-0 space-y-4">
         <h2 className="text-xl font-bold text-[var(--foreground)]">待办事项</h2>
@@ -472,9 +472,9 @@ export function TodoPanel({
         </div>
       </div>
 
-      {/* Todo list (scroll handled by parent content-card when todos tab) */}
-      <div className="mt-4">
-        <div className="mx-auto max-w-4xl space-y-4 pb-24">
+      {/* Todo list；底部占位避免最后一项底边被父级裁剪（与移动底栏安全区） */}
+      <div className="mt-4 shrink-0">
+        <div className="relative z-10 mx-auto max-w-4xl space-y-4 pb-8">
           {filteredTodos.length === 0 ? (
             <div className="flex flex-col items-center py-16 text-center">
               <span className="text-3xl">☑</span>
@@ -491,16 +491,24 @@ export function TodoPanel({
                 </div>
 
                 <div className="space-y-4">
-                  {group.items.map((todo) => {
+                  {group.items.map((todo, itemIdx) => {
                     const completing = completingIds.has(todo.id);
+                    const isLastInList =
+                      group.dateKey === groups[groups.length - 1]?.dateKey &&
+                      itemIdx === group.items.length - 1;
                     return (
                       <div
                         key={todo.id}
-                        className="overflow-hidden transition-all duration-300 ease-out"
+                        className={[
+                          "transition-all duration-300 ease-out",
+                          /* 仅收起动画时裁剪；展开时不要用 overflow-hidden + 小 max-height，否则易裁掉卡片底边 */
+                          completing ? "overflow-hidden" : "overflow-visible",
+                          isLastInList && "mb-6",
+                        ].filter(Boolean).join(" ")}
                         style={
                           completing
                             ? { maxHeight: 0, opacity: 0, marginTop: 0, marginBottom: 0 }
-                            : { maxHeight: 500, opacity: 1 }
+                            : { maxHeight: 10000, opacity: 1 }
                         }
                       >
                         <TodoCard
@@ -523,6 +531,13 @@ export function TodoPanel({
                 </div>
               </div>
             ))
+          )}
+          {/* 强制滚动区底部留白，避免最后一卡底边贴裁剪线 */}
+          {filteredTodos.length > 0 && (
+            <div
+              className="pointer-events-none h-28 w-full shrink-0 max-w-4xl mx-auto"
+              aria-hidden
+            />
           )}
         </div>
       </div>
@@ -627,7 +642,7 @@ function TodoCard({
   return (
     <div
       className={[
-        "group/card rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3 transition-all duration-300 ease-out will-change-transform",
+        "group/card relative z-[1] rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3 transition-all duration-300 ease-out",
         isDeleted ? "opacity-50" : "hover:border-[var(--line-strong)] hover:shadow-sm cursor-pointer",
         todo.status === "done" && !isDeleted ? "opacity-60" : "",
         completing ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
