@@ -2,6 +2,40 @@
 
 Signal Deck 是一个面向“微信资料手动同步”场景的 SaaS MVP。
 
+## 线上发版（固定 3 步）
+
+每次都按这个顺序做即可：
+
+1. 本机提交并推送
+
+```bash
+git add .
+git commit -m "你的改动说明"
+git push origin master
+```
+
+2. SSH 到服务器并拉代码
+
+```bash
+ssh root@123.57.226.34
+cd /var/www/signal-deck
+git pull
+```
+
+3. 构建并重启服务
+
+```bash
+pnpm build
+pm2 restart signal-deck --update-env
+```
+
+快速健康检查：
+
+```bash
+pm2 status
+curl -I https://aixinji.linknewai.com
+```
+
 它解决的是这条链路：
 
 - 手动把微信里的文本、截图、PDF、文档同步到网页收件箱
