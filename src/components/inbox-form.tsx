@@ -346,9 +346,9 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       }}
       onDrop={(e) => { e.preventDefault(); setDragging(false); const dropped = Array.from(e.dataTransfer.files || []); if (dropped.length > 0) attachFiles(dropped, "拖拽"); }}
     >
-      {/* Top: Title + Tags + AI Search — single row */}
-      <div className="flex items-center gap-2">
-        <div className="input-focus-bar min-w-0 flex-[3]">
+      {/* Top: mobile 下分两行，保证标签输入宽度 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="input-focus-bar min-w-0 w-full sm:flex-[3]">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -356,7 +356,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
           />
         </div>
-        <div className="input-focus-bar min-w-0 flex-[2]">
+        <div className="input-focus-bar min-w-0 w-full sm:min-w-[220px] sm:flex-[2]">
           <input
             value={userTags}
             onChange={(e) => setUserTags(e.target.value)}
@@ -364,46 +364,48 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
           />
         </div>
-        {defaultTag && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-purple-500/10 px-2 py-1.5 text-xs text-purple-600">
-            <button type="button" onClick={() => addTag(defaultTag)} className="font-medium hover:underline">{defaultTag}</button>
-            <button type="button" onClick={() => setDefaultTag("")} className="rounded p-0.5 hover:bg-purple-500/20" title="取消默认">×</button>
-          </span>
-        )}
-        {recentTags.filter(({ tag }) => tag !== defaultTag).slice(0, 2).map(({ tag }) => (
-          <button
-            key={tag}
-            type="button"
-            onClick={() => addTag(tag)}
-            onContextMenu={(e) => { e.preventDefault(); setDefaultTag(tag); }}
-            className="shrink-0 rounded-lg bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
-            title="点击添加，右键设为默认"
-          >
-            {tag}
-          </button>
-        ))}
-        {!defaultTag && (
-          <button
-            type="button"
-            onClick={() => { setDefaultTagInput(""); setDefaultTagModalOpen(true); }}
-            className="shrink-0 rounded-lg px-1.5 py-1.5 text-[11px] text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-          >
-            +默认
-          </button>
-        )}
-        {onSwitchToSearch && (
-          <button
-            type="button"
-            onClick={onSwitchToSearch}
-            className="ai-border flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--line)] bg-[var(--card)] px-3 py-2.5 transition"
-            title="AI 搜索"
-          >
-            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
-              <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
-            </svg>
-            <span className="text-xs text-[var(--muted)]">搜索</span>
-          </button>
-        )}
+        <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:justify-start">
+          {defaultTag && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-purple-500/10 px-2 py-1.5 text-xs text-purple-600">
+              <button type="button" onClick={() => addTag(defaultTag)} className="font-medium hover:underline">{defaultTag}</button>
+              <button type="button" onClick={() => setDefaultTag("")} className="rounded p-0.5 hover:bg-purple-500/20" title="取消默认">×</button>
+            </span>
+          )}
+          {recentTags.filter(({ tag }) => tag !== defaultTag).slice(0, 2).map(({ tag }) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => addTag(tag)}
+              onContextMenu={(e) => { e.preventDefault(); setDefaultTag(tag); }}
+              className="shrink-0 rounded-lg bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
+              title="点击添加，右键设为默认"
+            >
+              {tag}
+            </button>
+          ))}
+          {!defaultTag && (
+            <button
+              type="button"
+              onClick={() => { setDefaultTagInput(""); setDefaultTagModalOpen(true); }}
+              className="shrink-0 rounded-lg px-1.5 py-1.5 text-[11px] text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+            >
+              +默认
+            </button>
+          )}
+          {onSwitchToSearch && (
+            <button
+              type="button"
+              onClick={onSwitchToSearch}
+              className="ai-border flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--line)] bg-[var(--card)] px-3 py-2.5 transition"
+              title="AI 搜索"
+            >
+              <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
+                <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
+              </svg>
+              <span className="text-xs text-[var(--muted)]">搜索</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main content area */}

@@ -759,7 +759,25 @@ export function HomeWorkspace({
 
           <div className="flex h-screen flex-col p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:px-6 lg:pb-[24px] lg:pt-[24px]">
             {(activeTab === "record" || activeTab === "history") && (
-              <CollapsibleMobileToolbar title="数据概览" className="mb-2 shrink-0">
+              <CollapsibleMobileToolbar
+                title="数据概览"
+                className="mb-2 shrink-0"
+                mobileBeforeToggle={
+                  activeTab === "record" ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("todos")}
+                      className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--muted-strong)] transition active:bg-[var(--surface-strong)]"
+                    >
+                      <span>待办 (</span>
+                      <span className={pendingTodoCount > 0 ? "text-rose-500" : ""}>
+                        {pendingTodoCount > 99 ? "99+" : pendingTodoCount}
+                      </span>
+                      <span>)</span>
+                    </button>
+                  ) : null
+                }
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <StatsBar onNavigateToTodos={(priority) => { setTodosInitialPriority(priority ?? ""); setActiveTab("todos"); }} />
                   {activeTab === "history" && <SyncIndicator />}
