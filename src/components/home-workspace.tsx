@@ -14,7 +14,6 @@ import { IntegrationsPanel } from "@/components/integrations-panel";
 import { StatsBar } from "@/components/stats-bar";
 import { TodoPanel } from "@/components/todo-panel";
 import { RecordDetailModal } from "@/components/record-detail-modal";
-import { ReportPanel } from "@/components/report-panel";
 import { TagManager } from "@/components/tag-manager";
 import { SyncIndicator } from "@/components/sync-indicator";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -35,11 +34,10 @@ import type {
   Todo,
   TodoPriority,
 } from "@/lib/types";
-import type { ReportData } from "@/components/report-panel";
 import { sanitizeSummary } from "@/lib/ai";
 import { formatDateTime, formatDateOnly, formatTime } from "@/lib/utils";
 
-type WorkspaceTab = "record" | "history" | "favorites" | "todos" | "reports" | "tags" | "trash" | "settings";
+type WorkspaceTab = "record" | "history" | "favorites" | "todos" | "tags" | "trash" | "settings";
 type HistoryFilter = "all" | "text" | "image" | "video" | "audio" | "document" | "synced";
 type DocSubFilter = "" | "pdf" | "word" | "excel" | "md";
 
@@ -55,7 +53,6 @@ function TabIcon({ id, className = "w-[18px] h-[18px]" }: { id: string; classNam
     case "history": return <svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>;
     case "favorites": return <svg {...props} fill="none"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3z" /></svg>;
     case "search": return <svg {...props}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
-    case "reports": return <svg {...props}><path d="M3 3v18h18" /><path d="M7 17V13M11 17V9M15 17V5M19 17v-6" /></svg>;
     case "tags": return <svg {...props}><path d="M4 4h6l10 10-6 6L4 10V4z" /><circle cx="8.5" cy="8.5" r="1.5" /></svg>;
     case "settings": return <svg {...props}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>;
     case "trash": return <svg {...props}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>;
@@ -91,7 +88,6 @@ const tabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "todos", label: "待办" },
   { id: "history", label: "历史" },
   { id: "favorites", label: "收藏" },
-  { id: "reports", label: "报告" },
   { id: "tags", label: "标签" },
   { id: "trash", label: "回收站" },
   { id: "settings", label: "设置" },
@@ -173,7 +169,6 @@ export function HomeWorkspace({
   const [userEmail, setUserEmail] = useState("");
   const [prefetchedTodos, setPrefetchedTodos] = useState<{ todos: Todo[]; total: number } | null>(null);
   const [prefetchedFavorites, setPrefetchedFavorites] = useState<KnowledgeRecord[] | null>(null);
-  const [prefetchedReport, setPrefetchedReport] = useState<ReportData | null>(null);
   const [prefetchedTags, setPrefetchedTags] = useState<Array<{ tag: string; count: number }> | null>(null);
   const [prefetchedTrash, setPrefetchedTrash] = useState<Array<KnowledgeRecord & { deletedAt: string }> | null>(null);
   const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
@@ -271,10 +266,6 @@ export function HomeWorkspace({
         .then((r) => r.json())
         .then((d) => setPrefetchedFavorites(d.records || []))
         .catch(() => {}),
-      fetch("/api/reports?period=week", { signal: abort.signal })
-        .then((r) => r.json())
-        .then((d) => setPrefetchedReport(d?.period ? d : null))
-        .catch(() => {}),
       fetch("/api/tags", { signal: abort.signal })
         .then((r) => r.json())
         .then((d) => setPrefetchedTags(d.tags || []))
@@ -351,6 +342,12 @@ export function HomeWorkspace({
     const saved = window.sessionStorage.getItem("ai-box-tab");
     if (saved && tabs.some((t) => t.id === saved)) {
       setActiveTabRaw(saved as WorkspaceTab);
+    } else if (saved) {
+      try {
+        sessionStorage.removeItem("ai-box-tab");
+      } catch {
+        /* ignore */
+      }
     }
   }, []);
 
@@ -717,15 +714,15 @@ export function HomeWorkspace({
                   onClick={() => setMobileNavOpen(false)}
                 />
                 <aside className="absolute bottom-0 left-0 top-0 flex w-[min(88vw,300px)] flex-col border-r border-[var(--line)] bg-[var(--sidebar-bg)] shadow-xl supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]">
-                  <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3">
-                    <span className="text-sm font-bold text-[var(--foreground)]">导航</span>
+                  <div className="flex items-center gap-2 border-b border-[var(--line)] px-3 py-2">
                     <button
                       type="button"
                       onClick={() => setMobileNavOpen(false)}
-                      className="rounded-lg px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                      className="flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl text-sm font-medium text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)] active:bg-[var(--surface-strong)]"
                     >
                       关闭
                     </button>
+                    <span className="min-w-0 flex-1 text-right text-sm font-bold text-[var(--foreground)]">导航</span>
                   </div>
                   <nav className="hide-scrollbar flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
                     {tabs.map((tab) => (
@@ -837,9 +834,6 @@ export function HomeWorkspace({
                     onGoToRecord={(id) => { setActiveTab("history"); setSelectedRecordId(id); }}
                   />
                 </div>
-              )}
-              {activeTab === "reports" && (
-                <ReportPanel initialData={prefetchedReport} initialPeriod="week" />
               )}
               {activeTab === "tags" && (
                 <TagManager
