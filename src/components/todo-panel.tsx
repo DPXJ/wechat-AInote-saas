@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { KnowledgeRecord, Todo, TodoPriority, TodoStatus } from "@/lib/types";
+import { CollapsibleMobileToolbar } from "@/components/collapsible-mobile-toolbar";
 import {
   addPendingTodo,
   getAllPendingTodos,
@@ -348,12 +349,13 @@ export function TodoPanel({
 
   return (
     <div className="flex w-full shrink-0 flex-col">
-      {/* Fixed header: title + create + filters */}
-      <div className="shrink-0 space-y-4">
-        <h2 className="text-xl font-bold text-[var(--foreground)]">待办事项</h2>
+      {/* 窄屏默认收起，留出列表空间；桌面始终展开 */}
+      <CollapsibleMobileToolbar title="待办：添加与筛选" className="shrink-0">
+        <div className="space-y-4">
+        <h2 className="hidden text-xl font-bold text-[var(--foreground)] lg:block">待办事项</h2>
 
         {/* Quick create */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="input-focus-bar flex-1">
             <input
               type="text"
@@ -367,7 +369,7 @@ export function TodoPanel({
           <select
             value={newPriority}
             onChange={(e) => setNewPriority(e.target.value as TodoPriority)}
-            className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)]"
+            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)] sm:w-auto sm:min-w-[5.5rem]"
           >
             {priorities.map((p) => (
               <option key={p} value={p}>{priorityConfig[p].label}</option>
@@ -377,7 +379,7 @@ export function TodoPanel({
             type="button"
             onClick={handleCreate}
             disabled={creating || !newContent.trim()}
-            className="rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
+            className="w-full shrink-0 rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm font-medium text-[var(--background)] transition hover:opacity-90 disabled:opacity-50 sm:w-auto"
           >
             添加
           </button>
@@ -470,7 +472,8 @@ export function TodoPanel({
             </button>
           )}
         </div>
-      </div>
+        </div>
+      </CollapsibleMobileToolbar>
 
       {/* Todo list；底部占位避免最后一项底边被父级裁剪（与移动底栏安全区） */}
       <div className="mt-4 shrink-0">
@@ -649,10 +652,10 @@ function TodoCard({
       ].join(" ")}
       onClick={() => !isDeleted && !completing && onOpenDetail()}
     >
-      {/* 左侧固定宽度使虚线对齐；右侧操作区 */}
-      <div className="grid grid-cols-[minmax(0,1fr)_220px] items-stretch gap-0">
-        {/* 左侧小卡片：勾选 + 内容（最多 3 行）+ 时间，宽度自适应但虚线由右侧列起点固定 */}
-        <div className="flex min-w-0 items-start gap-3 border-r border-dashed border-[var(--line)] pr-4">
+      {/* 移动端纵向堆叠，标题区占满宽；桌面端保持双列 */}
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_220px] lg:items-stretch lg:gap-0">
+        {/* 勾选 + 正文 + 元信息 */}
+        <div className="flex min-w-0 items-start gap-3 border-b border-dashed border-[var(--line)] pb-3 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4">
           {!isDeleted && (
             <button
               type="button"
@@ -713,12 +716,15 @@ function TodoCard({
           </div>
         </div>
 
-        {/* 右侧小卡片：默认显示优先级（靠左）+ 已同步绿点；悬浮依次显示：同步滴答、来源、删除 */}
-        <div className="flex min-w-[220px] flex-nowrap items-center justify-start gap-2 pl-4" onClick={(e) => e.stopPropagation()}>
+        {/* 优先级与操作：移动端与标题同宽横排；桌面为右栏 */}
+        <div
+          className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 lg:min-w-[220px] lg:flex-nowrap lg:justify-start lg:pl-4"
+          onClick={(e) => e.stopPropagation()}
+        >
           {!isDeleted && (
             <>
               {/* 优先级：始终显示，靠左；弹层用 Portal 渲染到 body 避免被 overflow 裁剪 */}
-              <div className="relative flex items-center gap-2">
+              <div className="relative flex min-w-0 flex-wrap items-center gap-2">
                 <button
                   ref={priorityBtnRef}
                   type="button"
@@ -771,7 +777,7 @@ function TodoCard({
               </div>
 
               {/* 悬浮时显示：设定时间、同步/重同步按钮、删除 */}
-              <div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity duration-150 group-hover/card:opacity-100">
+              <div className="flex shrink-0 items-center gap-1.5 opacity-100 transition-opacity duration-150 lg:opacity-0 group-hover/card:lg:opacity-100">
                 {onSetTime && (
                   <TodoTimePicker
                     todoId={todo.id}

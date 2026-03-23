@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CollapsibleMobileToolbar } from "@/components/collapsible-mobile-toolbar";
+import { MobileFullScreenLayer } from "@/components/mobile-full-screen";
 import { AssetGallery } from "@/components/asset-gallery";
 import { InboxForm } from "@/components/inbox-form";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -165,6 +167,7 @@ export function HomeWorkspace({
   const [searchAutoOpen, setSearchAutoOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [detailModalId, setDetailModalId] = useState<string | null>(null);
   const [pendingTodoCount, setPendingTodoCount] = useState(0);
   const [userEmail, setUserEmail] = useState("");
@@ -325,8 +328,18 @@ export function HomeWorkspace({
     window.localStorage.setItem("ai-box-sidebar-collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileNavOpen]);
+
   const setActiveTab = useCallback((tab: WorkspaceTab) => {
     setActiveTabRaw(tab);
+    setMobileNavOpen(false);
     window.sessionStorage.setItem("ai-box-tab", tab);
   }, []);
 
@@ -669,68 +682,92 @@ export function HomeWorkspace({
         {/* ── Content ── */}
         <div className="min-w-0 transition-all duration-200 lg:ml-[var(--sidebar-w)]" style={{ "--sidebar-w": contentOffset } as React.CSSProperties}>
           {/* Mobile top bar */}
-          <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--line)] bg-[var(--background)]/95 px-4 py-2.5 backdrop-blur lg:hidden">
-            <span className="text-base font-bold text-[var(--foreground)]">AI 信迹</span>
-            <div className="flex items-center gap-2">
+          <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--line)] bg-[var(--background)]/95 px-3 py-2.5 backdrop-blur supports-[padding:max(0px)]:pt-[max(0.5rem,env(safe-area-inset-top))] lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              className="flex min-h-10 min-w-10 items-center justify-center rounded-xl text-[var(--foreground)] transition hover:bg-[var(--surface)] active:bg-[var(--surface-strong)]"
+              aria-label="打开菜单"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <span className="min-w-0 flex-1 truncate text-center text-base font-bold text-[var(--foreground)]">AI 信迹</span>
+            <div className="flex w-10 shrink-0 items-center justify-end">
               <button
                 suppressHydrationWarning
                 type="button"
                 onClick={() => setTheme((c) => (c === "light" ? "dark" : "light"))}
-                className="text-sm text-[var(--muted)]"
+                className="flex min-h-10 min-w-10 items-center justify-center rounded-xl text-sm text-[var(--muted)] transition hover:bg-[var(--surface)]"
               >
                 {theme === "light" ? "☀" : "☾"}
               </button>
             </div>
           </header>
 
-          {/* Mobile bottom tab bar */}
-          <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-[var(--line)] bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-            {tabs.slice(0, 5).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  if (tab.id === "todos") setTodosInitialPriority("");
-                  setActiveTab(tab.id);
-                }}
-                className={[
-                  "relative flex flex-col items-center gap-0.5 px-3 py-2 text-xs transition",
-                  activeTab === tab.id
-                    ? "font-semibold text-[var(--foreground)]"
-                    : "text-[var(--muted)]",
-                ].join(" ")}
-              >
-                <TabIcon id={tab.id} className="w-5 h-5" />
-                <span>{tab.label}</span>
-                {tab.id === "todos" && pendingTodoCount > 0 && (
-                  <PendingTodoCountBadge
-                    count={pendingTodoCount}
-                    className="absolute right-1 top-0 text-base"
-                  />
-                )}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setActiveTab("settings")}
-              className={[
-                "flex flex-col items-center gap-0.5 px-3 py-2 text-xs transition",
-                activeTab === "settings"
-                  ? "font-semibold text-[var(--foreground)]"
-                  : "text-[var(--muted)]",
-              ].join(" ")}
-            >
-              <TabIcon id="settings" className="w-5 h-5" />
-              <span>设置</span>
-            </button>
-          </nav>
+          {mobileNavOpen &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div className="fixed inset-0 z-[70] lg:hidden" role="dialog" aria-modal="true" aria-label="主导航">
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+                  aria-label="关闭菜单"
+                  onClick={() => setMobileNavOpen(false)}
+                />
+                <aside className="absolute bottom-0 left-0 top-0 flex w-[min(88vw,300px)] flex-col border-r border-[var(--line)] bg-[var(--sidebar-bg)] shadow-xl supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]">
+                  <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3">
+                    <span className="text-sm font-bold text-[var(--foreground)]">导航</span>
+                    <button
+                      type="button"
+                      onClick={() => setMobileNavOpen(false)}
+                      className="rounded-lg px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                    >
+                      关闭
+                    </button>
+                  </div>
+                  <nav className="hide-scrollbar flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => {
+                          if (tab.id === "todos") setTodosInitialPriority("");
+                          setActiveTab(tab.id);
+                        }}
+                        className={[
+                          "relative flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm transition",
+                          activeTab === tab.id
+                            ? "bg-[var(--sidebar-active)] font-semibold text-[var(--foreground)]"
+                            : "text-[var(--muted-strong)] hover:bg-[var(--sidebar-active)] hover:text-[var(--foreground)]",
+                        ].join(" ")}
+                      >
+                        <span className="flex w-5 shrink-0 items-center justify-center">
+                          <TabIcon id={tab.id} />
+                        </span>
+                        <span className="flex-1">{tab.label}</span>
+                        {tab.id === "todos" && pendingTodoCount > 0 && (
+                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-medium text-rose-500">
+                            {pendingTodoCount > 99 ? "99+" : pendingTodoCount}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </nav>
+                </aside>
+              </div>,
+              document.body,
+            )}
 
-          <div className="flex h-screen flex-col p-4 pb-24 lg:px-6 lg:pb-[24px] lg:pt-[24px]">
+          <div className="flex h-screen flex-col p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:px-6 lg:pb-[24px] lg:pt-[24px]">
             {(activeTab === "record" || activeTab === "history") && (
-              <div className="flex items-center justify-between gap-2">
-                <StatsBar onNavigateToTodos={(priority) => { setTodosInitialPriority(priority ?? ""); setActiveTab("todos"); }} />
-                {activeTab === "history" && <SyncIndicator />}
-              </div>
+              <CollapsibleMobileToolbar title="数据概览" className="mb-2 shrink-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <StatsBar onNavigateToTodos={(priority) => { setTodosInitialPriority(priority ?? ""); setActiveTab("todos"); }} />
+                  {activeTab === "history" && <SyncIndicator />}
+                </div>
+              </CollapsibleMobileToolbar>
             )}
 
             <div
@@ -791,7 +828,7 @@ export function HomeWorkspace({
               )}
 
               {activeTab === "todos" && (
-                <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-5 pb-[max(5.5rem,calc(5rem+env(safe-area-inset-bottom)))] lg:p-6 lg:pb-[max(6rem,calc(5rem+env(safe-area-inset-bottom)))]">
+                <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] lg:p-6 lg:pb-[max(6rem,calc(5rem+env(safe-area-inset-bottom)))]">
                   <TodoPanel
                     initialTodos={prefetchedTodos?.todos}
                     initialTotal={prefetchedTodos?.total}
@@ -896,6 +933,19 @@ function saveSearchHistory(history: string[]) {
   window.localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_SEARCH_HISTORY)));
 }
 
+/** 与 Tailwind `xl`（1280px）一致，用于历史页窄屏主从布局 */
+function useMediaQueryMinWidth(minPx: number): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${minPx}px)`);
+    const fn = () => setMatches(mq.matches);
+    fn();
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, [minPx]);
+  return matches;
+}
+
 function HistoryTab({
   records,
   total,
@@ -946,6 +996,16 @@ function HistoryTab({
   const [searchCitations, setSearchCitations] = useState<Array<{ recordId: string; title: string; snippet: string; sourceLabel: string; score: number; reason?: string }>>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>(() => getSearchHistory());
+  const isXl = useMediaQueryMinWidth(1280);
+  const [mobileHistoryDetailOpen, setMobileHistoryDetailOpen] = useState(false);
+
+  useEffect(() => {
+    if (isXl) setMobileHistoryDetailOpen(false);
+  }, [isXl]);
+
+  useEffect(() => {
+    if (!selectedRecord) setMobileHistoryDetailOpen(false);
+  }, [selectedRecord]);
 
   const setSearchActive = useCallback((v: boolean) => {
     setSearchActiveRaw(v);
@@ -1023,6 +1083,7 @@ function HistoryTab({
     setSearchQuery("");
     setSearchAnswer("");
     setSearchCitations([]);
+    setMobileHistoryDetailOpen(false);
   }, [setSearchActive]);
 
   const removeHistoryItem = useCallback((item: string) => {
@@ -1093,126 +1154,135 @@ function HistoryTab({
   ).length;
 
   return (
+    <>
     <div className="flex h-full flex-col">
-      {/* Top bar: filters + AI search input */}
-      <div className="mb-4 flex shrink-0 flex-wrap items-center gap-1.5">
-        {!searchActive && historyFilters.map((item) => {
-          const isDoc = item.id === "document";
-          return (
-            <span key={item.id} className="contents">
+      {/* 窄屏：AI 搜索置顶；类型/同步收入可折叠区；宽屏与原先单行工具栏一致 */}
+      <div className="mb-4 flex shrink-0 flex-col gap-2 xl:flex-row xl:flex-wrap xl:items-center xl:gap-1.5">
+        <div className="order-1 w-full min-w-0 xl:order-2 xl:ml-auto xl:w-auto xl:max-w-xl xl:flex-1">
+          {searchActive ? (
+            <div className="ai-border flex w-full min-w-0 items-center gap-2 rounded-xl bg-[var(--card)] p-1">
+              <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="ml-3 shrink-0 text-[var(--muted)]">
+                <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
+              </svg>
+              <input
+                ref={searchInputRef}
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSearch(); } }}
+                placeholder="AI 搜索：一句话找回原文和出处..."
+                className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+              />
               <button
                 type="button"
-                onClick={() => onFilterChange(item.id)}
-                className={[
-                  "rounded-lg px-2.5 py-1.5 text-xs font-medium transition",
-                  historyFilter === item.id
-                    ? "bg-[var(--foreground)] text-[var(--background)]"
-                    : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
-                ].join(" ")}
+                onClick={() => void handleSearch()}
+                disabled={searchLoading || !searchQuery.trim()}
+                className="shrink-0 rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-xs font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
               >
-                {item.label}
+                {searchLoading ? "搜索中..." : "搜索"}
               </button>
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="shrink-0 rounded-lg px-3 py-1.5 text-xs text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+              >
+                取消
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setSearchActive(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+              className="ai-border flex w-full items-center gap-2 rounded-lg bg-[var(--card)] px-3 py-2 text-left transition xl:ml-auto xl:w-auto"
+            >
+              <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
+                <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
+              </svg>
+              <span className="text-xs text-[var(--muted)]">AI 搜索</span>
+            </button>
+          )}
+        </div>
 
-              {isDoc && historyFilter === "document" && (
-                <>
-                  <span className="mx-0.5 text-[var(--line-strong)]">|</span>
-                  {docSubFilters.map((sf) => (
+        {!searchActive && (
+          <CollapsibleMobileToolbar title="类型、日期与同步" desktop="xl" className="order-2 min-w-0 w-full xl:order-1 xl:contents">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {historyFilters.map((item) => {
+                const isDoc = item.id === "document";
+                return (
+                  <span key={item.id} className="contents">
                     <button
-                      key={sf.id}
                       type="button"
-                      onClick={() => onDocSubFilterChange(docSubFilter === sf.id ? "" : sf.id)}
+                      onClick={() => onFilterChange(item.id)}
                       className={[
-                        "rounded-md px-2 py-1 text-[11px] font-medium transition",
-                        docSubFilter === sf.id
+                        "rounded-lg px-2.5 py-1.5 text-xs font-medium transition",
+                        historyFilter === item.id
                           ? "bg-[var(--foreground)] text-[var(--background)]"
-                          : "bg-[var(--surface)] text-[var(--muted-strong)] hover:text-[var(--foreground)]",
+                          : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
                       ].join(" ")}
                     >
-                      {sf.label}
+                      {item.label}
                     </button>
-                  ))}
-                </>
+
+                    {isDoc && historyFilter === "document" && (
+                      <>
+                        <span className="mx-0.5 text-[var(--line-strong)]">|</span>
+                        {docSubFilters.map((sf) => (
+                          <button
+                            key={sf.id}
+                            type="button"
+                            onClick={() => onDocSubFilterChange(docSubFilter === sf.id ? "" : sf.id)}
+                            className={[
+                              "rounded-md px-2 py-1 text-[11px] font-medium transition",
+                              docSubFilter === sf.id
+                                ? "bg-[var(--foreground)] text-[var(--background)]"
+                                : "bg-[var(--surface)] text-[var(--muted-strong)] hover:text-[var(--foreground)]",
+                            ].join(" ")}
+                          >
+                            {sf.label}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </span>
+                );
+              })}
+
+              {historyTagFilter && (
+                <span className="flex items-center gap-1 rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)]">
+                  标签: {historyTagFilter}
+                  <button
+                    type="button"
+                    onClick={onClearTagFilter}
+                    className="rounded p-0.5 hover:bg-[var(--surface-strong)]"
+                    title="清除标签筛选"
+                  >
+                    ×
+                  </button>
+                </span>
               )}
-            </span>
-          );
-        })}
-
-        {!searchActive && historyTagFilter && (
-          <span className="flex items-center gap-1 rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)]">
-            标签: {historyTagFilter}
-            <button
-              type="button"
-              onClick={onClearTagFilter}
-              className="rounded p-0.5 hover:bg-[var(--surface-strong)]"
-              title="清除标签筛选"
-            >
-              ×
-            </button>
-          </span>
-        )}
-        {!searchActive && <span className="text-xs text-[var(--muted)]">{total} 条</span>}
-        {!searchActive && <RefreshButton onClick={onRefresh} />}
-        {!searchActive && unsyncedCount > 0 && (
-          <button
-            type="button"
-            onClick={() => void syncAllUnsynced()}
-            disabled={syncAllRunning}
-            title="将未同步到 Notion 的记录批量同步到 Notion（数据库与 OSS 已保存）"
-            className="flex items-center gap-1 rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-500 transition hover:bg-rose-500/20 disabled:opacity-50"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
-            </svg>
-            {syncAllRunning ? "同步中..." : `同步到 Notion (${unsyncedCount})`}
-          </button>
-        )}
-        {syncAllError && (
-          <span className="max-w-[240px] truncate text-[11px] text-rose-400" title={syncAllError}>
-            {syncAllError}
-          </span>
-        )}
-
-        {searchActive ? (
-          <div className="ai-border flex flex-1 items-center gap-2 rounded-xl bg-[var(--card)] p-1">
-            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="ml-3 shrink-0 text-[var(--muted)]">
-              <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
-            </svg>
-            <input
-              ref={searchInputRef}
-              autoFocus
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSearch(); } }}
-              placeholder="AI 搜索：一句话找回原文和出处..."
-              className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-            />
-            <button
-              type="button"
-              onClick={() => void handleSearch()}
-              disabled={searchLoading || !searchQuery.trim()}
-              className="shrink-0 rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-xs font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-50"
-            >
-              {searchLoading ? "搜索中..." : "搜索"}
-            </button>
-            <button
-              type="button"
-              onClick={clearSearch}
-              className="shrink-0 rounded-lg px-3 py-1.5 text-xs text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-            >
-              取消
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => { setSearchActive(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
-            className="ai-border ml-auto flex items-center gap-2 rounded-lg bg-[var(--card)] px-3 py-1.5 text-left transition"
-          >
-            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted)]">
-              <circle cx="8" cy="8" r="5.5" /><path d="M12 12l4 4" />
-            </svg>
-            <span className="text-xs text-[var(--muted)]">AI 搜索</span>
-          </button>
+              <span className="text-xs text-[var(--muted)]">{total} 条</span>
+              <RefreshButton onClick={onRefresh} />
+              {unsyncedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void syncAllUnsynced()}
+                  disabled={syncAllRunning}
+                  title="将未同步到 Notion 的记录批量同步到 Notion（数据库与 OSS 已保存）"
+                  className="flex items-center gap-1 rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-500 transition hover:bg-rose-500/20 disabled:opacity-50"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
+                  </svg>
+                  {syncAllRunning ? "同步中..." : `同步到 Notion (${unsyncedCount})`}
+                </button>
+              )}
+              {syncAllError && (
+                <span className="max-w-[240px] truncate text-[11px] text-rose-400" title={syncAllError}>
+                  {syncAllError}
+                </span>
+              )}
+            </div>
+          </CollapsibleMobileToolbar>
         )}
       </div>
 
@@ -1229,12 +1299,21 @@ function HistoryTab({
         </div>
       )}
 
-      <div className={[
-        "grid min-h-0 flex-1 gap-5 overflow-hidden",
-        searchActive ? "" : "xl:grid-cols-[360px_minmax(0,1fr)]",
-      ].join(" ")}>
+      <div
+        className={[
+          "min-h-0 flex-1 gap-4 overflow-hidden xl:gap-5",
+          searchActive ? "grid" : "flex flex-col xl:grid xl:grid-cols-[360px_minmax(0,1fr)]",
+        ].join(" ")}
+      >
         {/* Left: independently scrollable list */}
-        <div ref={scrollContainerRef} className="hide-scrollbar min-h-0 overflow-y-auto">
+        <div
+          ref={scrollContainerRef}
+          className={[
+            "hide-scrollbar min-h-0 overflow-y-auto",
+            !searchActive && !isXl && mobileHistoryDetailOpen ? "hidden" : "",
+            !searchActive && !isXl && !mobileHistoryDetailOpen ? "min-h-0 flex-1" : "",
+          ].join(" ")}
+        >
           {searchActive && !searchLoading && searchCitations.length === 0 && !searchAnswer && searchHistory.length > 0 ? (
             <div className="px-2 py-3">
               <div className="mb-2 flex items-center justify-between">
@@ -1270,7 +1349,7 @@ function HistoryTab({
                   key={c.recordId}
                   type="button"
                   onClick={() => onSelectRecord(c.recordId)}
-                  className="relative w-full border-b border-dashed border-[var(--line)] px-3 py-2.5 text-left transition hover:bg-[var(--surface)]"
+                  className="relative min-h-[48px] w-full border-b border-dashed border-[var(--line)] px-3 py-3 text-left transition hover:bg-[var(--surface)] active:bg-[var(--surface-strong)]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-medium text-[var(--muted)]">{c.sourceLabel}</span>
@@ -1302,12 +1381,15 @@ function HistoryTab({
                     )}
                     <button
                       type="button"
-                      onClick={() => onSelectRecord(record.id)}
+                      onClick={() => {
+                        onSelectRecord(record.id);
+                        if (!isXl) setMobileHistoryDetailOpen(true);
+                      }}
                       className={[
-                        "relative w-full border-b border-dashed px-3 py-2.5 text-left transition",
+                        "relative min-h-[52px] w-full border-b border-dashed px-3 py-3.5 text-left transition",
                         active
                           ? "border-[var(--line-strong)] bg-[var(--surface-strong)]"
-                          : "border-[var(--line)] hover:bg-[var(--surface)]",
+                          : "border-[var(--line)] hover:bg-[var(--surface)] active:bg-[var(--surface-strong)]",
                       ].join(" ")}
                     >
                       {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-[var(--foreground)]" />}
@@ -1322,7 +1404,7 @@ function HistoryTab({
                       <p className="mt-1 truncate text-[14px] font-semibold leading-snug text-[var(--foreground)]">
                         {record.title}
                       </p>
-                      <p className="mt-1 line-clamp-1 text-[12px] leading-relaxed text-[var(--muted)]">
+                      <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted)] xl:line-clamp-1">
                         {sanitizeSummary(record.summary ?? "")}
                       </p>
                       {record.keywords.length === 0 &&
@@ -1406,15 +1488,17 @@ function HistoryTab({
         </div>
 
         {/* Right: independently scrollable detail pane (hidden during search) */}
-        {!searchActive && (
-          <div className="min-h-0 overflow-hidden">
+        {!searchActive && isXl && (
+          <div className="min-h-0 overflow-hidden xl:flex xl:flex-col">
             {selectedRecord ? (
-              <RecordPane
-                record={selectedRecord}
-                onDelete={onDelete}
-                onUpdate={onUpdate}
-                onOpenDetail={onOpenDetail}
-              />
+              <div className="h-full min-h-0">
+                <RecordPane
+                  record={selectedRecord}
+                  onDelete={onDelete}
+                  onUpdate={onUpdate}
+                  onOpenDetail={onOpenDetail}
+                />
+              </div>
             ) : (
               <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--line)]">
                 <p className="text-sm text-[var(--muted)]">选择左侧资料查看详情</p>
@@ -1424,6 +1508,22 @@ function HistoryTab({
         )}
       </div>
     </div>
+
+    <MobileFullScreenLayer
+      open={Boolean(!searchActive && !isXl && mobileHistoryDetailOpen && selectedRecord)}
+      onClose={() => setMobileHistoryDetailOpen(false)}
+      title={selectedRecord?.title ?? "详情"}
+    >
+      {selectedRecord ? (
+        <RecordPane
+          record={selectedRecord}
+          onDelete={onDelete}
+          onUpdate={onUpdate}
+          onOpenDetail={onOpenDetail}
+        />
+      ) : null}
+    </MobileFullScreenLayer>
+    </>
   );
 }
 
@@ -1696,6 +1796,21 @@ function FavoritesTab({
   const hasInitial = initialRecords != null;
   const [loading, setLoading] = useState(!hasInitial);
   const [selectedRecordId, setSelectedRecordId] = useState(initialRecords?.[0]?.id ?? "");
+  const isXlFav = useMediaQueryMinWidth(1280);
+  const [mobileFavoriteDetailOpen, setMobileFavoriteDetailOpen] = useState(false);
+
+  useEffect(() => {
+    if (isXlFav) setMobileFavoriteDetailOpen(false);
+  }, [isXlFav]);
+
+  const selectedRecord = useMemo(
+    () => records.find((r) => r.id === selectedRecordId) || records[0] || null,
+    [records, selectedRecordId],
+  );
+
+  useEffect(() => {
+    if (!selectedRecord) setMobileFavoriteDetailOpen(false);
+  }, [selectedRecord]);
 
   const fetchFavorites = useCallback(async () => {
     if (!hasInitial) setLoading(true);
@@ -1712,11 +1827,6 @@ function FavoritesTab({
   }, [selectedRecordId, hasInitial]);
 
   useEffect(() => { fetchFavorites(); }, []);
-
-  const selectedRecord = useMemo(
-    () => records.find((r) => r.id === selectedRecordId) || records[0] || null,
-    [records, selectedRecordId],
-  );
 
   const handleUnfavorite = useCallback(async (recordId: string) => {
     await fetch(`/api/favorites/${recordId}`, { method: "DELETE" });
@@ -1762,11 +1872,14 @@ function FavoritesTab({
   }
 
   return (
+    <>
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex shrink-0 items-center gap-2">
-        <span className="text-sm font-medium text-[var(--foreground)]">★ 我的收藏</span>
-        <span className="text-xs text-[var(--muted)]">{records.length} 条</span>
-      </div>
+      <CollapsibleMobileToolbar title="我的收藏" desktop="xl" className="mb-4 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-[var(--foreground)]">★ 我的收藏</span>
+          <span className="text-xs text-[var(--muted)]">{records.length} 条</span>
+        </div>
+      </CollapsibleMobileToolbar>
 
       {records.length === 0 ? (
         <div className="flex flex-col items-center py-24 text-center">
@@ -1774,8 +1887,14 @@ function FavoritesTab({
           <p className="mt-3 text-sm text-[var(--muted)]">暂无收藏，在记录详情中点击 ★ 添加收藏。</p>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="hide-scrollbar min-h-0 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden xl:grid xl:grid-cols-[360px_minmax(0,1fr)] xl:gap-5">
+          <div
+            className={[
+              "hide-scrollbar min-h-0 overflow-y-auto",
+              !isXlFav && mobileFavoriteDetailOpen ? "hidden" : "",
+              !isXlFav && !mobileFavoriteDetailOpen ? "min-h-0 flex-1" : "",
+            ].join(" ")}
+          >
             <div>
               {records.map((record) => {
                 const active = selectedRecord?.id === record.id;
@@ -1783,12 +1902,15 @@ function FavoritesTab({
                   <button
                     key={record.id}
                     type="button"
-                    onClick={() => setSelectedRecordId(record.id)}
+                    onClick={() => {
+                      setSelectedRecordId(record.id);
+                      if (!isXlFav) setMobileFavoriteDetailOpen(true);
+                    }}
                     className={[
-                      "relative w-full border-b border-dashed px-3 py-2.5 text-left transition",
+                      "relative min-h-[52px] w-full border-b border-dashed px-3 py-3.5 text-left transition",
                       active
                         ? "border-[var(--line-strong)] bg-[var(--surface-strong)]"
-                        : "border-[var(--line)] hover:bg-[var(--surface)]",
+                        : "border-[var(--line)] hover:bg-[var(--surface)] active:bg-[var(--surface-strong)]",
                     ].join(" ")}
                   >
                     {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-[var(--foreground)]" />}
@@ -1801,7 +1923,7 @@ function FavoritesTab({
                     <p className="mt-1 truncate text-[14px] font-semibold leading-snug text-[var(--foreground)]">
                       {record.title}
                     </p>
-                    <p className="mt-1 line-clamp-1 text-[12px] leading-relaxed text-[var(--muted)]">
+                    <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted)] xl:line-clamp-1">
                       {sanitizeSummary(record.summary ?? "")}
                     </p>
                   </button>
@@ -1810,25 +1932,45 @@ function FavoritesTab({
             </div>
           </div>
 
-          <div className="min-h-0 overflow-hidden">
-            {selectedRecord ? (
-              <RecordPane
-                record={selectedRecord}
-                onDelete={onDelete}
-                onUpdate={handleUpdateFavorite}
-                onOpenDetail={onOpenDetail}
-                favorited
-                onToggleFavorite={() => handleUnfavorite(selectedRecord.id)}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--line)]">
-                <p className="text-sm text-[var(--muted)]">选择左侧收藏查看详情</p>
-              </div>
-            )}
-          </div>
+          {isXlFav && (
+            <div className="min-h-0 overflow-hidden">
+              {selectedRecord ? (
+                <RecordPane
+                  record={selectedRecord}
+                  onDelete={onDelete}
+                  onUpdate={handleUpdateFavorite}
+                  onOpenDetail={onOpenDetail}
+                  favorited
+                  onToggleFavorite={() => handleUnfavorite(selectedRecord.id)}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--line)]">
+                  <p className="text-sm text-[var(--muted)]">选择左侧收藏查看详情</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
+
+    <MobileFullScreenLayer
+      open={Boolean(!isXlFav && mobileFavoriteDetailOpen && selectedRecord)}
+      onClose={() => setMobileFavoriteDetailOpen(false)}
+      title={selectedRecord?.title ?? "收藏详情"}
+    >
+      {selectedRecord ? (
+        <RecordPane
+          record={selectedRecord}
+          onDelete={onDelete}
+          onUpdate={handleUpdateFavorite}
+          onOpenDetail={onOpenDetail}
+          favorited
+          onToggleFavorite={() => handleUnfavorite(selectedRecord.id)}
+        />
+      ) : null}
+    </MobileFullScreenLayer>
+    </>
   );
 }
 
@@ -1994,11 +2136,11 @@ function RecordPane({
   useEffect(() => { setCopied(false); }, [record.id]);
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)]">
+    <div className="flex h-full min-h-0 flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)] max-xl:rounded-xl">
       {/* Scrollable content */}
-      <div className="hide-scrollbar flex-1 overflow-y-auto px-7 py-6">
+      <div className="hide-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-7 sm:py-6">
         {/* Meta info */}
-        <div className="flex items-center gap-2 text-[13px] text-[var(--muted)]">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--muted)] sm:text-[13px]">
           <span>{record.sourceLabel}</span>
           <span className="text-[var(--line-strong)]">·</span>
           <span>{recordTypeLabels[record.recordType]}</span>
@@ -2006,7 +2148,7 @@ function RecordPane({
           <span>{formatDateTime(record.createdAt)}</span>
         </div>
 
-        <h2 className="mt-3 text-xl font-bold leading-snug text-[var(--foreground)]">
+        <h2 className="mt-3 text-lg font-bold leading-snug text-[var(--foreground)] sm:text-xl">
           {record.title}
         </h2>
 
@@ -2035,7 +2177,7 @@ function RecordPane({
         {(record.contentText || record.extractedText) && (
           <div>
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">文本内容</p>
-            <div className="prose-custom pr-2 text-[15px] leading-8 text-[var(--foreground)]">
+            <div className="prose-custom pr-1 text-[14px] leading-7 text-[var(--foreground)] sm:pr-2 sm:text-[15px] sm:leading-8">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{record.contentText || record.extractedText}</ReactMarkdown>
             </div>
           </div>
@@ -2078,7 +2220,7 @@ function RecordPane({
       </div>
 
       {/* Fixed footer */}
-      <div className="shrink-0 border-t border-[var(--line)] px-6 py-3">
+      <div className="shrink-0 border-t border-[var(--line)] px-3 pt-3 sm:px-6 sm:pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {syncMsg && <p className="mb-2 text-center text-[12px] text-[var(--muted)]">{syncMsg}</p>}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

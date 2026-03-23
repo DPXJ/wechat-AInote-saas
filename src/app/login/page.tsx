@@ -1,18 +1,36 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { LoginParticles } from "@/components/login-particles";
 
+const REMEMBER_KEY = "ai-box-login-remember";
+const SAVED_EMAIL_KEY = "ai-box-login-email";
+const SAVED_PASSWORD_KEY = "ai-box-login-password";
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberPassword, setRememberPassword] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
   const router = useRouter();
+
+  useEffect(() => {
+    try {
+      const remember = localStorage.getItem(REMEMBER_KEY) === "1";
+      setRememberPassword(remember);
+      if (remember) {
+        setEmail(localStorage.getItem(SAVED_EMAIL_KEY) || "");
+        setPassword(localStorage.getItem(SAVED_PASSWORD_KEY) || "");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -42,6 +60,19 @@ export default function LoginPage() {
         if (signInError) {
           setError(signInError.message);
         } else {
+          try {
+            if (rememberPassword) {
+              localStorage.setItem(REMEMBER_KEY, "1");
+              localStorage.setItem(SAVED_EMAIL_KEY, email);
+              localStorage.setItem(SAVED_PASSWORD_KEY, password);
+            } else {
+              localStorage.removeItem(REMEMBER_KEY);
+              localStorage.removeItem(SAVED_EMAIL_KEY);
+              localStorage.removeItem(SAVED_PASSWORD_KEY);
+            }
+          } catch {
+            /* ignore */
+          }
           router.push("/");
           router.refresh();
         }
@@ -103,6 +134,18 @@ export default function LoginPage() {
                 className="input-focus-bar w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[var(--line-strong)]"
               />
             </div>
+
+            {mode === "login" && (
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={rememberPassword}
+                  onChange={(e) => setRememberPassword(e.target.checked)}
+                  className="h-4 w-4 rounded border-zinc-600 bg-transparent accent-violet-500"
+                />
+                记住密码（仅保存在本机浏览器）
+              </label>
+            )}
 
             {error && (
               <p className="text-center text-sm text-rose-400">{error}</p>
