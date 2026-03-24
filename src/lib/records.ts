@@ -25,7 +25,7 @@ type RecordRow = Database["public"]["Tables"]["records"]["Row"];
 type AssetRow = Database["public"]["Tables"]["assets"]["Row"];
 type SyncRow = Database["public"]["Tables"]["sync_runs"]["Row"];
 
-function mapAsset(row: AssetRow): RecordAsset {
+export function mapAsset(row: AssetRow): RecordAsset {
   return {
     id: row.id,
     recordId: row.record_id,
@@ -546,6 +546,190 @@ export async function updateAssetOcr(
     .eq("user_id", userId);
 
   return getAssetById(userId, assetId);
+}
+
+async function readAssetFileBuffer(userId: string, assetId: string): Promise<Buffer | null> {
+  const asset = await getAssetById(userId, assetId);
+  if (!asset) return null;
+  const content = await readStoredUpload(asset.storage_key, { download: true, fileName: asset.original_name }, userId);
+  if (content.kind === "buffer") return content.buffer;
+  const proxyRes = await fetch(content.url, { cache: "force-cache" });
+  if (!proxyRes.ok) return null;
+  return Buffer.from(await proxyRes.arrayBuffer());
+}
+
+async function collectPartsFromAssetRow(userId: string, row: AssetRow): Promise<string[]> {
+  const parts: string[] = [];
+  const buffer = await readAssetFileBuffer(userId, row.id);
+  if (!buffer) return parts;
+  const extractedText = await extractTextFromUpload({
+    buffer,
+    mimeType: row.mime_type,
+    originalName: row.original_name,
+  });
+  if (extractedText.trim()) {
+    parts.push(`附件 ${row.original_name} 抽取内容:\n${extractedText.trim()}`);
+  }
+  if (row.mime_type.startsWith("image/") && row.ocr_text?.trim()) {
+    parts.push(`图片 ${row.original_name} OCR识别:\n${row.ocr_text.trim()}`);
+  }
+  return parts;
+}
+
+/** 根据当前附件列表重建 extracted_text 与向量检索 chunks（删除/追加附件后调用） */
+export async function rebuildRecordExtractedAndChunks(userId: string, recordId: string) {
+  const record = await getKnowledgeRecord(userId, recordId);
+  if (!record) return null;
+  const supabase = getSupabaseAdmin();
+  const { data: assetRows } = await supabase
+    .from("assets")
+    .select("*")
+    .eq("record_id", recordId)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  const allParts: string[] = [];
+  for (const row of (assetRows || []) as AssetRow[]) {
+    allParts.push(...(await collectPartsFromAssetRow(userId, row)));
+  }
+  const extractedText = allParts.join("\n\n");
+
+  await supabase
+    .from("records")
+    .update({ extracted_text: extractedText, updated_at: nowIso() })
+    .eq("id", recordId)
+    .eq("user_id", userId);
+
+  const combinedText = [record.contentText, extractedText, record.contextNote].filter(Boolean).join("\n\n");
+  const chunks = chunkText(combinedText || record.summary);
+  await supabase.from("chunks").delete().eq("record_id", recordId).eq("user_id", userId);
+
+  const chunkEmbeddings = await createEmbeddings(userId, chunks);
+  const now = nowIso();
+  const chunkRows = chunks.map((chunk, index) => {
+    const chunkId = createId("chk");
+    return {
+      id: chunkId,
+      record_id: recordId,
+      user_id: userId,
+      chunk_index: index,
+      content: chunk,
+      reason: buildChunkReason(record.title, record.sourceLabel),
+      embedding: chunkEmbeddings ? JSON.stringify(chunkEmbeddings[index]) : null,
+      created_at: now,
+    };
+  });
+  if (chunkRows.length > 0) {
+    await supabase.from("chunks").insert(chunkRows);
+  }
+
+  return getKnowledgeRecord(userId, recordId);
+}
+
+export async function updateAssetMetadata(
+  userId: string,
+  assetId: string,
+  fields: { description?: string; tags?: string[] },
+) {
+  const asset = await getAssetById(userId, assetId);
+  if (!asset) return null;
+  const updates: Record<string, unknown> = {};
+  if (fields.description !== undefined) updates.description = fields.description;
+  if (fields.tags !== undefined) updates.tags = fields.tags;
+  if (Object.keys(updates).length === 0) return getAssetById(userId, assetId);
+  await getSupabaseAdmin()
+    .from("assets")
+    .update(updates)
+    .eq("id", assetId)
+    .eq("user_id", userId);
+  return getAssetById(userId, assetId);
+}
+
+export async function deleteAssetForUser(userId: string, assetId: string) {
+  const asset = await getAssetById(userId, assetId);
+  if (!asset) return { ok: false as const, error: "附件不存在。" };
+  const recordId = asset.record_id;
+  await deleteStoredUpload(asset.storage_key, userId);
+  await getSupabaseAdmin().from("assets").delete().eq("id", assetId).eq("user_id", userId);
+  const record = await rebuildRecordExtractedAndChunks(userId, recordId);
+  return { ok: true as const, record };
+}
+
+export async function appendAssetsToRecord(
+  userId: string,
+  recordId: string,
+  uploads: StoredUpload[],
+  fileMeta?: Array<{ tags?: string[]; description?: string }>,
+  opts?: { enableOcr?: boolean },
+) {
+  const enableOcr = opts?.enableOcr !== false;
+  const existing = await getKnowledgeRecord(userId, recordId);
+  if (!existing) return null;
+  if (uploads.length === 0) return existing;
+
+  const supabase = getSupabaseAdmin();
+  const createdAt = nowIso();
+  type AssetInsert = Database["public"]["Tables"]["assets"]["Insert"];
+  const storedAssets: AssetInsert[] = [];
+
+  for (let i = 0; i < uploads.length; i++) {
+    const upload = uploads[i];
+    const meta = fileMeta?.[i];
+    const fileHash = crypto.createHash("md5").update(upload.buffer).digest("hex");
+
+    const { data: existingAsset } = await supabase
+      .from("assets")
+      .select("id, storage_key")
+      .eq("file_hash", fileHash)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const stored = existingAsset
+      ? { fileId: existingAsset.id, storageKey: existingAsset.storage_key, absolutePath: "" }
+      : await storeUpload(upload.buffer, upload.originalName, upload.mimeType, userId);
+
+    const tags = meta?.tags ?? [];
+    let description = meta?.description ?? "";
+
+    let ocrText = "";
+    if (enableOcr && upload.mimeType.startsWith("image/")) {
+      try {
+        const { ocrImage } = await import("@/lib/ocr");
+        const ocrResult = await ocrImage(userId, upload.buffer, upload.mimeType, true);
+        ocrText = ocrResult.text;
+        if (ocrResult.keywords.length > 0) {
+          tags.push(...ocrResult.keywords.filter((k) => !tags.includes(k)));
+        }
+        if (!description && ocrResult.description) {
+          description = ocrResult.description;
+        }
+      } catch (ocrErr) {
+        console.warn(`[OCR] 图片 ${upload.originalName} 识别失败:`, ocrErr instanceof Error ? ocrErr.message : ocrErr);
+      }
+    }
+
+    const assetId = existingAsset ? createId("asset") : stored.fileId;
+    storedAssets.push({
+      id: assetId,
+      record_id: recordId,
+      user_id: userId,
+      original_name: upload.originalName,
+      mime_type: upload.mimeType,
+      byte_size: upload.byteSize,
+      storage_key: stored.storageKey,
+      tags,
+      description: description || "",
+      ocr_text: ocrText,
+      file_hash: fileHash,
+      created_at: createdAt,
+    });
+  }
+
+  if (storedAssets.length > 0) {
+    await supabase.from("assets").insert(storedAssets);
+  }
+
+  return rebuildRecordExtractedAndChunks(userId, recordId);
 }
 
 export async function addSyncRun(

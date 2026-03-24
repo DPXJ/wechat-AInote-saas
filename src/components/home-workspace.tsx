@@ -5,9 +5,10 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { CollapsibleMobileToolbar } from "@/components/collapsible-mobile-toolbar";
 import { MobileFullScreenLayer } from "@/components/mobile-full-screen";
-import { AssetGallery } from "@/components/asset-gallery";
+import { AssetGallery, AssetImageLightbox } from "@/components/asset-gallery";
 import { InboxForm } from "@/components/inbox-form";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { IntegrationsPanel } from "@/components/integrations-panel";
@@ -30,6 +31,7 @@ import type {
   IntegrationSettings,
   IntegrationStatus,
   KnowledgeRecord,
+  RecordAsset,
   RecordType,
   Todo,
   TodoPriority,
@@ -45,13 +47,74 @@ const PAGE_SIZE = 20;
 
 type GlobalTone = "info" | "success" | "error";
 
+/** 圆润五角星（描边/填充与历史记录详情收藏按钮一致） */
+function StarIconRounded({
+  className = "",
+  filled,
+  size = 18,
+}: {
+  className?: string;
+  filled?: boolean;
+  size?: number;
+}) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      aria-hidden
+    >
+      <path
+        fill={filled ? "currentColor" : "none"}
+        stroke={filled ? "none" : "currentColor"}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.563.563 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.563.563 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"
+      />
+    </svg>
+  );
+}
+
+/** 置顶：向上箭头 + 底部横线（Arrow up to line） */
+function PinToTopIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 5v10" />
+      <path d="m8 11 4-4 4 4" />
+      <path d="M4 19h16" />
+    </svg>
+  );
+}
+
+const FAVORITES_PINNED_KEY = "favorites-pinned-ids";
+
+/** 与 globals `.record-list-card` 配套：历史主列表、收藏主列表 */
+const RECORD_LIST_BTN =
+  "record-list-card relative w-full min-h-[52px] rounded-xl border border-transparent px-3 py-3.5 text-left transition-colors duration-150 touch-manipulation";
+/** 搜索引用列表略紧凑 */
+const RECORD_LIST_BTN_SEARCH =
+  "record-list-card relative w-full min-h-[48px] rounded-xl border border-transparent px-3 py-3 text-left transition-colors duration-150 touch-manipulation";
+
 function TabIcon({ id, className = "w-[18px] h-[18px]" }: { id: string; className?: string }) {
   const props = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className };
   switch (id) {
     case "record": return <svg {...props}><path d="M12 5v14M5 12h14" /></svg>;
     case "todos": return <svg {...props}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M9 12l2 2 4-4" /></svg>;
     case "history": return <svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>;
-    case "favorites": return <svg {...props} fill="none"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3z" /></svg>;
+    case "favorites": return <StarIconRounded className={className} size={18} />;
     case "search": return <svg {...props}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
     case "tags": return <svg {...props}><path d="M4 4h6l10 10-6 6L4 10V4z" /><circle cx="8.5" cy="8.5" r="1.5" /></svg>;
     case "settings": return <svg {...props}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>;
@@ -479,6 +542,15 @@ export function HomeWorkspace({
     [],
   );
 
+  const handleReplaceRecord = useCallback(async (id: string) => {
+    const res = await fetch(`/api/records/${id}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.record) {
+      setRecords((p) => p.map((r) => (r.id === id ? data.record : r)));
+    }
+  }, []);
+
   const handleHistoryFilterChange = useCallback((f: HistoryFilter) => {
     setHistoryFilter(f);
     if (f !== "document") setDocSubFilter("");
@@ -853,6 +925,7 @@ export function HomeWorkspace({
                   onUpdate={handleUpdate}
                   onOpenDetail={setDetailModalId}
                   onRefresh={refreshRecords}
+                  onReplaceRecord={handleReplaceRecord}
                   initialSearchActive={searchAutoOpen}
                   onSearchActiveChange={setSearchAutoOpen}
                 />
@@ -1001,6 +1074,7 @@ function HistoryTab({
   onUpdate,
   onOpenDetail,
   onRefresh,
+  onReplaceRecord,
   initialSearchActive,
   onSearchActiveChange,
 }: {
@@ -1021,6 +1095,7 @@ function HistoryTab({
   onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void;
   onOpenDetail: (id: string) => void;
   onRefresh: () => Promise<void>;
+  onReplaceRecord?: (id: string) => Promise<void>;
   initialSearchActive?: boolean;
   onSearchActiveChange?: (v: boolean) => void;
 }) {
@@ -1379,14 +1454,17 @@ function HistoryTab({
               </div>
             </div>
           ) : searchActive && searchCitations.length > 0 ? (
-            <div>
+            <div className="px-0.5">
               <p className="px-1 py-1.5 text-[11px] font-medium text-[var(--muted)]">搜索到 {searchCitations.length} 条相关记录</p>
-              {searchCitations.map((c) => (
+              <div className="space-y-1.5">
+              {searchCitations.map((c) => {
+                const citeActive = selectedRecord?.id === c.recordId;
+                return (
                 <button
                   key={c.recordId}
                   type="button"
                   onClick={() => onSelectRecord(c.recordId)}
-                  className="relative min-h-[48px] w-full border-b border-dashed border-[var(--line)] px-3 py-3 text-left transition hover:bg-[var(--surface)] active:bg-[var(--surface-strong)]"
+                  className={[RECORD_LIST_BTN_SEARCH, citeActive ? "record-list-card--active" : ""].filter(Boolean).join(" ")}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-medium text-[var(--muted)]">{c.sourceLabel}</span>
@@ -1395,7 +1473,9 @@ function HistoryTab({
                   <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted)]">{c.snippet}</p>
                   {c.reason && <p className="mt-1 text-[10px] text-[var(--muted)]">{c.reason}</p>}
                 </button>
-              ))}
+                );
+              })}
+              </div>
             </div>
           ) : searchActive && !searchLoading && searchCitations.length === 0 && searchAnswer ? (
             <div className="flex flex-col items-center py-16 text-center">
@@ -1403,7 +1483,7 @@ function HistoryTab({
               <p className="mt-3 text-sm text-[var(--muted)]">未找到精确匹配的记录</p>
             </div>
           ) : !searchActive && records.length > 0 ? (
-            <div>
+            <div className="space-y-1.5 px-0.5">
               {records.map((record, idx) => {
                 const active = selectedRecord?.id === record.id;
                 const dateStr = formatDateOnly(record.createdAt);
@@ -1412,7 +1492,7 @@ function HistoryTab({
                 return (
                   <div key={record.id}>
                     {showDateHeader && (
-                      <div className="sticky top-0 z-[1] bg-[var(--card)]/90 px-1 py-1.5 backdrop-blur-sm">
+                      <div className="sticky top-0 z-[1] mb-1 bg-[var(--card)]/90 px-1 py-1.5 backdrop-blur-sm">
                         <span className="text-[11px] font-semibold text-[var(--muted)]">{dateStr}</span>
                       </div>
                     )}
@@ -1422,14 +1502,8 @@ function HistoryTab({
                         onSelectRecord(record.id);
                         if (!isXl) setMobileHistoryDetailOpen(true);
                       }}
-                      className={[
-                        "relative min-h-[52px] w-full border-b border-dashed px-3 py-3.5 text-left transition",
-                        active
-                          ? "border-[var(--line-strong)] bg-[var(--surface-strong)]"
-                          : "border-[var(--line)] hover:bg-[var(--surface)] active:bg-[var(--surface-strong)]",
-                      ].join(" ")}
+                      className={[RECORD_LIST_BTN, active ? "record-list-card--active" : ""].filter(Boolean).join(" ")}
                     >
-                      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-[var(--foreground)]" />}
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-medium text-[var(--muted)]">
                           {(record as KnowledgeRecord & { _localPending?: boolean })._localPending ? "待同步" : recordTypeLabels[record.recordType]}
@@ -1534,6 +1608,7 @@ function HistoryTab({
                   onDelete={onDelete}
                   onUpdate={onUpdate}
                   onOpenDetail={onOpenDetail}
+                  onReplaceRecord={onReplaceRecord}
                 />
               </div>
             ) : (
@@ -1557,6 +1632,7 @@ function HistoryTab({
           onDelete={onDelete}
           onUpdate={onUpdate}
           onOpenDetail={onOpenDetail}
+          onReplaceRecord={onReplaceRecord}
         />
       ) : null}
     </MobileFullScreenLayer>
@@ -1709,12 +1785,12 @@ function TrashTab({
           </button>
         </div>
       ) : (
-        <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
+            <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
           <ul className="space-y-2">
             {records.map((record) => (
               <li
                 key={record.id}
-                className="flex items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)]/50 p-3"
+                className="flex items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)]/50 p-3 transition hover:border-[var(--line-strong)] hover:bg-[var(--surface)]"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-[var(--foreground)]">{record.title || "未命名"}</p>
@@ -1835,19 +1911,86 @@ function FavoritesTab({
   const [selectedRecordId, setSelectedRecordId] = useState(initialRecords?.[0]?.id ?? "");
   const isXlFav = useMediaQueryMinWidth(1280);
   const [mobileFavoriteDetailOpen, setMobileFavoriteDetailOpen] = useState(false);
+  const [favSearch, setFavSearch] = useState("");
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FAVORITES_PINNED_KEY);
+      if (raw) setPinnedIds(JSON.parse(raw) as string[]);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FAVORITES_PINNED_KEY, JSON.stringify(pinnedIds));
+    } catch {
+      // ignore
+    }
+  }, [pinnedIds]);
+
+  useEffect(() => {
+    if (records.length === 0) return;
+    setPinnedIds((prev) => prev.filter((id) => records.some((r) => r.id === id)));
+  }, [records]);
 
   useEffect(() => {
     if (isXlFav) setMobileFavoriteDetailOpen(false);
   }, [isXlFav]);
 
+  const orderedRecords = useMemo(() => {
+    const pinnedSet = new Set(pinnedIds);
+    const byId = new Map(records.map((r) => [r.id, r]));
+    const pinned = pinnedIds.map((id) => byId.get(id)).filter(Boolean) as KnowledgeRecord[];
+    const rest = records.filter((r) => !pinnedSet.has(r.id));
+    return [...pinned, ...rest];
+  }, [records, pinnedIds]);
+
+  const displayRecords = useMemo(() => {
+    const q = favSearch.trim().toLowerCase();
+    if (!q) return orderedRecords;
+    return orderedRecords.filter((r) => {
+      const blob = [
+        r.title,
+        r.summary || "",
+        (r.keywords || []).join(" "),
+        r.contentText || "",
+        r.extractedText || "",
+        r.sourceLabel || "",
+      ]
+        .join("\n")
+        .toLowerCase();
+      return blob.includes(q);
+    });
+  }, [orderedRecords, favSearch]);
+
   const selectedRecord = useMemo(
-    () => records.find((r) => r.id === selectedRecordId) || records[0] || null,
-    [records, selectedRecordId],
+    () => displayRecords.find((r) => r.id === selectedRecordId) || displayRecords[0] || null,
+    [displayRecords, selectedRecordId],
   );
+
+  const togglePin = useCallback((id: string) => {
+    setPinnedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return [id, ...prev.filter((x) => x !== id)];
+    });
+  }, []);
 
   useEffect(() => {
     if (!selectedRecord) setMobileFavoriteDetailOpen(false);
   }, [selectedRecord]);
+
+  useEffect(() => {
+    if (displayRecords.length === 0) {
+      if (selectedRecordId) setSelectedRecordId("");
+      return;
+    }
+    if (!displayRecords.some((r) => r.id === selectedRecordId)) {
+      setSelectedRecordId(displayRecords[0].id);
+    }
+  }, [displayRecords, selectedRecordId]);
 
   const fetchFavorites = useCallback(async () => {
     if (!hasInitial) setLoading(true);
@@ -1863,11 +2006,32 @@ function FavoritesTab({
     }
   }, [selectedRecordId, hasInitial]);
 
-  useEffect(() => { fetchFavorites(); }, []);
+  useEffect(() => {
+    void fetchFavorites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载时拉取收藏列表
+  }, []);
 
-  const handleUnfavorite = useCallback(async (recordId: string) => {
-    await fetch(`/api/favorites/${recordId}`, { method: "DELETE" });
-    setRecords((prev) => prev.filter((r) => r.id !== recordId));
+  const handleUnfavorite = useCallback(
+    async (recordId: string) => {
+      setRecords((prev) => prev.filter((r) => r.id !== recordId));
+      setPinnedIds((prev) => prev.filter((id) => id !== recordId));
+      try {
+        const res = await fetch(`/api/favorites/${recordId}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("delete failed");
+      } catch {
+        void fetchFavorites();
+      }
+    },
+    [fetchFavorites],
+  );
+
+  const replaceFavoriteRecord = useCallback(async (id: string) => {
+    const res = await fetch(`/api/records/${id}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.record) {
+      setRecords((prev) => prev.map((r) => (r.id === id ? data.record : r)));
+    }
   }, []);
 
   const handleUpdateFavorite = useCallback(
@@ -1911,17 +2075,58 @@ function FavoritesTab({
   return (
     <>
     <div className="flex h-full flex-col">
-      <CollapsibleMobileToolbar title="我的收藏" desktop="xl" className="mb-4 shrink-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-[var(--foreground)]">★ 我的收藏</span>
-          <span className="text-xs text-[var(--muted)]">{records.length} 条</span>
+      <CollapsibleMobileToolbar
+        title={
+          <span className="flex items-center gap-2">
+            <StarIconRounded className="shrink-0 text-amber-400" size={18} />
+            <span>我的收藏</span>
+          </span>
+        }
+        desktop="xl"
+        className="mb-4 shrink-0"
+      >
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
+          <div className="input-focus-bar ai-border flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-[var(--card)] p-1 sm:max-w-md">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 18 18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="ml-2 shrink-0 text-[var(--muted)]"
+              aria-hidden
+            >
+              <circle cx="8" cy="8" r="5.5" />
+              <path d="M12 12l4 4" />
+            </svg>
+            <input
+              type="search"
+              value={favSearch}
+              onChange={(e) => setFavSearch(e.target.value)}
+              placeholder="搜索标题、摘要、标签、正文…"
+              className="min-w-0 flex-1 bg-transparent py-1.5 pr-1 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+            />
+            {favSearch.trim() ? (
+              <button
+                type="button"
+                onClick={() => setFavSearch("")}
+                className="shrink-0 rounded-lg px-3 py-1.5 text-xs text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+              >
+                清空
+              </button>
+            ) : null}
+          </div>
+          <span className="shrink-0 text-xs text-[var(--muted)]">{displayRecords.length} 条</span>
         </div>
       </CollapsibleMobileToolbar>
 
       {records.length === 0 ? (
         <div className="flex flex-col items-center py-24 text-center">
-          <span className="text-3xl">☆</span>
-          <p className="mt-3 text-sm text-[var(--muted)]">暂无收藏，在记录详情中点击 ★ 添加收藏。</p>
+          <StarIconRounded className="text-[var(--muted)]" size={40} />
+          <p className="mt-3 text-sm text-[var(--muted)]">暂无收藏，在历史记录等详情中点击左下角星标添加收藏。</p>
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden xl:grid xl:grid-cols-[360px_minmax(0,1fr)] xl:gap-5">
@@ -1932,40 +2137,63 @@ function FavoritesTab({
               !isXlFav && !mobileFavoriteDetailOpen ? "min-h-0 flex-1" : "",
             ].join(" ")}
           >
-            <div>
-              {records.map((record) => {
+            <div className="space-y-1.5 px-0.5">
+              {displayRecords.length === 0 ? (
+                <p className="px-3 py-12 text-center text-sm text-[var(--muted)]">
+                  没有匹配的收藏，试试其他关键词。
+                </p>
+              ) : (
+              displayRecords.map((record) => {
                 const active = selectedRecord?.id === record.id;
+                const pinned = pinnedIds.includes(record.id);
                 return (
-                  <button
-                    key={record.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedRecordId(record.id);
-                      if (!isXlFav) setMobileFavoriteDetailOpen(true);
-                    }}
-                    className={[
-                      "relative min-h-[52px] w-full border-b border-dashed px-3 py-3.5 text-left transition",
-                      active
-                        ? "border-[var(--line-strong)] bg-[var(--surface-strong)]"
-                        : "border-[var(--line)] hover:bg-[var(--surface)] active:bg-[var(--surface-strong)]",
-                    ].join(" ")}
-                  >
-                    {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-[var(--foreground)]" />}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-medium text-[var(--muted)]">{recordTypeLabels[record.recordType]}</span>
-                      <span className="shrink-0 text-[10px] text-[var(--muted)]">
-                        {formatTime(record.createdAt)}
-                      </span>
-                    </div>
-                    <p className="mt-1 truncate text-[14px] font-semibold leading-snug text-[var(--foreground)]">
-                      {record.title}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted)] xl:line-clamp-1">
-                      {sanitizeSummary(record.summary ?? "")}
-                    </p>
-                  </button>
+              <div
+                key={record.id}
+                className={[
+                  "record-list-card flex min-h-[52px] w-full items-stretch rounded-xl border border-transparent",
+                  active ? "record-list-card--active" : "",
+                ].filter(Boolean).join(" ")}
+              >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRecordId(record.id);
+                        if (!isXlFav) setMobileFavoriteDetailOpen(true);
+                      }}
+                      className="min-w-0 flex-1 px-3 py-3.5 pr-2 text-left"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium text-[var(--muted)]">{recordTypeLabels[record.recordType]}</span>
+                        <span className="shrink-0 text-[10px] text-[var(--muted)]">
+                          {formatTime(record.createdAt)}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-[14px] font-semibold leading-snug text-[var(--foreground)]">
+                        {record.title}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--muted)] xl:line-clamp-1">
+                        {sanitizeSummary(record.summary ?? "")}
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        togglePin(record.id);
+                      }}
+                      title={pinned ? "取消置顶" : "置顶"}
+                      className={[
+                        "shrink-0 self-start px-2.5 py-3.5 transition",
+                        pinned ? "text-amber-400" : "text-[var(--muted)] hover:text-[var(--foreground)]",
+                      ].join(" ")}
+                    >
+                      <PinToTopIcon />
+                    </button>
+                  </div>
                 );
-              })}
+              })
+              )}
             </div>
           </div>
 
@@ -1977,6 +2205,7 @@ function FavoritesTab({
                   onDelete={onDelete}
                   onUpdate={handleUpdateFavorite}
                   onOpenDetail={onOpenDetail}
+                  onReplaceRecord={replaceFavoriteRecord}
                   favorited
                   onToggleFavorite={() => handleUnfavorite(selectedRecord.id)}
                 />
@@ -2002,6 +2231,7 @@ function FavoritesTab({
           onDelete={onDelete}
           onUpdate={handleUpdateFavorite}
           onOpenDetail={onOpenDetail}
+          onReplaceRecord={replaceFavoriteRecord}
           favorited
           onToggleFavorite={() => handleUnfavorite(selectedRecord.id)}
         />
@@ -2020,6 +2250,7 @@ function RecordPane({
   onDelete,
   onUpdate,
   onOpenDetail,
+  onReplaceRecord,
   favorited: initialFavorited,
   onToggleFavorite,
 }: {
@@ -2027,6 +2258,7 @@ function RecordPane({
   onDelete: (id: string) => void;
   onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void | Promise<unknown>;
   onOpenDetail: (id: string) => void;
+  onReplaceRecord?: (id: string) => Promise<void>;
   favorited?: boolean;
   onToggleFavorite?: () => void;
 }) {
@@ -2042,6 +2274,10 @@ function RecordPane({
   const [syncing, setSyncing] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
   const isSynced = record.syncRuns.some((r) => r.status === "synced");
+  const [assetDrafts, setAssetDrafts] = useState<Record<string, { description: string; tags: string }>>({});
+  const [assetUploading, setAssetUploading] = useState(false);
+  const assetFileInputRef = useRef<HTMLInputElement>(null);
+  const [assetPreviewId, setAssetPreviewId] = useState<string | null>(null);
 
   useEffect(() => {
     setEditTitle(record.title);
@@ -2063,9 +2299,26 @@ function RecordPane({
 
   useEffect(() => {
     if (!editModalOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setEditModalOpen(false); };
+    const next: Record<string, { description: string; tags: string }> = {};
+    for (const a of record.assets) {
+      next[a.id] = { description: a.description || "", tags: (a.tags || []).join(" ") };
+    }
+    setAssetDrafts(next);
+  }, [editModalOpen, record.id, record.assets]);
+
+  useEffect(() => {
+    if (!editModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (assetPreviewId) return;
+      setEditModalOpen(false);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [editModalOpen, assetPreviewId]);
+
+  useEffect(() => {
+    if (!editModalOpen) setAssetPreviewId(null);
   }, [editModalOpen]);
 
   useEffect(() => {
@@ -2074,15 +2327,56 @@ function RecordPane({
       return;
     }
     let cancelled = false;
-    fetch(`/api/favorites`).then(r => r.json()).then(data => {
-      if (cancelled) return;
-      const ids = (data.records || []).map((r: KnowledgeRecord) => r.id);
-      setIsFav(ids.includes(record.id));
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    fetch(`/api/favorites?recordId=${encodeURIComponent(record.id)}`)
+      .then((r) => r.json())
+      .then((data: { favorited?: boolean }) => {
+        if (cancelled) return;
+        setIsFav(Boolean(data.favorited));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [record.id, initialFavorited]);
 
-  const handleSave = () => {
+  const handleDeleteAsset = async (assetId: string) => {
+    if (!onReplaceRecord) return;
+    if (!window.confirm("确定删除该附件？将同时从存储中移除文件。")) return;
+    setSaveError("");
+    const res = await fetch(`/api/assets/${assetId}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setSaveError(data.error || "删除失败");
+      return;
+    }
+    await onReplaceRecord(record.id);
+  };
+
+  const handlePickAssets = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length || !onReplaceRecord) return;
+    setAssetUploading(true);
+    setSaveError("");
+    try {
+      const fd = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        fd.append("files", files[i]);
+      }
+      fd.append("enableOcr", "true");
+      const res = await fetch(`/api/records/${record.id}/assets`, { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveError(data.error || "上传失败");
+        return;
+      }
+      await onReplaceRecord(record.id);
+    } finally {
+      setAssetUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleSave = async () => {
     const fields: Record<string, string | string[]> = {};
     if (editTitle !== record.title) fields.title = editTitle;
     if (editSource !== record.sourceLabel) fields.sourceLabel = editSource;
@@ -2091,18 +2385,55 @@ function RecordPane({
     if (editContentText !== origText) fields.contentText = editContentText;
     const origKw = record.keywords || [];
     if (JSON.stringify([...editKeywords].sort()) !== JSON.stringify([...origKw].sort())) fields.keywords = editKeywords;
-    if (Object.keys(fields).length === 0) {
+
+    let hasAssetPatch = false;
+    for (const a of record.assets) {
+      const d = assetDrafts[a.id];
+      if (!d) continue;
+      const tagsArr = d.tags.split(/\s+/).map((t) => t.trim()).filter(Boolean);
+      const sameTags = JSON.stringify([...tagsArr].sort()) === JSON.stringify([...(a.tags || [])].sort());
+      if (d.description !== (a.description || "") || !sameTags) {
+        hasAssetPatch = true;
+        break;
+      }
+    }
+
+    if (Object.keys(fields).length === 0 && !hasAssetPatch) {
       setEditModalOpen(false);
       return;
     }
     setSaveError("");
-    setEditModalOpen(false);
-    const result = onUpdate(record.id, fields as { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] });
-    if (result && typeof (result as Promise<unknown>).then === "function") {
-      (result as Promise<unknown>).catch(() => {
-        setSaveError("同步失败，将自动重试");
-        setTimeout(() => setSaveError(""), 4000);
-      });
+    try {
+      for (const a of record.assets) {
+        const d = assetDrafts[a.id];
+        if (!d) continue;
+        const tagsArr = d.tags.split(/\s+/).map((t) => t.trim()).filter(Boolean);
+        const sameTags = JSON.stringify([...tagsArr].sort()) === JSON.stringify([...(a.tags || [])].sort());
+        if (d.description === (a.description || "") && sameTags) continue;
+        const res = await fetch(`/api/assets/${a.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description: d.description, tags: tagsArr }),
+        });
+        const errBody = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setSaveError(errBody.error || "附件备注保存失败");
+          return;
+        }
+      }
+      if (Object.keys(fields).length > 0) {
+        const result = onUpdate(record.id, fields as { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] });
+        if (result && typeof (result as Promise<unknown>).then === "function") {
+          await (result as Promise<unknown>);
+        }
+      }
+      if (onReplaceRecord && (hasAssetPatch || Object.keys(fields).length > 0)) {
+        await onReplaceRecord(record.id);
+      }
+      setEditModalOpen(false);
+    } catch {
+      setSaveError("保存失败");
+      setTimeout(() => setSaveError(""), 4000);
     }
   };
 
@@ -2146,16 +2477,23 @@ function RecordPane({
       setIsFav(false);
       return;
     }
-    if (isFav) {
-      await fetch(`/api/favorites/${record.id}`, { method: "DELETE" });
-      setIsFav(false);
-    } else {
-      await fetch("/api/favorites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recordId: record.id }),
-      });
-      setIsFav(true);
+    const prev = isFav;
+    const next = !prev;
+    setIsFav(next);
+    try {
+      if (next) {
+        const res = await fetch("/api/favorites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recordId: record.id }),
+        });
+        if (!res.ok) throw new Error("favorite add failed");
+      } else {
+        const res = await fetch(`/api/favorites/${record.id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("favorite remove failed");
+      }
+    } catch {
+      setIsFav(prev);
     }
   };
 
@@ -2215,7 +2553,9 @@ function RecordPane({
           <div>
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">文本内容</p>
             <div className="prose-custom pr-1 text-[14px] leading-7 text-[var(--foreground)] sm:pr-2 sm:text-[15px] sm:leading-8">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{record.contentText || record.extractedText}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                {record.contentText || record.extractedText}
+              </ReactMarkdown>
             </div>
           </div>
         )}
@@ -2263,16 +2603,14 @@ function RecordPane({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={toggleFavorite}
+              onClick={() => void toggleFavorite()}
               className={[
                 "transition",
                 isFav ? "text-amber-400" : "text-[var(--muted)] hover:text-amber-400",
               ].join(" ")}
               title={isFav ? "取消收藏" : "添加收藏"}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill={isFav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3z" />
-              </svg>
+              <StarIconRounded filled={isFav} size={18} />
             </button>
 
             <button
@@ -2402,6 +2740,101 @@ function RecordPane({
                   minHeight="min-h-[36vh]"
                 />
               </div>
+              {(record.assets.length > 0 || onReplaceRecord) && (
+                <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <label className="text-xs font-medium text-[var(--muted)]">附件（图片 / 文档）</label>
+                    {onReplaceRecord && (
+                      <>
+                        <input
+                          ref={assetFileInputRef}
+                          type="file"
+                          className="hidden"
+                          accept="image/*,.pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.md,.txt"
+                          multiple
+                          onChange={handlePickAssets}
+                        />
+                        <button
+                          type="button"
+                          disabled={assetUploading || !!(record as KnowledgeRecord & { _localPending?: boolean })._localPending}
+                          onClick={() => assetFileInputRef.current?.click()}
+                          className="rounded-lg border border-[var(--line)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--surface-strong)] disabled:opacity-50"
+                        >
+                          {assetUploading ? "上传中…" : "+ 添加附件"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {record.assets.length === 0 && (
+                    <p className="text-xs text-[var(--muted)]">暂无附件，可点击「添加附件」上传。</p>
+                  )}
+                  <div className="space-y-3">
+                    {record.assets.map((a: RecordAsset) => {
+                      const d = assetDrafts[a.id] ?? { description: a.description || "", tags: (a.tags || []).join(" ") };
+                      const isImg = a.mimeType.startsWith("image/");
+                      return (
+                        <div key={a.id} className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--card)] p-3 sm:flex-row sm:items-start">
+                          <div className="flex shrink-0 flex-col items-center gap-1.5 sm:w-[7.5rem]">
+                            <button
+                              type="button"
+                              title={isImg ? "点击预览大图" : "在新标签打开"}
+                              onClick={() => {
+                                if (isImg) setAssetPreviewId(a.id);
+                                else window.open(`/api/assets/${a.id}`, "_blank", "noopener,noreferrer");
+                              }}
+                              className={[
+                                "group relative overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)] transition",
+                                isImg ? "cursor-zoom-in hover:border-[var(--foreground)]/30 hover:shadow-md" : "cursor-pointer hover:opacity-90",
+                              ].join(" ")}
+                            >
+                              <div className="relative h-40 w-[min(100%,200px)] min-w-[140px] sm:h-44 sm:w-36">
+                                {isImg ? (
+                                  <img
+                                    src={`/api/assets/${a.id}?thumb=1`}
+                                    alt=""
+                                    className="h-full w-full object-contain"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-3xl">📎</div>
+                                )}
+                              </div>
+                            </button>
+                            <span className="text-[10px] text-[var(--muted)]">
+                              {isImg ? "点击预览" : "点击打开"}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <p className="break-all text-xs font-medium text-[var(--foreground)]" title={a.originalName}>{a.originalName}</p>
+                            <input
+                              value={d.description}
+                              onChange={(e) => setAssetDrafts((prev) => ({ ...prev, [a.id]: { ...d, description: e.target.value } }))}
+                              placeholder="附件备注（可选）"
+                              className="w-full max-w-sm rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+                              disabled={!onReplaceRecord}
+                            />
+                            <input
+                              value={d.tags}
+                              onChange={(e) => setAssetDrafts((prev) => ({ ...prev, [a.id]: { ...d, tags: e.target.value } }))}
+                              placeholder="附件标签（空格分隔）"
+                              className="w-full max-w-xs rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+                              disabled={!onReplaceRecord}
+                            />
+                            {onReplaceRecord && !(record as KnowledgeRecord & { _localPending?: boolean })._localPending && (
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteAsset(a.id)}
+                                className="text-xs text-rose-500 transition hover:underline"
+                              >
+                                删除此附件
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--muted)]">标签</label>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2458,6 +2891,13 @@ function RecordPane({
           </div>
         </div>,
         document.body
+      )}
+      {assetPreviewId && (
+        <AssetImageLightbox
+          assets={record.assets}
+          initialId={assetPreviewId}
+          onClose={() => setAssetPreviewId(null)}
+        />
       )}
     </div>
   );

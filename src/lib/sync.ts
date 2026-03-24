@@ -1,4 +1,6 @@
+import type { Agent } from "node:http";
 import { Client } from "@notionhq/client";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import nodemailer from "nodemailer";
 import { appConfig } from "@/lib/config";
 import { addSyncRun, getKnowledgeRecord } from "@/lib/records";
@@ -20,8 +22,24 @@ function normalizeNotionPageId(input: string) {
   return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20)}`;
 }
 
+/** 缓存：与浏览器不同，Node 侧请求默认不走系统代理；设置 HTTPS_PROXY 后由 Notion Client 的 agent 出站 */
+let notionProxyAgent: Agent | undefined;
+
+function getNotionHttpAgent(): Agent | undefined {
+  const url = appConfig.httpsProxy?.trim();
+  if (!url) return undefined;
+  if (!notionProxyAgent) {
+    notionProxyAgent = new HttpsProxyAgent(url) as unknown as Agent;
+  }
+  return notionProxyAgent;
+}
+
 function buildNotionClient(settings: IntegrationSettings) {
-  return new Client({ auth: settings.notionToken });
+  const agent = getNotionHttpAgent();
+  return new Client({
+    auth: settings.notionToken,
+    ...(agent ? { agent } : {}),
+  });
 }
 
 function createTransporter(settings: IntegrationSettings) {
@@ -57,16 +75,47 @@ function requireEmailSettings(settings: IntegrationSettings, needTickTick = fals
   }
 }
 
+/** 合并 message 与 cause（Node fetch / undici 常见为 TypeError: fetch failed + cause.code） */
+function errorDiagnostics(error: unknown): string {
+  if (error == null) return "";
+  if (error instanceof Error) {
+    const parts = [error.message];
+    const c = (error as Error & { cause?: unknown }).cause;
+    if (c instanceof Error) parts.push(c.message);
+    else if (c && typeof c === "object" && "code" in c) parts.push(String((c as { code: unknown }).code));
+    else if (typeof c === "string") parts.push(c);
+    return parts.join(" ");
+  }
+  return String(error);
+}
+
 function explainIntegrationError(error: unknown) {
-  const message = error instanceof Error ? error.message : "未知错误";
+  const message = errorDiagnostics(error);
   if (/Could not find page/i.test(message) || /object_not_found/i.test(message))
     return "Notion 页面不存在，或还没有分享给当前 integration。请到该页面的 Share 中把 integration 加进去。";
   if (/unauthorized|forbidden/i.test(message))
     return "Notion Token 没有访问该页面的权限，请检查 integration 权限和页面共享。";
   if (/validation_error/i.test(message))
     return "Notion 页面地址格式不正确，请重新粘贴页面 URL。";
-  if (/fetch failed/i.test(message))
-    return "连接外部服务时发生网络错误，请确认当前网络可以访问目标服务。";
+  /** @notionhq/client 走 fetch；仅匹配 fetch failed，避免把 SMTP 的 ETIMEDOUT 等误判成 Notion */
+  if (/fetch failed/i.test(message)) {
+    const hint =
+      /ENOTFOUND|EAI_AGAIN/i.test(message)
+        ? "（疑似 DNS 解析失败）"
+        : /ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|Connect Timeout/i.test(message)
+          ? "（连接超时）"
+          : /ECONNREFUSED|ECONNRESET|ENETUNREACH/i.test(message)
+            ? "（连接被拒绝或中断）"
+            : /certificate|SSL|TLS|UNABLE_TO_VERIFY/i.test(message)
+              ? "（TLS/证书校验问题）"
+              : "";
+    return (
+      `无法连接到 Notion API（网络层）${hint}。` +
+      `请确认运行本应用的环境能访问 https://api.notion.com：` +
+      `若部署在中国大陆机房，直连常不稳定，需使用海外节点、边缘函数或出站代理；` +
+      `本地开发可检查 VPN/防火墙。也可到「设置 → Notion」使用「保存并测试」复现。`
+    );
+  }
   if (/Invalid login|auth|535/i.test(message))
     return "SMTP 登录失败，请检查邮箱账号、授权码和 SSL/TLS 设置。";
   if (/Greeting never received|ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(message))

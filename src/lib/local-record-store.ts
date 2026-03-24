@@ -30,6 +30,8 @@ export interface PendingRecordPayload {
   enableAiTodo?: boolean;
   enableOcr?: boolean;
   linkToTodo?: boolean;
+  /** 创建成功后是否尝试同步到 Notion（需已在设置中配置）。默认 true。 */
+  syncToNotion?: boolean;
   syncToFlomo?: boolean;
 }
 
@@ -161,6 +163,7 @@ export function buildFormDataFromPending(pending: PendingRecord): FormData {
   formData.set("enableAiTodo", String(payload.enableAiTodo !== false));
   formData.set("enableOcr", String(payload.enableOcr !== false));
   formData.set("linkToTodo", String(payload.linkToTodo === true));
+  formData.set("syncToNotion", String(payload.syncToNotion !== false));
   formData.set("syncToFlomo", String(payload.syncToFlomo === true));
   payload.files.forEach((file, idx) => {
     const blob = new Blob([file.content], { type: file.type || "application/octet-stream" });

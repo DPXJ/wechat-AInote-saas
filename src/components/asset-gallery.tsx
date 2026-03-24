@@ -155,7 +155,7 @@ function Lightbox({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
       onClick={onClose}
     >
       {/* Top bar */}
@@ -272,6 +272,29 @@ function Lightbox({
         </div>
       </div>
     </div>
+  );
+}
+
+/** 图片全屏预览（编辑弹窗等场景复用；挂到 body，z-index 高于普通弹窗） */
+export function AssetImageLightbox({
+  assets,
+  initialId,
+  onClose,
+}: {
+  assets: RecordAsset[];
+  initialId: string;
+  onClose: () => void;
+}) {
+  const [id, setId] = useState(initialId);
+  useEffect(() => {
+    setId(initialId);
+  }, [initialId]);
+  const images = assets.filter((a) => isImage(a.mimeType));
+  const asset = images.find((a) => a.id === id);
+  if (!asset) return null;
+  return createPortal(
+    <Lightbox asset={asset} assets={assets} onClose={onClose} onNavigate={setId} />,
+    document.body,
   );
 }
 

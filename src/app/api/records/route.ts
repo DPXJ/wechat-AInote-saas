@@ -58,11 +58,11 @@ function shouldAutoSyncTickTick(record: {
 async function runPostCreateSync(
   userId: string,
   record: { id: string; contentText: string; extractedText: string; contextNote: string; actionItems: string[] },
-  options: { syncToFlomo: boolean },
+  options: { syncToNotion: boolean; syncToFlomo: boolean },
 ): Promise<string[]> {
   const syncWarnings: string[] = [];
 
-  if (await canAutoSyncNotion(userId)) {
+  if (options.syncToNotion && (await canAutoSyncNotion(userId))) {
     try {
       await syncRecord(userId, record.id, "notion");
     } catch (e) {
@@ -122,6 +122,7 @@ export async function POST(request: Request) {
     const enableAiTodo = String(formData.get("enableAiTodo") || "true") !== "false";
     const enableOcr = String(formData.get("enableOcr") || "true") !== "false";
     const linkToTodo = String(formData.get("linkToTodo") || "false") === "true";
+    const syncToNotion = String(formData.get("syncToNotion") ?? "true") !== "false";
     const syncToFlomo = String(formData.get("syncToFlomo") || "false") === "true";
     const userTagsRaw = String(formData.get("userTags") || "");
     const userTags = userTagsRaw
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
     );
 
     const syncWarnings: string[] = record
-      ? await runPostCreateSync(userId, record, { syncToFlomo })
+      ? await runPostCreateSync(userId, record, { syncToNotion, syncToFlomo })
       : [];
     if (record) runBackgroundTickTick(userId, record).catch(() => {});
 

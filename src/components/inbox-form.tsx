@@ -12,7 +12,11 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { TextStyle } from "@tiptap/extension-text-style";
+import { Color } from "@tiptap/extension-color";
+import Highlight from "@tiptap/extension-highlight";
 import { Markdown } from "tiptap-markdown";
+import { TiptapColorHighlightControls } from "@/components/tiptap-color-controls";
 import {
   addPendingRecord,
   syncPendingRecordsToCloud,
@@ -60,6 +64,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
     Record<string, { text: string; keywords: string[]; description: string } | { loading: true } | { error: string }>
   >({});
   const [linkToTodo, setLinkToTodo] = useState(false);
+  const [syncToNotion, setSyncToNotion] = useState(true);
   const [syncToFlomo, setSyncToFlomo] = useState(false);
   const [recentTags, setRecentTags] = useState<Array<{ tag: string; count: number }>>([]);
   const [defaultTagModalOpen, setDefaultTagModalOpen] = useState(false);
@@ -241,6 +246,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
         enableAiTodo,
         enableOcr,
         linkToTodo,
+        syncToNotion,
         syncToFlomo,
       };
 
@@ -302,13 +308,16 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      TextStyle,
+      Color,
+      Highlight.configure({ multicolor: true }),
       Placeholder.configure({
         placeholder: "输入文本或 Markdown，支持直接粘贴截图…",
       }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Markdown.configure({
-        html: false,
+        html: true,
         transformPastedText: true,
         transformCopiedText: true,
       }),
@@ -419,7 +428,7 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       >
         {/* Formatting toolbar */}
         {editor && (
-          <div className="flex flex-wrap items-center gap-0.5 border-b border-[var(--line)] bg-[var(--surface)] px-3 py-1.5">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-0.5 border-b border-[var(--line)] bg-[var(--surface)] px-3 py-1.5">
             <FmtBtn
               active={editor.isActive("heading", { level: 1 })}
               onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
@@ -514,6 +523,9 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 8 5 12 9 16"/><polyline points="15 8 19 12 15 16"/></svg>
             </FmtBtn>
+            <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-y-1">
+              <TiptapColorHighlightControls editor={editor} />
+            </div>
           </div>
         )}
 
@@ -646,6 +658,15 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
                   className="rounded border-[var(--line)]"
                 />
                 <span>启用 OCR 识别</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={syncToNotion}
+                  onChange={(e) => setSyncToNotion(e.target.checked)}
+                  className="rounded border-[var(--line)]"
+                />
+                <span>同步到 Notion</span>
               </label>
               <label className="flex cursor-pointer items-center gap-2">
                 <input

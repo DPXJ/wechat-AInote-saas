@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/supabase/server";
-import { addFavorite, listFavorites } from "@/lib/favorites";
+import { addFavorite, isFavorite, listFavorites } from "@/lib/favorites";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const userId = await requireUserId();
+    const url = new URL(request.url);
+    const recordId = url.searchParams.get("recordId");
+    if (recordId) {
+      const favorited = await isFavorite(userId, recordId);
+      return NextResponse.json({ favorited });
+    }
     const records = await listFavorites(userId);
     return NextResponse.json({ records, total: records.length });
   } catch (e) {

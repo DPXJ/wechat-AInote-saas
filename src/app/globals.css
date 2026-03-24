@@ -38,6 +38,8 @@
   --ai-glow-2: rgba(6, 182, 212, 0.05);
   --dot-color: rgba(0, 0, 0, 0.04);
   --wave-color: rgba(168, 85, 247, 0.04);
+  /* 列表卡片选中描边：亮色主题用深灰，暗色用近白 */
+  --list-card-selected-ring: rgba(24, 24, 27, 0.42);
 }
 
 [data-theme="dark"] {
@@ -64,6 +66,7 @@
   --ai-glow-2: rgba(34, 211, 238, 0.08);
   --dot-color: rgba(255, 255, 255, 0.03);
   --wave-color: rgba(129, 140, 248, 0.05);
+  --list-card-selected-ring: rgba(250, 250, 250, 0.88);
 }
 
 @theme inline {
@@ -379,6 +382,22 @@ nextjs-portal,
   left: 12px;
 }
 
+/* 历史 / 收藏 / 搜索 等左侧列表卡片：悬浮 + 圆角选中描边 */
+.record-list-card {
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.record-list-card:hover:not(.record-list-card--active) {
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+.record-list-card--active {
+  background: var(--surface-strong);
+  border-color: var(--list-card-selected-ring);
+  box-shadow: 0 0 0 1px var(--list-card-selected-ring);
+}
+
 /* Markdown prose */
 .prose-custom p { margin-bottom: 0.75em; line-height: 1.8; }
 .prose-custom p:last-child { margin-bottom: 0; }
@@ -469,6 +488,11 @@ nextjs-portal,
   max-width: 100%;
   border-radius: 0.5em;
   margin: 0.5em 0;
+}
+.prose-custom mark {
+  border-radius: 0.2em;
+  padding: 0.05em 0.12em;
+  color: inherit;
 }
 
 /* Tiptap editor */

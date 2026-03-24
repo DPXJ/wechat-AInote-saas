@@ -1,5 +1,6 @@
+import { NextResponse } from "next/server";
+import { deleteAssetForUser, mapAsset, readAssetBuffer, readAssetThumbnail, updateAssetMetadata } from "@/lib/records";
 import { requireUserId } from "@/lib/supabase/server";
-import { readAssetBuffer, readAssetThumbnail } from "@/lib/records";
 
 export const runtime = "nodejs";
 
@@ -82,6 +83,54 @@ export async function GET(
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    throw e;
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const userId = await requireUserId();
+    const { id } = await params;
+    const body = (await request.json()) as { description?: string; tags?: string[] };
+    const row = await updateAssetMetadata(userId, id, {
+      description: body.description,
+      tags: body.tags,
+    });
+    if (!row) {
+      return NextResponse.json({ error: "附件不存在。" }, { status: 404 });
+    }
+    return NextResponse.json({ asset: mapAsset(row) }, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+    throw e;
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const userId = await requireUserId();
+    const { id } = await params;
+    const result = await deleteAssetForUser(userId, id);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 404 });
+    }
+    return NextResponse.json({ record: result.record }, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
     throw e;
   }

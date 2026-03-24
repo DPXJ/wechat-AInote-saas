@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import type { IntegrationSettings, IntegrationStatus } from "@/lib/types";
 import { DEFAULT_SUMMARY_INSTRUCTIONS, DEFAULT_TODO_INSTRUCTIONS } from "@/lib/ai";
 import { getImageCacheUsage, clearImageCache } from "@/lib/image-cache";
+import { APP_VERSION } from "@/lib/version";
 
 type ActionTarget = "notion" | "smtp" | "ticktick-email";
 type SettingsTab = "ai" | "notion" | "ticktick" | "flomo" | "ocr" | "imap" | "backup";
@@ -141,22 +142,30 @@ export function IntegrationsPanel({
     <div className="mx-auto w-full max-w-5xl min-w-0">
       {/* 整块为一张卡片：标签栏 + 内容区同宽、标签不换行 */}
       <div className="rounded-xl border border-[var(--line)] bg-[var(--card)] overflow-hidden">
-        <div className="flex flex-nowrap items-end gap-0 border-b border-[var(--line)] overflow-x-auto overflow-y-hidden bg-[var(--card)]">
-          {settingsTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => { setActiveTab(tab.id); setMsg(""); }}
-              className={[
-                "shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition",
-                activeTab === tab.id
-                  ? "border-[var(--foreground)] text-[var(--foreground)]"
-                  : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]",
-              ].join(" ")}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex flex-nowrap items-stretch justify-between gap-2 border-b border-[var(--line)] bg-[var(--card)]">
+          <div className="hide-scrollbar flex min-w-0 flex-1 flex-nowrap items-end gap-0 overflow-x-auto overflow-y-hidden">
+            {settingsTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => { setActiveTab(tab.id); setMsg(""); }}
+                className={[
+                  "shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition",
+                  activeTab === tab.id
+                    ? "border-[var(--foreground)] text-[var(--foreground)]"
+                    : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]",
+                ].join(" ")}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div
+            className="flex shrink-0 items-center border-l border-[var(--line)] px-4 py-2"
+            title="当前部署版本，用于核对线上是否为最新构建"
+          >
+            <span className="text-[11px] tabular-nums text-[var(--muted)]">v{APP_VERSION}</span>
+          </div>
         </div>
 
         {/* 配置区：统一 max-w-4xl，与滴答清单输入区域宽度一致 */}

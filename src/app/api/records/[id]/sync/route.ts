@@ -28,9 +28,13 @@ export async function POST(
     if (err instanceof Error && err.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (err instanceof Error && err.message === "资料不存在。") {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
+    /** 同步失败多为 Notion/邮件等上游不可用或配置问题，非「请求体格式错误」，用 502 避免误报 400 Bad Request */
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "同步失败" },
-      { status: 400 },
+      { status: 502 },
     );
   }
 }

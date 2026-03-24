@@ -29,6 +29,8 @@ export const appConfig = {
   ossAccessKeySecret: process.env.OSS_ACCESS_KEY_SECRET || "",
   ossPathPrefix: process.env.OSS_PATH_PREFIX || "",
   ossPublicBaseUrl: process.env.OSS_PUBLIC_BASE_URL || "",
+  /** 供 Notion SDK 等 Node 出站请求使用；与浏览器代理分开，需自行设置（如 Clash 的 http://127.0.0.1:7890） */
+  httpsProxy: process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "",
 };
 
 export const paths = {
