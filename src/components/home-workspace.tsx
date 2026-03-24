@@ -142,11 +142,13 @@ function RefreshButton({ onClick }: { onClick: () => Promise<void> | void }) {
 export function HomeWorkspace({
   initialRecords,
   initialTotal,
+  initialPendingTodoCount = 0,
   integrationSettings,
   integrationStatus,
 }: {
   initialRecords: KnowledgeRecord[];
   initialTotal: number;
+  initialPendingTodoCount?: number;
   integrationSettings: IntegrationSettings;
   integrationStatus: IntegrationStatus;
 }) {
@@ -165,7 +167,7 @@ export function HomeWorkspace({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [detailModalId, setDetailModalId] = useState<string | null>(null);
-  const [pendingTodoCount, setPendingTodoCount] = useState(0);
+  const [pendingTodoCount, setPendingTodoCount] = useState(initialPendingTodoCount);
   const [userEmail, setUserEmail] = useState("");
   const [prefetchedTodos, setPrefetchedTodos] = useState<{ todos: Todo[]; total: number } | null>(null);
   const [prefetchedFavorites, setPrefetchedFavorites] = useState<KnowledgeRecord[] | null>(null);
@@ -176,6 +178,16 @@ export function HomeWorkspace({
   const [todosInitialPriority, setTodosInitialPriority] = useState<TodoPriority | "">("");
 
   const [globalToast, setGlobalToast] = useState<{ status: string; tone: GlobalTone } | null>(null);
+
+  /** 与「统计条」共用 /api/stats 的 pendingTodos，避免与 /api/todos 口径不一致或缓存分叉 */
+  const refreshPendingTodoCount = useCallback(() => {
+    fetch("/api/stats", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d.pendingTodos === "number") setPendingTodoCount(d.pendingTodos);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("ai-box-global-status");
@@ -228,12 +240,13 @@ export function HomeWorkspace({
     Promise.all([syncPendingRecordsToCloud(), syncPendingTodosToCloud()]).then(
       ([recordsResult, todosResult]) => {
         if (cancelled) return;
+        refreshPendingTodoCount();
         const synced = (recordsResult?.synced ?? 0) + (todosResult?.synced ?? 0);
         if (synced > 0) router.refresh();
       },
     );
     return () => { cancelled = true; };
-  }, [router]);
+  }, [router, refreshPendingTodoCount]);
 
   // 定时轮询：有待同步数据时每隔一段时间自动尝试同步，避免遗忘手动同步导致数据丢失
   useEffect(() => {
@@ -249,18 +262,29 @@ export function HomeWorkspace({
         syncPendingTodosToCloud(),
       ]);
       const synced = (recordsResult?.synced ?? 0) + (todosResult?.synced ?? 0);
+      refreshPendingTodoCount();
       if (synced > 0) router.refresh();
     }, INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [router]);
+  }, [router, refreshPendingTodoCount]);
 
 
   useEffect(() => {
     const abort = new AbortController();
+    const opts = { signal: abort.signal, cache: "no-store" as const };
     Promise.all([
-      fetch("/api/todos?limit=200", { signal: abort.signal, cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => setPrefetchedTodos({ todos: d.todos || [], total: d.total ?? 0 }))
+      Promise.all([
+        fetch("/api/todos?limit=200&status=pending", opts).then((r) => r.json()),
+        fetch("/api/todos?limit=200&status=done", opts).then((r) => r.json()),
+      ])
+        .then(([pendingJson, doneJson]) => {
+          const p = pendingJson as { todos?: Todo[]; total?: number };
+          const d = doneJson as { todos?: Todo[]; total?: number };
+          const todos = [...(p.todos || []), ...(d.todos || [])].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          );
+          setPrefetchedTodos({ todos, total: (p.total ?? 0) + (d.total ?? 0) });
+        })
         .catch(() => {}),
       fetch("/api/favorites", { signal: abort.signal })
         .then((r) => r.json())
@@ -293,11 +317,12 @@ export function HomeWorkspace({
   };
 
   useEffect(() => {
-    fetch("/api/todos?limit=1&status=pending", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setPendingTodoCount(d.total || 0))
-      .catch(() => {});
-  }, []);
+    refreshPendingTodoCount();
+  }, [refreshPendingTodoCount]);
+
+  useEffect(() => {
+    if (activeTab === "todos") refreshPendingTodoCount();
+  }, [activeTab, refreshPendingTodoCount]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("ai-box-theme");

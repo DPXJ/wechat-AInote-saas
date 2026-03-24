@@ -16,7 +16,11 @@ export async function GET(request: Request) {
     const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
 
     const result = await listTodos(userId, { status, priority, limit, offset });
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: {
+        "Cache-Control": "private, no-store, must-revalidate",
+      },
+    });
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });

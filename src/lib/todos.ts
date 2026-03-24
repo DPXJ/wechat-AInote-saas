@@ -70,8 +70,9 @@ export async function listTodos(
     countQuery = countQuery.eq("status", "deleted");
     dataQuery = dataQuery.eq("status", "deleted");
   } else if (opts?.status) {
-    countQuery = countQuery.eq("status", opts.status).neq("status", "deleted");
-    dataQuery = dataQuery.eq("status", opts.status).neq("status", "deleted");
+    // 与 getTodoStats 一致：显式 status 时不再叠加 neq(deleted)，避免与统计口径产生歧义
+    countQuery = countQuery.eq("status", opts.status);
+    dataQuery = dataQuery.eq("status", opts.status);
   } else {
     countQuery = countQuery.neq("status", "deleted");
     dataQuery = dataQuery.neq("status", "deleted");

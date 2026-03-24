@@ -138,16 +138,26 @@ export function TodoPanel({
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(`/api/todos?limit=200`, { cache: "no-store", signal: controller.signal });
+      const opts = { cache: "no-store" as const, signal: controller.signal };
+      const [pendingRes, doneRes] = await Promise.all([
+        fetch(`/api/todos?limit=200&status=pending`, opts),
+        fetch(`/api/todos?limit=200&status=done`, opts),
+      ]);
       clearTimeout(timeout);
-      const data = await res.json();
-      if (!res.ok) {
+      const pendingJson = await pendingRes.json();
+      const doneJson = await doneRes.json();
+      if (!pendingRes.ok || !doneRes.ok) {
         setServerTodos([]);
         setTotal(0);
         return;
       }
-      setServerTodos(Array.isArray(data.todos) ? data.todos : []);
-      setTotal(typeof data.total === "number" ? data.total : 0);
+      const pTodos = Array.isArray(pendingJson.todos) ? pendingJson.todos : [];
+      const dTodos = Array.isArray(doneJson.todos) ? doneJson.todos : [];
+      const merged = [...pTodos, ...dTodos].sort(
+        (a: Todo, b: Todo) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      setServerTodos(merged);
+      setTotal((typeof pendingJson.total === "number" ? pendingJson.total : 0) + (typeof doneJson.total === "number" ? doneJson.total : 0));
     } catch {
       setServerTodos([]);
       setTotal(0);

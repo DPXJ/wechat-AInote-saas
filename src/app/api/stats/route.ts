@@ -36,15 +36,22 @@ export async function GET() {
 
     const todoStats = await getTodoStats(userId);
 
-    return NextResponse.json({
-      totalRecords,
-      todayRecords,
-      imageCount,
-      textCount,
-      videoCount,
-      documentCount,
-      ...todoStats,
-    });
+    return NextResponse.json(
+      {
+        totalRecords,
+        todayRecords,
+        imageCount,
+        textCount,
+        videoCount,
+        documentCount,
+        ...todoStats,
+      },
+      {
+        headers: {
+          "Cache-Control": "private, no-store, must-revalidate",
+        },
+      },
+    );
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
