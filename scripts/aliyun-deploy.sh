@@ -21,12 +21,16 @@ if [[ -d ".git" ]]; then
   git pull --rebase || git pull
 fi
 
-echo "==> pnpm install"
-pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+echo "==> npm ci（与 package-lock.json 一致；无 lock 时勿用 npm ci）"
+if [[ -f package-lock.json ]]; then
+  npm ci
+else
+  npm install --omit=dev
+fi
 
-echo "==> pnpm build"
+echo "==> npm run build"
 export NODE_ENV=production
-pnpm build
+npm run build
 
 echo "==> PM2 启动或重启"
 if pm2 describe "$APP_NAME" &>/dev/null; then
