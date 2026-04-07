@@ -241,6 +241,8 @@ export function HomeWorkspace({
   const [todosInitialPriority, setTodosInitialPriority] = useState<TodoPriority | "">("");
 
   const [globalToast, setGlobalToast] = useState<{ status: string; tone: GlobalTone } | null>(null);
+  const globalToastDedupeRef = useRef<{ message: string; tone: GlobalTone; at: number } | null>(null);
+  const globalToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** 与「统计条」共用 /api/stats 的 pendingTodos，避免与 /api/todos 口径不一致或缓存分叉 */
   const refreshPendingTodoCount = useCallback(() => {
@@ -257,7 +259,13 @@ export function HomeWorkspace({
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { status: string; tone?: GlobalTone };
-        if (parsed?.status) setGlobalToast({ status: parsed.status, tone: parsed.tone || "info" });
+        if (parsed?.status) {
+          setGlobalToast({ status: parsed.status, tone: parsed.tone || "info" });
+          globalToastHideTimerRef.current = setTimeout(() => {
+            setGlobalToast(null);
+            globalToastHideTimerRef.current = null;
+          }, 3000);
+        }
       } catch {
         // ignore
       } finally {
@@ -270,20 +278,38 @@ export function HomeWorkspace({
       const message = detail?.message;
       if (!message) return;
       const tone = (detail?.tone || "info") as GlobalTone;
+      const now = Date.now();
+      const prev = globalToastDedupeRef.current;
+      if (prev && prev.message === message && prev.tone === tone && now - prev.at < 800) {
+        return;
+      }
+      globalToastDedupeRef.current = { message, tone, at: now };
       setGlobalToast({ status: message, tone });
       try {
         sessionStorage.setItem(
           "ai-box-global-status",
-          JSON.stringify({ status: message, tone, ts: Date.now() }),
+          JSON.stringify({ status: message, tone, ts: now }),
         );
       } catch {
         // ignore
       }
-      setTimeout(() => setGlobalToast(null), 4500);
+      if (globalToastHideTimerRef.current) {
+        clearTimeout(globalToastHideTimerRef.current);
+      }
+      globalToastHideTimerRef.current = setTimeout(() => {
+        setGlobalToast(null);
+        globalToastHideTimerRef.current = null;
+      }, 3000);
     };
 
     window.addEventListener("ai-box-global-status", handler as EventListener);
-    return () => window.removeEventListener("ai-box-global-status", handler as EventListener);
+    return () => {
+      window.removeEventListener("ai-box-global-status", handler as EventListener);
+      if (globalToastHideTimerRef.current) {
+        clearTimeout(globalToastHideTimerRef.current);
+        globalToastHideTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -606,13 +632,13 @@ export function HomeWorkspace({
 
       {globalToast && (
         <div
-          className="pointer-events-none fixed left-1/2 top-6 z-50 -translate-x-1/2"
+          className="pointer-events-none fixed left-1/2 top-5 z-50 w-[min(92vw,22rem)] -translate-x-1/2"
           role="status"
           aria-live="polite"
         >
           <div
             className={[
-              "pointer-events-auto flex animate-toast-in items-center gap-3 rounded-2xl border px-5 py-3.5 text-sm font-medium shadow-xl backdrop-blur-md",
+              "pointer-events-auto flex max-w-full animate-toast-in items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium leading-snug shadow-md backdrop-blur-md sm:text-[13px]",
               globalToast.tone === "success"
                 ? "border-emerald-500/30 bg-emerald-500/95 text-white dark:bg-emerald-600/95"
                 : globalToast.tone === "error"
@@ -621,12 +647,12 @@ export function HomeWorkspace({
             ].join(" ")}
           >
             {globalToast.tone === "info" && (
-              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
             )}
             {globalToast.tone === "success" && (
               <svg
-                width="18"
-                height="18"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -638,12 +664,12 @@ export function HomeWorkspace({
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             )}
-            {globalToast.tone === "error" && <span className="shrink-0 text-base leading-none">!</span>}
+            {globalToast.tone === "error" && <span className="shrink-0 text-sm leading-none">!</span>}
             <span className="min-w-0 flex-1">{globalToast.status}</span>
             <button
               type="button"
               onClick={() => setGlobalToast(null)}
-              className="-mr-1 rounded-lg p-1 opacity-70 transition hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/50"
+              className="-mr-0.5 shrink-0 rounded-md p-0.5 text-[11px] leading-none opacity-70 transition hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/50"
               aria-label="关闭"
             >
               ✕

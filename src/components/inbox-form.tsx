@@ -105,8 +105,8 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   }
 
   useEffect(() => {
-    if (!status || statusTone === "error") return;
-    const timer = window.setTimeout(() => setStatus(""), 4200);
+    if (!status) return;
+    const timer = window.setTimeout(() => setStatus(""), 3000);
     return () => window.clearTimeout(timer);
   }, [status, statusTone]);
 
@@ -260,33 +260,34 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       setFileTags({});
       setFileDescs({});
       setSubmitting(false);
-      updateStatus("已收录，等待同步到云端", "success");
-
-      emitGlobalStatus("正在同步中（数据库 + OSS）...", "info");
+      // 同步进度与结果统一走全局 toast，避免与表单内 toast 叠成两条
+      setStatus("");
+      emitGlobalStatus("正在同步…", "info");
       syncPendingRecordsToCloud()
         .then(({ synced, failed, syncWarnings }) => {
           if (synced > 0) {
-            const base = `收录已同步到云端（数据库与附件已保存）${synced > 1 ? `，${synced} 条` : ""}`;
+            const shortOk =
+              synced > 1 ? `已同步 ${synced} 条到云端` : "已同步到云端";
             if (syncWarnings.length > 0) {
-              const msg = `${base}；但第三方同步失败：${syncWarnings.join("；")}`;
-              updateStatus(msg, "error");
+              const detail = syncWarnings.join("；");
+              const msg =
+                detail.length > 80 ? `${shortOk}；外部同步未完成（详见设置或稍后重试）` : `${shortOk}；${detail}`;
               emitGlobalStatus(msg, "error");
             } else {
-              updateStatus(`${base}`, "success");
-              emitGlobalStatus(`${base}`, "success");
+              emitGlobalStatus(shortOk, "success");
             }
             onCreated?.("");
             router.refresh();
           }
           if (failed > 0) {
-            const msg = `${failed} 条上传云端失败，可点击右上角云图标重试`;
-            updateStatus(msg, "error");
-            emitGlobalStatus(msg, "error");
+            emitGlobalStatus(
+              `${failed} 条未上传成功，可点右上角云图标重试`,
+              "error",
+            );
           }
         })
         .catch(() => {
-          updateStatus("同步异常，可稍后点击云图标重试", "error");
-          emitGlobalStatus("同步异常，可稍后点击云图标重试", "error");
+          emitGlobalStatus("同步异常，可点右上角云图标重试", "error");
         });
     } catch (e) {
       setSubmitting(false);
@@ -759,13 +760,13 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
       {/* Status toast */}
       {status && (
         <div
-          className="pointer-events-none fixed left-1/2 top-6 z-50 -translate-x-1/2"
+          className="pointer-events-none fixed left-1/2 top-5 z-50 w-[min(92vw,22rem)] -translate-x-1/2"
           role="status"
           aria-live="polite"
         >
           <div
             className={[
-              "pointer-events-auto flex animate-toast-in items-center gap-3 rounded-2xl border px-5 py-3.5 text-sm font-medium shadow-xl backdrop-blur-md",
+              "pointer-events-auto flex max-w-full animate-toast-in items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium leading-snug shadow-md backdrop-blur-md sm:text-[13px]",
               statusTone === "success"
                 ? "border-emerald-500/30 bg-emerald-500/95 text-white dark:bg-emerald-600/95"
                 : statusTone === "error"
@@ -774,21 +775,21 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             ].join(" ")}
           >
             {statusTone === "info" && (
-              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
             )}
             {statusTone === "success" && (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             )}
             {statusTone === "error" && (
-              <span className="shrink-0 text-base leading-none">!</span>
+              <span className="shrink-0 text-sm leading-none">!</span>
             )}
             <span className="min-w-0 flex-1">{status}</span>
             <button
               type="button"
               onClick={() => setStatus("")}
-              className="-mr-1 rounded-lg p-1 opacity-70 transition hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/50"
+              className="-mr-0.5 shrink-0 rounded-md p-0.5 text-[11px] leading-none opacity-70 transition hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/50"
               aria-label="关闭"
             >
               ✕

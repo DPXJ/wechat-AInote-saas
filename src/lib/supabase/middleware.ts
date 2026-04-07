@@ -1,7 +1,27 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { hasSupabasePublicEnv } from "@/lib/supabase/env";
 
 export async function updateSession(request: NextRequest) {
+  if (!hasSupabasePublicEnv()) {
+    const { pathname } = request.nextUrl;
+    if (pathname.startsWith("/api")) {
+      return NextResponse.next({ request });
+    }
+    const publicPaths = ["/login"];
+    const isPublic =
+      publicPaths.some((p) => pathname.startsWith(p)) ||
+      pathname.startsWith("/_next") ||
+      pathname.startsWith("/favicon");
+    if (!isPublic) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("setup", "1");
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

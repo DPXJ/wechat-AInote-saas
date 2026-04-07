@@ -3,11 +3,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
+import { hasSupabasePublicEnv } from "@/lib/supabase/env";
 import { LoginParticles } from "@/components/login-particles";
 
 const REMEMBER_KEY = "ai-box-login-remember";
 const SAVED_EMAIL_KEY = "ai-box-login-email";
 const SAVED_PASSWORD_KEY = "ai-box-login-password";
+
+const supabaseReady = hasSupabasePublicEnv();
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -37,6 +40,14 @@ export default function LoginPage() {
     setError("");
     setMessage("");
     setLoading(true);
+
+    if (!supabaseReady) {
+      setError(
+        "未配置 Supabase：在项目根目录创建 .env.local，填写 NEXT_PUBLIC_SUPABASE_URL 与 NEXT_PUBLIC_SUPABASE_ANON_KEY，保存后重启 npm run dev。",
+      );
+      setLoading(false);
+      return;
+    }
 
     const supabase = createSupabaseBrowser();
 
@@ -95,6 +106,24 @@ export default function LoginPage() {
 
       <div className="relative z-10 w-full max-w-sm px-6">
         <div className="login-card rounded-2xl p-8 backdrop-blur-xl">
+          {!supabaseReady && (
+            <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-left text-sm text-amber-100">
+              <p className="font-medium text-amber-50">需要先配置 Supabase</p>
+              <p className="mt-2 text-amber-100/90">
+                在项目根目录新建{" "}
+                <code className="rounded bg-black/30 px-1 py-0.5 text-xs">.env.local</code>，从
+                Supabase 控制台复制 Project URL 与 anon public key，写入：
+              </p>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-zinc-300">
+                {`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
+              </pre>
+              <p className="mt-2 text-amber-100/80">
+                保存后<strong>重启</strong>开发服务（<code className="text-xs">npm run dev</code>
+                ）。
+              </p>
+            </div>
+          )}
           <div className="mb-8 text-center">
             <div
               className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl text-2xl"
@@ -156,7 +185,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || !email || !password}
+              disabled={loading || !email || !password || !supabaseReady}
               className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
               style={{ background: "var(--ai-gradient)" }}
             >

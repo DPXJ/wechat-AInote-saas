@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { deleteAssetForUser, mapAsset, readAssetBuffer, readAssetThumbnail, updateAssetMetadata } from "@/lib/records";
+import { readOssObjectBufferForApi } from "@/lib/storage";
 import { requireUserId } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -22,17 +23,35 @@ export async function GET(
       }
       if (result.content.kind === "redirect") {
         // 代理回源：客户端 fetch 同源 200+body 才能写入 Cache API，避免 302 后跨源 opaque 无法缓存
-        const proxyRes = await fetch(result.content.url, { cache: "force-cache" });
-        if (!proxyRes.ok) {
-          return Response.redirect(result.content.url, 302);
+        let proxied: ArrayBuffer | null = null;
+        try {
+          const proxyRes = await fetch(result.content.url, { cache: "force-cache" });
+          if (proxyRes.ok) {
+            proxied = await proxyRes.arrayBuffer();
+          }
+        } catch {
+          proxied = null;
         }
-        const buffer = await proxyRes.arrayBuffer();
-        return new Response(buffer, {
-          headers: {
-            "Content-Type": result.asset.mimeType,
-            "Cache-Control": "public, max-age=86400",
-          },
+        if (proxied) {
+          return new Response(proxied, {
+            headers: {
+              "Content-Type": result.asset.mimeType,
+              "Cache-Control": "public, max-age=86400",
+            },
+          });
+        }
+        const sdkBuf = await readOssObjectBufferForApi(result.asset.storageKey, userId, {
+          thumbnail: true,
         });
+        if (sdkBuf) {
+          return new Response(new Uint8Array(sdkBuf), {
+            headers: {
+              "Content-Type": result.asset.mimeType,
+              "Cache-Control": "public, max-age=86400",
+            },
+          });
+        }
+        return Response.redirect(result.content.url, 302);
       }
       return new Response(result.content.buffer, {
         headers: {
@@ -49,21 +68,33 @@ export async function GET(
 
     if (result.content.kind === "redirect") {
       // 原图也走代理：避免前端 fetch 跟随 302 跨源拿不到 body，导致预览/全屏显示失败
-      const proxyRes = await fetch(result.content.url, { cache: "force-cache" });
-      if (!proxyRes.ok) {
-        return Response.redirect(result.content.url, 302);
+      let proxied: ArrayBuffer | null = null;
+      try {
+        const proxyRes = await fetch(result.content.url, { cache: "force-cache" });
+        if (proxyRes.ok) {
+          proxied = await proxyRes.arrayBuffer();
+        }
+      } catch {
+        proxied = null;
       }
-      const buffer = await proxyRes.arrayBuffer();
       const disposition = forceDownload ? "attachment" : "inline";
-      return new Response(buffer, {
-        headers: {
-          "Content-Type": result.asset.mimeType,
-          "Content-Disposition": `${disposition}; filename="${encodeURIComponent(
-            result.asset.originalName,
-          )}"`,
-          "Cache-Control": "private, max-age=3600",
-        },
+      const headers = {
+        "Content-Type": result.asset.mimeType,
+        "Content-Disposition": `${disposition}; filename="${encodeURIComponent(
+          result.asset.originalName,
+        )}"`,
+        "Cache-Control": "private, max-age=3600",
+      } as const;
+      if (proxied) {
+        return new Response(proxied, { headers });
+      }
+      const sdkBuf = await readOssObjectBufferForApi(result.asset.storageKey, userId, {
+        thumbnail: false,
       });
+      if (sdkBuf) {
+        return new Response(new Uint8Array(sdkBuf), { headers });
+      }
+      return Response.redirect(result.content.url, 302);
     }
 
     const disposition = forceDownload ? "attachment" : "inline";
@@ -84,7 +115,12 @@ export async function GET(
         headers: { "Content-Type": "application/json" },
       });
     }
-    throw e;
+    const msg = e instanceof Error ? e.message : "附件读取失败";
+    console.error("[assets] GET error:", e);
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
 

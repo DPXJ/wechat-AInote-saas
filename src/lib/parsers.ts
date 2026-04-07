@@ -1,6 +1,3 @@
-import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
-
 export async function extractTextFromUpload(input: {
   buffer: Buffer;
   mimeType: string;
@@ -19,21 +16,22 @@ export async function extractTextFromUpload(input: {
     return buffer.toString("utf8");
   }
 
-  if (mimeType.includes("pdf") || lowerName.endsWith(".pdf")) {
-    const parser = new PDFParse({ data: buffer });
-    const parsed = await parser.getText();
-    await parser.destroy();
-    return parsed.text || "";
-  }
-
+  // 文档类附件不做内容解析：只保存文件本身，标题会自动回退到文件名
   if (
+    mimeType.includes("pdf") ||
+    lowerName.endsWith(".pdf") ||
+    mimeType.includes("application/msword") ||
+    lowerName.endsWith(".doc") ||
     mimeType.includes(
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ) ||
-    lowerName.endsWith(".docx")
+    lowerName.endsWith(".docx") ||
+    lowerName.endsWith(".ppt") ||
+    lowerName.endsWith(".pptx") ||
+    lowerName.endsWith(".xls") ||
+    lowerName.endsWith(".xlsx")
   ) {
-    const parsed = await mammoth.extractRawText({ buffer });
-    return parsed.value || "";
+    return "";
   }
 
   return "";

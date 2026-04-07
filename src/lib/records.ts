@@ -203,7 +203,7 @@ export async function createKnowledgeRecord(
 
   const combinedText = [contentText, extractedText, contextNote].filter(Boolean).join("\n\n");
 
-  await supabase.from("records").insert({
+  const { error: recordInsertError } = await supabase.from("records").insert({
     id: recordId,
     user_id: userId,
     title,
@@ -220,9 +220,15 @@ export async function createKnowledgeRecord(
     created_at: createdAt,
     updated_at: createdAt,
   });
+  if (recordInsertError) {
+    throw new Error(`写入 records 失败：${recordInsertError.message}`);
+  }
 
   if (storedAssets.length > 0) {
-    await supabase.from("assets").insert(storedAssets);
+    const { error: assetInsertError } = await supabase.from("assets").insert(storedAssets);
+    if (assetInsertError) {
+      throw new Error(`写入 assets 失败：${assetInsertError.message}`);
+    }
   }
 
   const chunks = chunkText(combinedText || analysis.summary);
@@ -242,7 +248,10 @@ export async function createKnowledgeRecord(
   });
 
   if (chunkRows.length > 0) {
-    await supabase.from("chunks").insert(chunkRows);
+    const { error: chunkInsertError } = await supabase.from("chunks").insert(chunkRows);
+    if (chunkInsertError) {
+      throw new Error(`写入 chunks 失败：${chunkInsertError.message}`);
+    }
   }
 
   const created: KnowledgeRecord = {

@@ -48,6 +48,28 @@ function appConfigToOss(): OssConfig {
   };
 }
 
+/**
+ * 读取数据库里已为 oss: 的附件时解析 OSS 凭证。
+ * 若用户曾在集成设置里填过 OSS，但当前 storageMode 为 local，仍应用这些凭证回源，否则历史 oss 附件会全部读失败。
+ */
+async function resolveOssConfigForRead(userId?: string): Promise<OssConfig> {
+  const fromEnv = appConfigToOss();
+  if (appConfig.storageMode === "oss" && hasOssConfig(fromEnv)) {
+    return fromEnv;
+  }
+  if (userId) {
+    const settings = await getIntegrationSettings(userId);
+    const fromSettings = toOssConfig(settings);
+    if (hasOssConfig(fromSettings)) {
+      return fromSettings;
+    }
+  }
+  if (hasOssConfig(fromEnv)) {
+    return fromEnv;
+  }
+  return fromEnv;
+}
+
 async function getStorageConfig(userId?: string): Promise<{
   useOss: boolean;
   oss: OssConfig;
@@ -120,6 +142,8 @@ function joinUrl(base: string, key: string) {
   return `${base.replace(/\/+$/g, "")}/${key.replace(/^\/+/g, "")}`;
 }
 
+const OSS_THUMB_PROCESS = "image/resize,m_fill,w_480,h_320";
+
 export async function storeUpload(
   buffer: Buffer,
   originalName: string,
@@ -138,8 +162,19 @@ export async function storeUpload(
 
   const objectKeyLocal = buildObjectKey(fileId, originalName, mimeType);
   const absolutePath = path.join(paths.uploadsDir, objectKeyLocal);
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, buffer);
+  try {
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, buffer);
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    const code = e?.code || "";
+    if (code === "EROFS" || code === "EACCES" || code === "EPERM") {
+      throw new Error(
+        "附件存储失败：当前环境使用本地存储，但服务器文件系统不可写。请在设置中启用 OSS 存储（或为服务端配置可写 DATA_ROOT）。",
+      );
+    }
+    throw err;
+  }
   return { fileId, storageKey: `local:${objectKeyLocal}`, absolutePath };
 }
 
@@ -147,7 +182,7 @@ export async function deleteStoredUpload(storageKey: string, userId?: string) {
   if (storageKey.startsWith("oss:")) {
     const objectKey = storageKey.replace(/^oss:/, "");
     try {
-      const { oss } = await getStorageConfig(userId);
+      const oss = await resolveOssConfigForRead(userId);
       if (hasOssConfig(oss)) {
         const client = createOssClient(oss);
         await client.delete(objectKey);
@@ -173,7 +208,7 @@ export async function readStoredUpload(
 ) {
   if (storageKey.startsWith("oss:")) {
     const objectKey = storageKey.replace(/^oss:/, "");
-    const { oss } = await getStorageConfig(userId);
+    const oss = await resolveOssConfigForRead(userId);
     if (!hasOssConfig(oss)) {
       throw new Error("OSS 未配置，无法读取已存储的 OSS 文件");
     }
@@ -182,7 +217,7 @@ export async function readStoredUpload(
     if (oss.publicBaseUrl) {
       let url = joinUrl(oss.publicBaseUrl, objectKey);
       if (options?.thumbnail) {
-        url += "?x-oss-process=image/resize,m_fill,w_480,h_320";
+        url += `?x-oss-process=${OSS_THUMB_PROCESS}`;
       }
       return { kind: "redirect" as const, url };
     }
@@ -194,7 +229,7 @@ export async function readStoredUpload(
       };
     }
     if (options?.thumbnail) {
-      signOptions.process = "image/resize,m_fill,w_480,h_320";
+      signOptions.process = OSS_THUMB_PROCESS;
     }
 
     return {
@@ -204,6 +239,40 @@ export async function readStoredUpload(
   }
 
   const resolvedKey = storageKey.replace(/^local:/, "");
-  const buffer = await fs.readFile(path.join(paths.uploadsDir, resolvedKey));
-  return { kind: "buffer" as const, buffer };
+  try {
+    const buffer = await fs.readFile(path.join(paths.uploadsDir, resolvedKey));
+    return { kind: "buffer" as const, buffer };
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e?.code === "ENOENT") {
+      throw new Error(
+        "本地附件文件不存在：该记录可能在其他服务器上产生，或当前 DATA_ROOT 下无对应文件。",
+      );
+    }
+    throw err;
+  }
+}
+
+/**
+ * 通过 OSS SDK 直接拉取对象字节（用于 API 代理 fetch 失败时的回退，避免依赖公网 URL/CORS）。
+ */
+export async function readOssObjectBufferForApi(
+  storageKey: string,
+  userId: string,
+  opts: { thumbnail?: boolean },
+): Promise<Buffer | null> {
+  if (!storageKey.startsWith("oss:")) return null;
+  const objectKey = storageKey.replace(/^oss:/, "");
+  const oss = await resolveOssConfigForRead(userId);
+  if (!hasOssConfig(oss)) return null;
+  const client = createOssClient(oss);
+  try {
+    const getOpts = opts.thumbnail ? { process: OSS_THUMB_PROCESS } : {};
+    const { content } = await client.get(objectKey, getOpts);
+    if (Buffer.isBuffer(content)) return content;
+    if (content instanceof Uint8Array) return Buffer.from(content);
+    return null;
+  } catch {
+    return null;
+  }
 }
