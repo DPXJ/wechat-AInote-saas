@@ -58,6 +58,10 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/favicon");
 
   if (!user && !isPublic) {
+    // API 不要 302 到登录页（返回 HTML），否则前端 await res.json() 会报 Unexpected token '<'
+    if (pathname.startsWith("/api/") && !pathname.startsWith("/api/auth")) {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

@@ -16,6 +16,7 @@ import { StatsBar } from "@/components/stats-bar";
 import { TodoPanel } from "@/components/todo-panel";
 import { RecordDetailModal } from "@/components/record-detail-modal";
 import { TagManager } from "@/components/tag-manager";
+import { ProjectsPanel } from "@/components/projects-panel";
 import { SyncIndicator } from "@/components/sync-indicator";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import {
@@ -37,9 +38,18 @@ import type {
   TodoPriority,
 } from "@/lib/types";
 import { sanitizeSummary } from "@/lib/ai";
+import type { Project } from "@/lib/projects";
 import { formatDateTime, formatDateOnly, formatTime } from "@/lib/utils";
 
-type WorkspaceTab = "record" | "history" | "favorites" | "todos" | "tags" | "trash" | "settings";
+type WorkspaceTab =
+  | "record"
+  | "history"
+  | "favorites"
+  | "todos"
+  | "projects"
+  | "tags"
+  | "trash"
+  | "settings";
 type HistoryFilter = "all" | "text" | "image" | "video" | "audio" | "document" | "synced";
 type DocSubFilter = "" | "pdf" | "word" | "excel" | "md";
 
@@ -113,6 +123,14 @@ function TabIcon({ id, className = "w-[18px] h-[18px]" }: { id: string; classNam
   switch (id) {
     case "record": return <svg {...props}><path d="M12 5v14M5 12h14" /></svg>;
     case "todos": return <svg {...props}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M9 12l2 2 4-4" /></svg>;
+    case "projects":
+      return (
+        <svg {...props}>
+          <path d="M3 7V5a2 2 0 0 1 2-2h2l2-2 2 2h2a2 2 0 0 1 2 2v2" />
+          <path d="M3 7h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+          <path d="M8 12h8M8 16h5" />
+        </svg>
+      );
     case "history": return <svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>;
     case "favorites": return <StarIconRounded className={className} size={18} />;
     case "search": return <svg {...props}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
@@ -146,9 +164,34 @@ function PendingTodoCountBadge({
   );
 }
 
+/** 项目总数：与待办同布局，白色/前景色字，无红色强调 */
+function ProjectsCountBadge({
+  count,
+  className = "",
+}: {
+  count: number;
+  className?: string;
+}) {
+  if (count <= 0) return null;
+  const text = count > 99 ? "99+" : String(count);
+  return (
+    <span
+      className={[
+        "inline-flex shrink-0 items-baseline justify-center text-base font-semibold tabular-nums leading-none tracking-tight text-[var(--foreground)] antialiased opacity-95",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {text}
+    </span>
+  );
+}
+
 const tabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "record", label: "开始记录" },
   { id: "todos", label: "待办" },
+  { id: "projects", label: "项目" },
   { id: "history", label: "历史" },
   { id: "favorites", label: "收藏" },
   { id: "tags", label: "标签" },
@@ -231,11 +274,17 @@ export function HomeWorkspace({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [detailModalId, setDetailModalId] = useState<string | null>(null);
   const [pendingTodoCount, setPendingTodoCount] = useState(initialPendingTodoCount);
+  const [projectsCount, setProjectsCount] = useState(0);
   const [userEmail, setUserEmail] = useState("");
   const [prefetchedTodos, setPrefetchedTodos] = useState<{ todos: Todo[]; total: number } | null>(null);
   const [prefetchedFavorites, setPrefetchedFavorites] = useState<KnowledgeRecord[] | null>(null);
+  /** 与 /api/favorites 对齐的已收藏 recordId，避免每条详情单独请求 isFavorite */
+  const [favoritedRecordIds, setFavoritedRecordIds] = useState<string[]>([]);
   const [prefetchedTags, setPrefetchedTags] = useState<Array<{ tag: string; count: number }> | null>(null);
   const [prefetchedTrash, setPrefetchedTrash] = useState<Array<KnowledgeRecord & { deletedAt: string }> | null>(null);
+  const [prefetchedProjects, setPrefetchedProjects] = useState<Project[] | undefined>(undefined);
+  /** 曾打开过的 Tab 保持挂载，避免反复切换时整页重挂载与重复请求 */
+  const [tabsEverOpened, setTabsEverOpened] = useState<Set<WorkspaceTab>>(() => new Set<WorkspaceTab>(["record"]));
   const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [todosInitialPriority, setTodosInitialPriority] = useState<TodoPriority | "">("");
@@ -252,6 +301,28 @@ export function HomeWorkspace({
         if (typeof d.pendingTodos === "number") setPendingTodoCount(d.pendingTodos);
       })
       .catch(() => {});
+  }, []);
+
+  const refreshProjectsCount = useCallback(() => {
+    fetch("/api/projects", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.projects)) setProjectsCount(d.projects.length);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    void refreshProjectsCount();
+  }, [refreshProjectsCount]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const n = (e as CustomEvent<{ count?: number }>).detail?.count;
+      if (typeof n === "number") setProjectsCount(n);
+    };
+    window.addEventListener("ai-box-projects-count", handler as EventListener);
+    return () => window.removeEventListener("ai-box-projects-count", handler as EventListener);
   }, []);
 
   useEffect(() => {
@@ -377,7 +448,15 @@ export function HomeWorkspace({
         .catch(() => {}),
       fetch("/api/favorites", { signal: abort.signal })
         .then((r) => r.json())
-        .then((d) => setPrefetchedFavorites(d.records || []))
+        .then((d) => {
+          const list = (d.records || []) as KnowledgeRecord[];
+          setPrefetchedFavorites(list);
+          setFavoritedRecordIds((prev) => {
+            const s = new Set(prev);
+            for (const r of list) s.add(r.id);
+            return Array.from(s);
+          });
+        })
         .catch(() => {}),
       fetch("/api/tags", { signal: abort.signal })
         .then((r) => r.json())
@@ -386,6 +465,10 @@ export function HomeWorkspace({
       fetch("/api/records/trash?limit=50", { signal: abort.signal })
         .then((r) => r.json())
         .then((d) => setPrefetchedTrash(d.records || []))
+        .catch(() => {}),
+      fetch("/api/projects", opts)
+        .then((r) => r.json())
+        .then((d) => setPrefetchedProjects((d.projects || []) as Project[]))
         .catch(() => {}),
     ]);
     return () => abort.abort();
@@ -412,6 +495,15 @@ export function HomeWorkspace({
   useEffect(() => {
     if (activeTab === "todos") refreshPendingTodoCount();
   }, [activeTab, refreshPendingTodoCount]);
+
+  useEffect(() => {
+    setTabsEverOpened((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("ai-box-theme");
@@ -519,6 +611,8 @@ export function HomeWorkspace({
       setTotal((prev) => Math.max(0, prev - 1));
       if (selectedRecordId === id) setSelectedRecordId("");
       if (detailModalId === id) setDetailModalId(null);
+      setFavoritedRecordIds((prev) => prev.filter((x) => x !== id));
+      setPrefetchedFavorites((prev) => (prev ?? []).filter((r) => r.id !== id));
       fetch(`/api/records/${id}`, { method: "DELETE" }).then((res) => {
         if (!res.ok) refreshRecords();
       }).catch(() => refreshRecords());
@@ -576,6 +670,22 @@ export function HomeWorkspace({
       setRecords((p) => p.map((r) => (r.id === id ? data.record : r)));
     }
   }, []);
+
+  const handleFavoriteCommitted = useCallback((recordId: string, isFavorite: boolean) => {
+    setFavoritedRecordIds((prev) => {
+      const s = new Set(prev);
+      if (isFavorite) s.add(recordId);
+      else s.delete(recordId);
+      return Array.from(s);
+    });
+    setPrefetchedFavorites((prev) => {
+      if (!isFavorite) return (prev ?? []).filter((r) => r.id !== recordId);
+      const rec = records.find((r) => r.id === recordId);
+      if (!rec) return prev ?? [];
+      const rest = (prev ?? []).filter((r) => r.id !== recordId);
+      return [rec, ...rest];
+    });
+  }, [records]);
 
   const handleHistoryFilterChange = useCallback((f: HistoryFilter) => {
     setHistoryFilter(f);
@@ -723,6 +833,9 @@ export function HomeWorkspace({
                       {tab.id === "todos" && pendingTodoCount > 0 && (
                         <PendingTodoCountBadge count={pendingTodoCount} />
                       )}
+                      {tab.id === "projects" && projectsCount > 0 && (
+                        <ProjectsCountBadge count={projectsCount} />
+                      )}
                     </span>
                   )}
                   {sidebarCollapsed && tab.id === "todos" && pendingTodoCount > 0 && (
@@ -730,6 +843,9 @@ export function HomeWorkspace({
                       count={pendingTodoCount}
                       className="absolute right-0 top-0 text-sm"
                     />
+                  )}
+                  {sidebarCollapsed && tab.id === "projects" && projectsCount > 0 && (
+                    <ProjectsCountBadge count={projectsCount} className="absolute right-0 top-0 text-sm" />
                   )}
                 </button>
               ))}
@@ -872,6 +988,11 @@ export function HomeWorkspace({
                             {pendingTodoCount > 99 ? "99+" : pendingTodoCount}
                           </span>
                         )}
+                        {tab.id === "projects" && projectsCount > 0 && (
+                          <span className="rounded-md bg-[var(--surface-strong)] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--foreground)]">
+                            {projectsCount > 99 ? "99+" : projectsCount}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </nav>
@@ -911,11 +1032,11 @@ export function HomeWorkspace({
             <div
               className={[
                 "content-card flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)]/80 shadow-sm backdrop-blur-sm overflow-hidden",
-                activeTab !== "todos" && "p-5 lg:p-6",
+                activeTab !== "todos" && activeTab !== "projects" && "p-5 lg:p-6",
               ].filter(Boolean).join(" ")}
             >
-              {activeTab === "record" && (
-                <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
+              {tabsEverOpened.has("record") && (
+                <div className={activeTab === "record" ? "hide-scrollbar min-h-0 flex-1 overflow-y-auto" : "hidden"}>
                   <div className="mb-4 flex items-center justify-between gap-2">
                     <h2 className="text-sm font-medium text-[var(--foreground)]">记录信息</h2>
                     <SyncIndicator />
@@ -932,42 +1053,73 @@ export function HomeWorkspace({
                 </div>
               )}
 
-              {activeTab === "history" && (
-                <HistoryTab
-                  records={filteredRecords}
-                  total={historyTagFilter != null ? filteredRecords.length : total}
-                  hasMore={records.length < total}
-                  loadingMore={loadingMore}
-                  selectedRecord={selectedRecord}
-                  historyFilter={historyFilter}
-                  docSubFilter={docSubFilter}
-                  historyTagFilter={historyTagFilter}
-                  onFilterChange={(f) => { setHistoryTagFilter(null); handleHistoryFilterChange(f); }}
-                  onDocSubFilterChange={setDocSubFilter}
-                  onClearTagFilter={() => setHistoryTagFilter(null)}
-                  onSelectRecord={setSelectedRecordId}
-                  onLoadMore={loadMore}
-                  onDelete={handleDeleteRequest}
-                  onUpdate={handleUpdate}
-                  onOpenDetail={setDetailModalId}
-                  onRefresh={refreshRecords}
-                  onReplaceRecord={handleReplaceRecord}
-                  initialSearchActive={searchAutoOpen}
-                  onSearchActiveChange={setSearchAutoOpen}
-                />
+              {tabsEverOpened.has("history") && (
+                <div className={activeTab === "history" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+                  <HistoryTab
+                    records={filteredRecords}
+                    total={historyTagFilter != null ? filteredRecords.length : total}
+                    hasMore={records.length < total}
+                    loadingMore={loadingMore}
+                    selectedRecord={selectedRecord}
+                    historyFilter={historyFilter}
+                    docSubFilter={docSubFilter}
+                    historyTagFilter={historyTagFilter}
+                    onFilterChange={(f) => { setHistoryTagFilter(null); handleHistoryFilterChange(f); }}
+                    onDocSubFilterChange={setDocSubFilter}
+                    onClearTagFilter={() => setHistoryTagFilter(null)}
+                    onSelectRecord={setSelectedRecordId}
+                    onLoadMore={loadMore}
+                    onDelete={handleDeleteRequest}
+                    onUpdate={handleUpdate}
+                    onOpenDetail={setDetailModalId}
+                    onRefresh={refreshRecords}
+                    onReplaceRecord={handleReplaceRecord}
+                    initialSearchActive={searchAutoOpen}
+                    onSearchActiveChange={setSearchAutoOpen}
+                    favoritedRecordIds={favoritedRecordIds}
+                    onFavoriteCommitted={handleFavoriteCommitted}
+                  />
+                </div>
               )}
 
-              {activeTab === "favorites" && (
-                <FavoritesTab
-                  initialRecords={prefetchedFavorites}
-                  onDelete={handleDeleteRequest}
-                  onUpdate={handleUpdate}
-                  onOpenDetail={setDetailModalId}
-                />
+              {tabsEverOpened.has("favorites") && (
+                <div className={activeTab === "favorites" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+                  <FavoritesTab
+                    initialRecords={prefetchedFavorites}
+                    onDelete={handleDeleteRequest}
+                    onUpdate={handleUpdate}
+                    onOpenDetail={setDetailModalId}
+                    onFavoriteCommitted={handleFavoriteCommitted}
+                  />
+                </div>
               )}
 
-              {activeTab === "todos" && (
-                <div className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] lg:p-6 lg:pb-[max(6rem,calc(5rem+env(safe-area-inset-bottom)))]">
+              {tabsEverOpened.has("projects") && (
+                <div
+                  className={
+                    activeTab === "projects"
+                      ? "hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-5"
+                      : "hidden"
+                  }
+                >
+                  <div className="mb-3 shrink-0">
+                    <h2 className="text-sm font-semibold text-[var(--foreground)]">项目任务</h2>
+                    <p className="mt-0.5 text-xs text-[var(--muted)]">
+                      按工作主题汇总待办，可单条或批量投递到滴答清单（与「设置 → 滴答清单」相同链路）。
+                    </p>
+                  </div>
+                  <ProjectsPanel initialProjects={prefetchedProjects} />
+                </div>
+              )}
+
+              {tabsEverOpened.has("todos") && (
+                <div
+                  className={
+                    activeTab === "todos"
+                      ? "hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] lg:p-6 lg:pb-[max(6rem,calc(5rem+env(safe-area-inset-bottom)))]"
+                      : "hidden"
+                  }
+                >
                   <TodoPanel
                     initialTodos={prefetchedTodos?.todos}
                     initialTotal={prefetchedTodos?.total}
@@ -977,24 +1129,30 @@ export function HomeWorkspace({
                   />
                 </div>
               )}
-              {activeTab === "tags" && (
-                <TagManager
-                  initialTags={prefetchedTags}
-                  onTagClick={(tag) => {
-                    setHistoryTagFilter(tag);
-                    setActiveTab("history");
-                  }}
-                />
+              {tabsEverOpened.has("tags") && (
+                <div className={activeTab === "tags" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+                  <TagManager
+                    initialTags={prefetchedTags}
+                    onTagClick={(tag) => {
+                      setHistoryTagFilter(tag);
+                      setActiveTab("history");
+                    }}
+                  />
+                </div>
               )}
-              {activeTab === "trash" && (
-                <TrashTab
-                  initialRecords={prefetchedTrash}
-                  onRestore={() => { setActiveTab("history"); refreshRecords(); }}
-                  onGoToHistory={() => { setActiveTab("history"); }}
-                />
+              {tabsEverOpened.has("trash") && (
+                <div className={activeTab === "trash" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+                  <TrashTab
+                    initialRecords={prefetchedTrash}
+                    onRestore={() => { setActiveTab("history"); refreshRecords(); }}
+                    onGoToHistory={() => { setActiveTab("history"); }}
+                  />
+                </div>
               )}
-              {activeTab === "settings" && (
-                <IntegrationsPanel initialSettings={integrationSettings} initialStatus={integrationStatus} />
+              {tabsEverOpened.has("settings") && (
+                <div className={activeTab === "settings" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+                  <IntegrationsPanel initialSettings={integrationSettings} initialStatus={integrationStatus} />
+                </div>
               )}
             </div>
           </div>
@@ -1103,6 +1261,8 @@ function HistoryTab({
   onReplaceRecord,
   initialSearchActive,
   onSearchActiveChange,
+  favoritedRecordIds,
+  onFavoriteCommitted,
 }: {
   records: KnowledgeRecord[];
   total: number;
@@ -1124,6 +1284,8 @@ function HistoryTab({
   onReplaceRecord?: (id: string) => Promise<void>;
   initialSearchActive?: boolean;
   onSearchActiveChange?: (v: boolean) => void;
+  favoritedRecordIds: string[];
+  onFavoriteCommitted: (recordId: string, isFavorite: boolean) => void;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1635,6 +1797,8 @@ function HistoryTab({
                   onUpdate={onUpdate}
                   onOpenDetail={onOpenDetail}
                   onReplaceRecord={onReplaceRecord}
+                  favorited={favoritedRecordIds.includes(selectedRecord.id)}
+                  onFavoriteCommitted={onFavoriteCommitted}
                 />
               </div>
             ) : (
@@ -1659,6 +1823,8 @@ function HistoryTab({
           onUpdate={onUpdate}
           onOpenDetail={onOpenDetail}
           onReplaceRecord={onReplaceRecord}
+          favorited={favoritedRecordIds.includes(selectedRecord.id)}
+          onFavoriteCommitted={onFavoriteCommitted}
         />
       ) : null}
     </MobileFullScreenLayer>
@@ -1925,11 +2091,13 @@ function FavoritesTab({
   onUpdate,
   onOpenDetail,
   initialRecords,
+  onFavoriteCommitted,
 }: {
   onDelete: (id: string) => void;
   onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void;
   onOpenDetail: (id: string) => void;
   initialRecords?: KnowledgeRecord[] | null;
+  onFavoriteCommitted?: (recordId: string, isFavorite: boolean) => void;
 }) {
   const [records, setRecords] = useState<KnowledgeRecord[]>(initialRecords ?? []);
   const hasInitial = initialRecords != null;
@@ -2018,24 +2186,38 @@ function FavoritesTab({
     }
   }, [displayRecords, selectedRecordId]);
 
-  const fetchFavorites = useCallback(async () => {
-    if (!hasInitial) setLoading(true);
+  const fetchFavorites = useCallback(async (mode: "blocking" | "silent" = "blocking") => {
+    if (mode === "blocking") setLoading(true);
     try {
-      const res = await fetch("/api/favorites");
+      const res = await fetch("/api/favorites", { cache: "no-store" });
       const data = await res.json();
+      if (!res.ok) return;
       setRecords(data.records || []);
-      if (data.records?.length > 0 && !selectedRecordId) {
-        setSelectedRecordId(data.records[0].id);
-      }
+    } catch {
+      if (mode === "blocking") setRecords([]);
     } finally {
-      setLoading(false);
+      if (mode === "blocking") setLoading(false);
     }
-  }, [selectedRecordId, hasInitial]);
+  }, []);
 
   useEffect(() => {
-    void fetchFavorites();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载时拉取收藏列表
-  }, []);
+    if (hasInitial) {
+      setLoading(false);
+      const idle =
+        typeof requestIdleCallback !== "undefined"
+          ? requestIdleCallback(() => {
+              void fetchFavorites("silent");
+            })
+          : window.setTimeout(() => {
+              void fetchFavorites("silent");
+            }, 1);
+      return () => {
+        if (typeof cancelIdleCallback !== "undefined") cancelIdleCallback(idle as number);
+        else clearTimeout(idle as number);
+      };
+    }
+    void fetchFavorites("blocking");
+  }, [hasInitial, fetchFavorites]);
 
   const handleUnfavorite = useCallback(
     async (recordId: string) => {
@@ -2044,11 +2226,12 @@ function FavoritesTab({
       try {
         const res = await fetch(`/api/favorites/${recordId}`, { method: "DELETE" });
         if (!res.ok) throw new Error("delete failed");
+        onFavoriteCommitted?.(recordId, false);
       } catch {
-        void fetchFavorites();
+        void fetchFavorites("silent");
       }
     },
-    [fetchFavorites],
+    [fetchFavorites, onFavoriteCommitted],
   );
 
   const replaceFavoriteRecord = useCallback(async (id: string) => {
@@ -2279,6 +2462,7 @@ function RecordPane({
   onReplaceRecord,
   favorited: initialFavorited,
   onToggleFavorite,
+  onFavoriteCommitted,
 }: {
   record: KnowledgeRecord;
   onDelete: (id: string) => void;
@@ -2287,6 +2471,8 @@ function RecordPane({
   onReplaceRecord?: (id: string) => Promise<void>;
   favorited?: boolean;
   onToggleFavorite?: () => void;
+  /** 历史详情：收藏 API 成功后同步全局收藏 id 缓存 */
+  onFavoriteCommitted?: (recordId: string, isFavorite: boolean) => void;
 }) {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(record.title);
@@ -2518,6 +2704,7 @@ function RecordPane({
         const res = await fetch(`/api/favorites/${record.id}`, { method: "DELETE" });
         if (!res.ok) throw new Error("favorite remove failed");
       }
+      onFavoriteCommitted?.(record.id, next);
     } catch {
       setIsFav(prev);
     }

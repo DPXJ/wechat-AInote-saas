@@ -245,6 +245,84 @@ export interface Database {
         };
         Relationships: [];
       };
+      projects: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string;
+          archived: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          name: string;
+          description?: string;
+          archived?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          description?: string;
+          archived?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      project_tasks: {
+        Row: {
+          id: string;
+          user_id: string;
+          project_id: string;
+          content: string;
+          status: string;
+          priority: string;
+          due_at: string | null;
+          sort_order: number;
+          synced_at: string | null;
+          completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          project_id: string;
+          content: string;
+          status?: string;
+          priority?: string;
+          due_at?: string | null;
+          sort_order?: number;
+          synced_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          project_id?: string;
+          content?: string;
+          status?: string;
+          priority?: string;
+          due_at?: string | null;
+          sort_order?: number;
+          synced_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       favorites: {
         Row: {
           id: string;

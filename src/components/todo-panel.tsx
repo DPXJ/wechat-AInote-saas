@@ -167,15 +167,48 @@ export function TodoPanel({
   }, []);
 
   useEffect(() => {
+    if (initialTodos !== undefined) setServerTodos(initialTodos);
+    if (initialTotal !== undefined) setTotal(initialTotal);
+  }, [initialTodos, initialTotal]);
+
+  useEffect(() => {
     void loadLocalTodos();
-    void fetchTodos();
-    const timer = window.setInterval(() => { void fetchTodos(); }, 30000);
-    const onFocus = () => { void fetchTodos(); };
+    const warm =
+      (initialTodos !== undefined && initialTodos.length > 0) ||
+      (initialTotal !== undefined && initialTotal > 0);
+    const runFetch = () => {
+      void fetchTodos();
+    };
+    let cancelDeferredFetch: (() => void) | undefined;
+    if (warm) {
+      if (typeof requestIdleCallback !== "undefined") {
+        const idleId = requestIdleCallback(() => runFetch(), { timeout: 2000 });
+        cancelDeferredFetch = () => {
+          cancelIdleCallback(idleId);
+        };
+      } else {
+        const t = window.setTimeout(runFetch, 1);
+        cancelDeferredFetch = () => {
+          clearTimeout(t);
+        };
+      }
+    } else {
+      runFetch();
+    }
+    const timer = window.setInterval(() => {
+      void fetchTodos();
+    }, 30000);
+    const onFocus = () => {
+      void fetchTodos();
+    };
     window.addEventListener("focus", onFocus);
     return () => {
+      cancelDeferredFetch?.();
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
+    // 首次如何拉取仅依赖 mount 时的预取结果；后续由上方 effect 同步 props
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [fetchTodos, loadLocalTodos]);
 
   const handleCreate = async () => {

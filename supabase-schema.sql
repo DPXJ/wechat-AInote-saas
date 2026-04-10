@@ -123,6 +123,39 @@ CREATE TABLE IF NOT EXISTS favorites (
 
 CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
 
+-- Projects (工作项目：容器 + 多条任务，可投递滴答清单)
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  archived BOOLEAN NOT NULL DEFAULT FALSE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_user_archived ON projects(user_id, archived);
+
+CREATE TABLE IF NOT EXISTS project_tasks (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  priority TEXT NOT NULL DEFAULT 'medium',
+  due_at TIMESTAMPTZ,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  synced_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_tasks_project_id ON project_tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_tasks_user_id ON project_tasks(user_id);
+
 -- ============================================================
 -- Row Level Security (RLS) — enable on all tables
 -- ============================================================
@@ -134,6 +167,8 @@ ALTER TABLE sync_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE todos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_tasks ENABLE ROW LEVEL SECURITY;
 
 -- Policy: users can only access their own data
 CREATE POLICY "Users manage own records" ON records FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -143,6 +178,8 @@ CREATE POLICY "Users manage own sync_runs" ON sync_runs FOR ALL USING (auth.uid(
 CREATE POLICY "Users manage own settings" ON settings FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users manage own todos" ON todos FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users manage own favorites" ON favorites FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users manage own projects" ON projects FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users manage own project_tasks" ON project_tasks FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Service role bypass: allow service_role key to access all data (for server-side operations)
 CREATE POLICY "Service role full access records" ON records FOR ALL TO service_role USING (true) WITH CHECK (true);
@@ -152,3 +189,5 @@ CREATE POLICY "Service role full access sync_runs" ON sync_runs FOR ALL TO servi
 CREATE POLICY "Service role full access settings" ON settings FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access todos" ON todos FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access favorites" ON favorites FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access projects" ON projects FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access project_tasks" ON project_tasks FOR ALL TO service_role USING (true) WITH CHECK (true);
