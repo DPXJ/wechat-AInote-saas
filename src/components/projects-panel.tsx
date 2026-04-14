@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Project, ProjectTask } from "@/lib/projects";
+import type { Project, ProjectTask, TaskLinkedSource } from "@/lib/projects";
 import type { TodoPriority } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
 
@@ -31,6 +32,22 @@ const priorityConfig: Record<TodoPriority, { label: string; bg: string }> = {
   medium: { label: "中", bg: "bg-blue-500/10 text-blue-600" },
   low: { label: "低", bg: "bg-gray-400/10 text-gray-500" },
 };
+
+const TAG_COLORS = [
+  { bg: "bg-violet-500/20", text: "text-violet-300", border: "border-violet-500/30" },
+  { bg: "bg-blue-500/20",   text: "text-blue-300",   border: "border-blue-500/30" },
+  { bg: "bg-cyan-500/20",   text: "text-cyan-300",   border: "border-cyan-500/30" },
+  { bg: "bg-emerald-500/20",text: "text-emerald-300",border: "border-emerald-500/30" },
+  { bg: "bg-amber-500/20",  text: "text-amber-300",  border: "border-amber-500/30" },
+  { bg: "bg-rose-500/20",   text: "text-rose-300",   border: "border-rose-500/30" },
+  { bg: "bg-orange-500/20", text: "text-orange-300", border: "border-orange-500/30" },
+  { bg: "bg-pink-500/20",   text: "text-pink-300",   border: "border-pink-500/30" },
+] as const;
+
+function getTagColor(tag: string, allTags: string[]) {
+  const idx = allTags.indexOf(tag);
+  return TAG_COLORS[(idx >= 0 ? idx : 0) % TAG_COLORS.length];
+}
 
 /** 乐观添加任务：尚未落库前用此前缀，禁止 PATCH/同步直到替换为服务端 id */
 const LOCAL_PROJECT_TASK_PREFIX = "local_ptask_";
@@ -79,7 +96,16 @@ function formatTimelineDayLabel(dateKey: string): string {
   return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[] } = {}) {
+export function ProjectsPanel({
+  initialProjects,
+  projectsDeepLink,
+  onProjectsDeepLinkConsumed,
+}: {
+  initialProjects?: Project[];
+  /** 由首页 URL 或资料详情「项目中的引用」传入，消费后需 onProjectsDeepLinkConsumed */
+  projectsDeepLink?: { projectId: string; taskId?: string } | null;
+  onProjectsDeepLinkConsumed?: () => void;
+} = {}) {
   const [projects, setProjects] = useState<Project[]>(() => initialProjects ?? []);
   const [loading, setLoading] = useState(() => initialProjects === undefined);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -94,6 +120,29 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
   const [batchSyncing, setBatchSyncing] = useState(false);
   const [completingIds, setCompletingIds] = useState<Set<string>>(() => new Set());
   const [showCompletedTasks, setShowCompletedTasks] = useState(false);
+  const [linksByTaskId, setLinksByTaskId] = useState<Record<string, TaskLinkedSource[]>>({});
+  /** 当前项目下任务↔信源映射是否在请求中（避免详情里「关联信源」先空白再突然出现） */
+  const [taskLinksLoading, setTaskLinksLoading] = useState(false);
+  const taskLinksFetchProjectRef = useRef<string | null>(null);
+  const [linkPickerTaskId, setLinkPickerTaskId] = useState<string | null>(null);
+  const [pickCandidates, setPickCandidates] = useState<
+    Array<{ id: string; title: string; sourceLabel: string; confirmedAt?: string | null }>
+  >([]);
+  const [pickLoading, setPickLoading] = useState(false);
+  const [pickedRecordIds, setPickedRecordIds] = useState<string[]>([]);
+  const [sourceSaveLoading, setSourceSaveLoading] = useState(false);
+  const [sourceSearchQuery, setSourceSearchQuery] = useState("");
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [projectMenuOpenId, setProjectMenuOpenId] = useState<string | null>(null);
+  const [projectMenuAnchor, setProjectMenuAnchor] = useState<DOMRect | null>(null);
+  const newTaskTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+  const [tagInputTaskId, setTagInputTaskId] = useState<string | null>(null);
+  const [tagInputValue, setTagInputValue] = useState("");
+  const pendingOpenTaskDetailRef = useRef<{ projectId: string; taskId: string } | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
   const tasksByProjectRef = useRef<Map<string, ProjectTask[]>>(new Map());
@@ -138,31 +187,60 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
     }
   }, []);
 
-  const loadTasks = useCallback(async (projectId: string, opts?: { showLoading?: boolean }) => {
-    const showLoading = opts?.showLoading !== false;
-    const gen = ++tasksFetchGenRef.current;
-    if (showLoading) setTasksLoading(true);
+  const loadTaskSourceLinks = useCallback(async (projectId: string) => {
+    taskLinksFetchProjectRef.current = projectId;
+    setTaskLinksLoading(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/tasks`, { cache: "no-store" });
+      const res = await fetch(`/api/projects/${projectId}/task-source-links`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "加载失败");
-      const list = (data.tasks || []) as ProjectTask[];
-      if (tasksFetchGenRef.current !== gen) return;
-      if (selectedIdRef.current !== projectId) return;
-      setTasks((prev) => {
-        const merged = mergeIncomingTasks(prev, list);
-        tasksByProjectRef.current.set(projectId, merged);
-        return merged;
-      });
-    } catch {
-      if (tasksFetchGenRef.current !== gen) return;
-      if (selectedIdRef.current === projectId) {
-        if (!tasksByProjectRef.current.get(projectId)) setTasks([]);
+      if (taskLinksFetchProjectRef.current === projectId) {
+        setLinksByTaskId((data.linksByTaskId || {}) as Record<string, TaskLinkedSource[]>);
       }
+    } catch (e) {
+      if (taskLinksFetchProjectRef.current === projectId) {
+        setLinksByTaskId({});
+      }
+      emitGlobal(e instanceof Error ? e.message : "信源关联加载失败", "error");
     } finally {
-      if (selectedIdRef.current === projectId && showLoading) setTasksLoading(false);
+      if (taskLinksFetchProjectRef.current === projectId) {
+        setTaskLinksLoading(false);
+        taskLinksFetchProjectRef.current = null;
+      }
     }
   }, []);
+
+  const loadTasks = useCallback(
+    async (projectId: string, opts?: { showLoading?: boolean }) => {
+      const showLoading = opts?.showLoading !== false;
+      const gen = ++tasksFetchGenRef.current;
+      if (showLoading) setTasksLoading(true);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/tasks`, { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "加载失败");
+        const list = (data.tasks || []) as ProjectTask[];
+        if (tasksFetchGenRef.current !== gen) return;
+        if (selectedIdRef.current !== projectId) return;
+        setTasks((prev) => {
+          const merged = mergeIncomingTasks(prev, list);
+          tasksByProjectRef.current.set(projectId, merged);
+          return merged;
+        });
+        void loadTaskSourceLinks(projectId);
+      } catch {
+        if (tasksFetchGenRef.current !== gen) return;
+        if (selectedIdRef.current === projectId) {
+          if (!tasksByProjectRef.current.get(projectId)) setTasks([]);
+          setTaskLinksLoading(false);
+          taskLinksFetchProjectRef.current = null;
+        }
+      } finally {
+        if (selectedIdRef.current === projectId && showLoading) setTasksLoading(false);
+      }
+    },
+    [loadTaskSourceLinks],
+  );
 
   useEffect(() => {
     if (initialProjects === undefined) return;
@@ -202,7 +280,58 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
     setShowCompletedTasks(false);
   }, [selectedId]);
 
+  useEffect(() => {
+    if (!selectedId) {
+      setLinksByTaskId({});
+      setTaskLinksLoading(false);
+      taskLinksFetchProjectRef.current = null;
+      return;
+    }
+    setLinksByTaskId({});
+    setTaskLinksLoading(true);
+  }, [selectedId]);
+
+  // 切换项目时重置标签筛选
+  useEffect(() => {
+    setActiveTagFilter(null);
+    setTagInputTaskId(null);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!projectsDeepLink) return;
+    const { projectId, taskId } = projectsDeepLink;
+    setSelectedId(projectId);
+    if (taskId) pendingOpenTaskDetailRef.current = { projectId, taskId };
+    else pendingOpenTaskDetailRef.current = null;
+    onProjectsDeepLinkConsumed?.();
+  }, [projectsDeepLink, onProjectsDeepLinkConsumed]);
+
+  useEffect(() => {
+    const pending = pendingOpenTaskDetailRef.current;
+    if (!pending || tasksLoading) return;
+    if (selectedId !== pending.projectId) return;
+    if (tasks.some((t) => t.id === pending.taskId)) {
+      setDetailTaskId(pending.taskId);
+    }
+    pendingOpenTaskDetailRef.current = null;
+  }, [tasks, tasksLoading, selectedId]);
+
   const selected = projects.find((p) => p.id === selectedId) || null;
+
+  const detailTask = useMemo(
+    () => (detailTaskId ? tasks.find((t) => t.id === detailTaskId) ?? null : null),
+    [tasks, detailTaskId],
+  );
+
+  const filteredPickCandidates = useMemo(() => {
+    const q = sourceSearchQuery.trim().toLowerCase();
+    if (!q) return pickCandidates;
+    return pickCandidates.filter((c) => {
+      const title = (c.title || "").toLowerCase();
+      const src = (c.sourceLabel || "").toLowerCase();
+      return title.includes(q) || src.includes(q);
+    });
+  }, [pickCandidates, sourceSearchQuery]);
 
   useEffect(() => {
     if (selected) {
@@ -259,6 +388,25 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
       void loadProjects();
     } catch (err) {
       emitGlobal(err instanceof Error ? err.message : "保存失败", "error");
+    }
+  }
+
+  async function renameProject(projectId: string, newName: string) {
+    const name = newName.trim();
+    if (!name) { setRenamingProjectId(null); return; }
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "保存失败");
+      setRenamingProjectId(null);
+      setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, name } : p)));
+      emitGlobal("已重命名", "success");
+    } catch (err) {
+      emitGlobal(err instanceof Error ? err.message : "重命名失败", "error");
     }
   }
 
@@ -352,6 +500,7 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
           status: fields.status,
           priority: fields.priority,
           dueAt: fields.dueAt,
+          tags: fields.tags,
         }),
       });
       const data = await res.json();
@@ -508,7 +657,21 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
     (t) => t.status === "pending" && (!t.syncedAt || (t.updatedAt && t.syncedAt && t.updatedAt > t.syncedAt)),
   );
 
-  const visibleTasks = tasks.filter((t) => t.status === "pending" || completingIds.has(t.id));
+  const projectTags = useMemo(() => {
+    const all = new Set<string>();
+    for (const t of tasks) {
+      for (const tag of t.tags ?? []) all.add(tag);
+    }
+    return Array.from(all);
+  }, [tasks]);
+
+  const visibleTasks = tasks.filter((t) => {
+    if (t.status !== "pending" && !completingIds.has(t.id)) return false;
+    if (activeTagFilter) {
+      if (!(t.tags ?? []).includes(activeTagFilter)) return false;
+    }
+    return true;
+  });
   const doneTaskCount = tasks.filter((t) => t.status === "done").length;
   const pendingCount = tasks.filter((t) => t.status === "pending").length;
 
@@ -532,10 +695,98 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
     });
   }, [tasks]);
 
+  const openTaskSourcePicker = useCallback(
+    async (taskId: string) => {
+      setDetailTaskId(null);
+      setSourceSearchQuery("");
+      setLinkPickerTaskId(taskId);
+      setPickedRecordIds((linksByTaskId[taskId] || []).map((l) => l.recordId));
+      setPickLoading(true);
+      setPickCandidates([]);
+      try {
+        const res = await fetch("/api/records?forTaskLink=1&limit=500&offset=0", { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "加载失败");
+        const rows = (data.records || []) as Array<{
+          id: string;
+          title: string;
+          sourceLabel: string;
+          confirmedAt?: string | null;
+        }>;
+        setPickCandidates(
+          rows.map((r) => ({
+            id: r.id,
+            title: r.title,
+            sourceLabel: r.sourceLabel || "",
+            confirmedAt: r.confirmedAt ?? null,
+          })),
+        );
+      } catch (e) {
+        emitGlobal(e instanceof Error ? e.message : "加载资料列表失败", "error");
+      } finally {
+        setPickLoading(false);
+      }
+    },
+    [linksByTaskId],
+  );
+
+  async function saveTaskSourceSelection() {
+    if (!selectedId || !linkPickerTaskId) return;
+    const taskId = linkPickerTaskId;
+    setSourceSaveLoading(true);
+    try {
+      const res = await fetch(`/api/projects/${selectedId}/tasks/${taskId}/records`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recordIds: pickedRecordIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "保存失败");
+      const links = (data.links || []) as TaskLinkedSource[];
+      setLinksByTaskId((prev) => ({ ...prev, [taskId]: links }));
+      setLinkPickerTaskId(null);
+      emitGlobal("已保存任务关联", "success");
+    } catch (e) {
+      emitGlobal(e instanceof Error ? e.message : "保存失败", "error");
+    } finally {
+      setSourceSaveLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!linkPickerTaskId) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLinkPickerTaskId(null);
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [linkPickerTaskId]);
+
+  useEffect(() => {
+    if (!detailTaskId) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDetailTaskId(null);
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [detailTaskId]);
+
+  useEffect(() => {
+    if (!projectMenuOpenId) return;
+    const onClose = (e: MouseEvent) => {
+      if (!(e.target as Element).closest?.("[data-project-menu-portal]")) {
+        setProjectMenuOpenId(null);
+      }
+    };
+    document.addEventListener("mousedown", onClose, true);
+    return () => document.removeEventListener("mousedown", onClose, true);
+  }, [projectMenuOpenId]);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-6">
+    <>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-6">
       {/* 项目列表 */}
-      <aside className="flex w-full shrink-0 flex-col rounded-xl border border-[var(--line)] bg-[var(--card)] lg:w-72">
+      <aside className="flex min-h-0 w-full shrink-0 flex-col rounded-xl border border-[var(--line)] bg-[var(--card)] lg:w-72">
         <div className="border-b border-[var(--line)] p-4">
           <h2 className="text-sm font-semibold text-[var(--foreground)]">项目</h2>
           <form onSubmit={handleCreateProject} className="mt-3 flex gap-2">
@@ -555,30 +806,73 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
         </div>
         <div className="max-h-[40vh] min-h-0 flex-1 overflow-y-auto p-2 lg:max-h-none">
           {loading ? (
-            <p className="px-2 py-4 text-center text-xs text-[var(--muted)]">加载中…</p>
+            <div className="flex flex-col items-center justify-center gap-2 px-2 py-8">
+              <span className="h-7 w-7 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--foreground)]" aria-hidden />
+              <p className="text-center text-xs text-[var(--muted)]">加载项目…</p>
+            </div>
           ) : projects.length === 0 ? (
             <p className="px-2 py-4 text-center text-xs text-[var(--muted)]">暂无项目，先创建一个吧</p>
           ) : (
-            <ul className="space-y-1">
-              {projects.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(p.id)}
-                    className={[
-                      "flex w-full flex-col rounded-lg px-3 py-2.5 text-left text-sm transition",
-                      selectedId === p.id
-                        ? "bg-[var(--surface-strong)] font-medium text-[var(--foreground)]"
-                        : "text-[var(--muted-strong)] hover:bg-[var(--surface)]",
-                    ].join(" ")}
-                  >
-                    <span className="truncate">{p.name}</span>
-                    <span className="mt-0.5 text-[10px] text-[var(--muted)]">
-                      {p.doneCount ?? 0}/{p.totalTasks ?? 0} 完成
-                    </span>
-                  </button>
-                </li>
-              ))}
+            <ul className="space-y-0.5">
+              {projects.map((p) => {
+                const isSelected = selectedId === p.id;
+                const isRenaming = renamingProjectId === p.id;
+                return (
+                  <li key={p.id}>
+                    {isRenaming ? (
+                      <form
+                        className="flex items-center gap-1.5 rounded-xl border border-[var(--foreground)]/20 bg-[var(--sidebar-active)] px-3 py-2"
+                        onSubmit={(e) => { e.preventDefault(); void renameProject(p.id, renameValue); }}
+                      >
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") setRenamingProjectId(null); }}
+                          onBlur={() => void renameProject(p.id, renameValue)}
+                          className="min-w-0 flex-1 rounded bg-transparent text-sm font-semibold text-[var(--foreground)] outline-none"
+                          placeholder="项目名称"
+                        />
+                      </form>
+                    ) : (
+                      <div
+                        className={[
+                          "group relative flex w-full items-center gap-1 overflow-hidden rounded-xl pl-4 pr-1.5 py-2.5 text-left text-sm transition",
+                          isSelected
+                            ? "project-list-item--active font-semibold text-[var(--foreground)] border border-dashed border-white/25"
+                            : "border border-transparent text-[var(--muted-strong)] hover:bg-[var(--sidebar-active)] hover:text-[var(--foreground)]",
+                        ].join(" ")}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedId(p.id)}
+                          className="flex min-w-0 flex-1 flex-col text-left"
+                        >
+                          <span className="truncate">{p.name}</span>
+                          <span className="mt-0.5 text-[10px] text-[var(--muted)]">
+                            {p.doneCount ?? 0}/{p.totalTasks ?? 0} 完成
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          title="更多操作"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(p.id);
+                            setProjectMenuAnchor(e.currentTarget.getBoundingClientRect());
+                            setProjectMenuOpenId((prev) => (prev === p.id ? null : p.id));
+                          }}
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-0 transition hover:bg-[var(--surface-strong)] group-hover:opacity-100"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -633,18 +927,11 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
                         type="button"
                         onClick={syncBatch}
                         disabled={batchSyncing}
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                        className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--muted-strong)] hover:bg-[var(--surface-strong)] disabled:opacity-50"
                       >
-                        {batchSyncing ? "同步中…" : `同步未同步到滴答 (${tasksNeedingSync.length})`}
+                        {batchSyncing ? "同步中…" : `全部同步到滴答 (${tasksNeedingSync.length})`}
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void deleteProject()}
-                      className="rounded-lg border border-rose-500/40 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400"
-                    >
-                      删除项目
-                    </button>
                   </div>
                 </div>
               ) : (
@@ -683,25 +970,79 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
             </div>
 
             {!showCompletedTasks ? (
-              <form onSubmit={addTask} className="flex gap-2 border-b border-[var(--line)] p-3">
-                <input
+              <form onSubmit={addTask} className="flex items-end gap-2 border-b border-[var(--line)] px-3 pt-3 pb-3">
+                <textarea
+                  ref={newTaskTextareaRef}
+                  rows={1}
                   value={newTaskContent}
-                  onChange={(e) => setNewTaskContent(e.target.value)}
+                  onChange={(e) => {
+                    setNewTaskContent(e.target.value);
+                    const el = e.target;
+                    el.style.height = "auto";
+                    el.style.height = `${el.scrollHeight}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                    }
+                  }}
                   placeholder="新增任务，回车或点添加"
-                  className="input-focus-bar min-w-0 flex-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm"
+                  className="input-focus-bar min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm leading-normal"
+                  style={{ minHeight: "36px" }}
                 />
                 <button
                   type="submit"
-                  className="shrink-0 rounded-lg bg-[var(--foreground)] px-4 py-2 text-xs font-medium text-[var(--background)]"
+                  className="mb-0 shrink-0 rounded-lg bg-[var(--foreground)] px-4 py-2 text-xs font-medium text-[var(--background)]"
                 >
                   添加任务
                 </button>
               </form>
             ) : null}
 
+            {/* 标签筛选行 */}
+            {projectTags.length > 0 && !showCompletedTasks && (
+              <div className="flex items-center gap-1.5 overflow-x-auto border-b border-[var(--line)] px-3 py-2 scrollbar-none">
+                <span className="shrink-0 text-[10px] text-[var(--muted)]">标签</span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTagFilter(null)}
+                  className={[
+                    "shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium transition",
+                    activeTagFilter === null
+                      ? "bg-[var(--foreground)] text-[var(--background)]"
+                      : "bg-[var(--surface)] text-[var(--muted-strong)] hover:bg-[var(--surface-strong)]",
+                  ].join(" ")}
+                >
+                  全部
+                </button>
+                {projectTags.map((tag) => {
+                  const color = getTagColor(tag, projectTags);
+                  const isActive = activeTagFilter === tag;
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setActiveTagFilter(isActive ? null : tag)}
+                      className={[
+                        "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition",
+                        color.bg, color.text, color.border,
+                        isActive ? "opacity-100 ring-1 ring-white/20" : "opacity-60 hover:opacity-100",
+                      ].join(" ")}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {tasksLoading ? (
-                <p className="py-8 text-center text-xs text-[var(--muted)]">加载任务…</p>
+                <div className="flex flex-col items-center justify-center gap-2 py-12">
+                  <span className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--foreground)]" aria-hidden />
+                  <p className="text-center text-xs text-[var(--muted)]">加载任务…</p>
+                </div>
               ) : tasks.length === 0 ? (
                 <p className="py-8 text-center text-xs text-[var(--muted)]">暂无任务，在上面输入添加</p>
               ) : showCompletedTasks ? (
@@ -740,7 +1081,11 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
                                       className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--line)]"
                                       aria-label="标记为未完成"
                                     />
-                                    <div className="min-w-0 flex-1 cursor-default">
+                                    <button
+                                      type="button"
+                                      className="min-w-0 flex-1 cursor-pointer rounded-lg py-0.5 text-left outline-none ring-[var(--foreground)] hover:bg-[var(--surface-strong)]/80 focus-visible:ring-2 -mx-1 px-1"
+                                      onClick={() => setDetailTaskId(task.id)}
+                                    >
                                       <p className="text-sm font-medium leading-snug text-[var(--muted)] line-through">
                                         {task.content}
                                       </p>
@@ -748,7 +1093,7 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
                                         <span>创建 {formatDateTime(task.createdAt)}</span>
                                         <span>完成于 {formatDueInput(doneAtIso)}</span>
                                       </div>
-                                    </div>
+                                    </button>
                                   </div>
                                   <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:min-w-[220px] lg:flex-nowrap lg:justify-start lg:pl-4">
                                     <span
@@ -760,6 +1105,35 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
                                       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-60" />
                                       {priorityConfig[task.priority ?? "medium"].label}
                                     </span>
+                                    <button
+                                      type="button"
+                                      title="关联信源"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void openTaskSourcePicker(task.id);
+                                      }}
+                                      className="relative inline-flex shrink-0 rounded-md p-1 text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                                    >
+                                      <svg
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        aria-hidden
+                                      >
+                                        <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7.07 7.07L14 13" />
+                                        <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7.07-7.07L10 11" />
+                                      </svg>
+                                      {(linksByTaskId[task.id]?.length ?? 0) > 0 ? (
+                                        <span className="absolute -right-1 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[8px] font-bold leading-none text-[var(--background)] tabular-nums">
+                                          {(linksByTaskId[task.id]!.length) > 9 ? "9+" : linksByTaskId[task.id]!.length}
+                                        </span>
+                                      ) : null}
+                                    </button>
                                     {task.syncedAt ? (
                                       <button
                                         type="button"
@@ -834,29 +1208,151 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
                                   className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-[var(--line)]"
                                   aria-label={task.status === "done" ? "标记为未完成" : "标记为已完成"}
                                 />
-                                <div className="min-w-0 flex-1 cursor-default">
-                                  <span
-                                    className={[
-                                      "block text-sm font-medium leading-snug",
-                                      completing || task.status === "done"
-                                        ? "text-[var(--muted)] line-through"
-                                        : "text-[var(--foreground)]",
-                                    ].join(" ")}
+                                <div className="min-w-0 flex-1">
+                                  <button
+                                    type="button"
+                                    disabled={completing || savingLocal}
+                                    className="w-full min-w-0 cursor-pointer rounded-lg py-0.5 text-left outline-none ring-[var(--foreground)] hover:bg-[var(--surface-strong)]/80 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 -mx-1 px-1"
+                                    onClick={() => {
+                                      if (!completing && !savingLocal) setDetailTaskId(task.id);
+                                    }}
                                   >
-                                    {task.content}
-                                  </span>
-                                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
-                                    <span>创建 {formatDateTime(task.createdAt)}</span>
-                                    {completing ? (
-                                      <span className="inline-flex rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                                        已完成…
-                                      </span>
-                                    ) : savingLocal ? (
-                                      <span className="inline-flex rounded-md bg-[var(--surface-strong)] px-2 py-0.5 text-[10px] font-medium text-[var(--muted-strong)]">
-                                        保存中…
-                                      </span>
-                                    ) : null}
-                                  </div>
+                                    <span
+                                      className={[
+                                        "block text-sm font-medium leading-snug",
+                                        completing || task.status === "done"
+                                          ? "text-[var(--muted)] line-through"
+                                          : "text-[var(--foreground)]",
+                                      ].join(" ")}
+                                    >
+                                      {task.content}
+                                    </span>
+                                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
+                                      <span>创建 {formatDateTime(task.createdAt)}</span>
+                                      {completing ? (
+                                        <span className="inline-flex rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                                          已完成…
+                                        </span>
+                                      ) : savingLocal ? (
+                                        <span className="inline-flex rounded-md bg-[var(--surface-strong)] px-2 py-0.5 text-[10px] font-medium text-[var(--muted-strong)]">
+                                          保存中…
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </button>
+                                  {/* 标签区域 */}
+                                  {!completing && !savingLocal && (
+                                    <div className="mt-1.5 flex flex-wrap items-center gap-1 -mx-1 px-1">
+                                      {(task.tags ?? []).map((tag) => {
+                                        const color = getTagColor(tag, projectTags);
+                                        return (
+                                          <span
+                                            key={tag}
+                                            className={[
+                                              "inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                                              color.bg, color.text, color.border,
+                                            ].join(" ")}
+                                          >
+                                            {tag}
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                void patchTask(task, { tags: (task.tags ?? []).filter((t) => t !== tag) });
+                                              }}
+                                              className="ml-0.5 opacity-60 hover:opacity-100"
+                                              aria-label={`移除标签 ${tag}`}
+                                            >
+                                              ×
+                                            </button>
+                                          </span>
+                                        );
+                                      })}
+                                      {/* 添加标签按钮 */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (tagInputTaskId === task.id) {
+                                            setTagInputTaskId(null);
+                                            setTagInputValue("");
+                                          } else {
+                                            setTagInputTaskId(task.id);
+                                            setTagInputValue("");
+                                            setTimeout(() => tagInputRef.current?.focus(), 50);
+                                          }
+                                        }}
+                                        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-dashed border-[var(--muted)] text-[10px] text-[var(--muted)] transition hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
+                                        title="添加标签"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  )}
+                                  {/* 标签输入面板 */}
+                                  {tagInputTaskId === task.id && (
+                                    <div
+                                      className="mt-1.5 rounded-lg border border-[var(--line)] bg-[var(--card)] p-2 shadow-md"
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                      <input
+                                        ref={tagInputRef}
+                                        value={tagInputValue}
+                                        onChange={(e) => setTagInputValue(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            const val = tagInputValue.trim();
+                                            if (val) {
+                                              const cur = task.tags ?? [];
+                                              if (!cur.includes(val)) void patchTask(task, { tags: [...cur, val] });
+                                            }
+                                            setTagInputTaskId(null);
+                                            setTagInputValue("");
+                                          } else if (e.key === "Escape") {
+                                            setTagInputTaskId(null);
+                                            setTagInputValue("");
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          setTimeout(() => {
+                                            setTagInputTaskId(null);
+                                            setTagInputValue("");
+                                          }, 150);
+                                        }}
+                                        placeholder="输入标签，回车确认"
+                                        className="w-full rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-[11px] outline-none focus:border-[var(--foreground)]/30"
+                                      />
+                                      {projectTags.filter((t) => !(task.tags ?? []).includes(t)).length > 0 && (
+                                        <div className="mt-1.5 flex flex-wrap gap-1">
+                                          {projectTags
+                                            .filter((t) => !(task.tags ?? []).includes(t))
+                                            .map((tag) => {
+                                              const color = getTagColor(tag, projectTags);
+                                              return (
+                                                <button
+                                                  key={tag}
+                                                  type="button"
+                                                  onMouseDown={(e) => {
+                                                    e.preventDefault();
+                                                    const cur = task.tags ?? [];
+                                                    if (!cur.includes(tag)) void patchTask(task, { tags: [...cur, tag] });
+                                                    setTagInputTaskId(null);
+                                                    setTagInputValue("");
+                                                  }}
+                                                  className={[
+                                                    "rounded-full border px-2 py-0.5 text-[10px] font-medium transition hover:opacity-100 opacity-80",
+                                                    color.bg, color.text, color.border,
+                                                  ].join(" ")}
+                                                >
+                                                  {tag}
+                                                </button>
+                                              );
+                                            })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:min-w-[220px] lg:flex-nowrap lg:justify-start lg:pl-4">
@@ -873,6 +1369,36 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
                                     截止 {formatDueInput(task.dueAt)}
                                   </span>
                                 ) : null}
+                                <button
+                                  type="button"
+                                  title="关联信源"
+                                  disabled={completing || savingLocal}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void openTaskSourcePicker(task.id);
+                                  }}
+                                  className="relative inline-flex shrink-0 rounded-md p-1 text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
+                                >
+                                  <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden
+                                  >
+                                    <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7.07 7.07L14 13" />
+                                    <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7.07-7.07L10 11" />
+                                  </svg>
+                                  {(linksByTaskId[task.id]?.length ?? 0) > 0 ? (
+                                    <span className="absolute -right-1 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--foreground)] px-0.5 text-[8px] font-bold leading-none text-[var(--background)] tabular-nums">
+                                      {(linksByTaskId[task.id]!.length) > 9 ? "9+" : linksByTaskId[task.id]!.length}
+                                    </span>
+                                  ) : null}
+                                </button>
                                 <ProjectDuePicker
                                   task={task}
                                   disabled={!selectedId || completing || savingLocal}
@@ -928,7 +1454,329 @@ export function ProjectsPanel({ initialProjects }: { initialProjects?: Project[]
           </>
         )}
       </section>
-    </div>
+      </div>
+      {projectMenuOpenId &&
+        projectMenuAnchor &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            data-project-menu-portal
+            className="fixed z-[9999] w-36 rounded-xl border border-[var(--line)] bg-[var(--card)] p-1 shadow-xl"
+            style={{ left: projectMenuAnchor.left, top: projectMenuAnchor.bottom + 4 }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const proj = projects.find((p) => p.id === projectMenuOpenId);
+                if (proj) {
+                  setRenameValue(proj.name);
+                  setRenamingProjectId(proj.id);
+                }
+                setProjectMenuOpenId(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-[var(--foreground)] hover:bg-[var(--surface)]"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z" />
+              </svg>
+              修改名称
+            </button>
+            <div className="my-0.5 h-px bg-[var(--line)]" />
+            <button
+              type="button"
+              onClick={() => {
+                setProjectMenuOpenId(null);
+                void deleteProject();
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-rose-600 hover:bg-rose-500/10 dark:text-rose-400"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z" />
+              </svg>
+              删除项目
+            </button>
+          </div>,
+          document.body,
+        )}
+
+      {linkPickerTaskId &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="modal-overlay z-[60]"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setLinkPickerTaskId(null);
+            }}
+          >
+            <div
+              className="mx-4 w-full max-w-4xl rounded-2xl border border-[var(--line)] bg-[var(--background)] p-5 shadow-2xl sm:mx-6 sm:max-w-5xl sm:p-7"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-[var(--foreground)]">任务关联信源</h3>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+                勾选一条或多条资料与该任务关联；保存时尚未标为信源的资料会自动标为信源。
+              </p>
+              <div className="mt-4">
+                <input
+                  type="search"
+                  value={sourceSearchQuery}
+                  onChange={(e) => setSourceSearchQuery(e.target.value)}
+                  placeholder="搜索标题或来源…"
+                  className="input-focus-bar w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm outline-none"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-b border-[var(--line)] pb-2">
+                <button
+                  type="button"
+                  disabled={pickLoading || filteredPickCandidates.length === 0}
+                  onClick={() => {
+                    const add = filteredPickCandidates.map((c) => c.id);
+                    setPickedRecordIds((prev) => [...new Set([...prev, ...add])]);
+                  }}
+                  className="text-[11px] text-[var(--muted-strong)] underline-offset-2 hover:underline disabled:opacity-40"
+                >
+                  全选当前列表
+                </button>
+                <span className="text-[var(--line)]">·</span>
+                <button
+                  type="button"
+                  disabled={pickLoading || filteredPickCandidates.length === 0}
+                  onClick={() => {
+                    const drop = new Set(filteredPickCandidates.map((c) => c.id));
+                    setPickedRecordIds((prev) => prev.filter((id) => !drop.has(id)));
+                  }}
+                  className="text-[11px] text-[var(--muted-strong)] underline-offset-2 hover:underline disabled:opacity-40"
+                >
+                  取消当前列表所选
+                </button>
+                <span className="ml-auto text-[11px] tabular-nums text-[var(--muted)]">
+                  已选 {pickedRecordIds.length} 条 · 当前显示 {filteredPickCandidates.length} / 共 {pickCandidates.length}
+                </span>
+              </div>
+              <div className="mt-2 max-h-[min(60vh,480px)] overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--card)] p-1">
+                {pickLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-10">
+                    <span className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--foreground)]" aria-hidden />
+                    <p className="text-center text-xs text-[var(--muted)]">加载可关联资料…</p>
+                  </div>
+                ) : pickCandidates.length === 0 ? (
+                  <p className="px-3 py-8 text-center text-xs leading-relaxed text-[var(--muted)]">
+                    暂无资料。请先通过「新建记录」添加，或从历史中查看。
+                  </p>
+                ) : filteredPickCandidates.length === 0 ? (
+                  <p className="px-3 py-8 text-center text-xs text-[var(--muted)]">没有匹配「{sourceSearchQuery.trim()}」的资料，请换个关键词。</p>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {filteredPickCandidates.map((c) => {
+                      const checked = pickedRecordIds.includes(c.id);
+                      return (
+                        <li key={c.id}>
+                          <label className="flex cursor-pointer items-start gap-2.5 rounded-md px-2 py-2 text-left transition hover:bg-[var(--surface)]">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--line)]"
+                              checked={checked}
+                              onChange={() => {
+                                setPickedRecordIds((prev) =>
+                                  prev.includes(c.id)
+                                    ? prev.filter((x) => x !== c.id)
+                                    : [...prev, c.id],
+                                );
+                              }}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13px] font-medium leading-snug text-[var(--foreground)]">
+                                {c.title || "未命名"}
+                              </span>
+                              {c.sourceLabel ? (
+                                <span className="mt-0.5 block text-[11px] text-[var(--muted)]">{c.sourceLabel}</span>
+                              ) : null}
+                              {!c.confirmedAt ? (
+                                <span className="mt-0.5 block text-[10px] text-amber-700/90 dark:text-amber-400/90">
+                                  保存后将自动标为历史信源
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                <Link
+                  href="/?tab=record"
+                  className="rounded-lg px-3 py-2 text-sm text-[var(--muted-strong)] hover:bg-[var(--surface)]"
+                  onClick={() => setLinkPickerTaskId(null)}
+                >
+                  新建记录
+                </Link>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={sourceSaveLoading}
+                    onClick={() => setLinkPickerTaskId(null)}
+                    className="rounded-lg px-4 py-2 text-sm text-[var(--muted-strong)] hover:bg-[var(--surface)] disabled:opacity-50"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    disabled={sourceSaveLoading || pickLoading}
+                    onClick={() => void saveTaskSourceSelection()}
+                    className="rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] hover:opacity-90 disabled:opacity-50"
+                  >
+                    {sourceSaveLoading ? "保存中…" : "保存关联"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {detailTask &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="modal-overlay z-[55]"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setDetailTaskId(null);
+            }}
+          >
+            <div
+              className="mx-4 max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[var(--line)] bg-[var(--background)] p-6 shadow-2xl sm:mx-8 sm:max-w-4xl sm:p-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-4">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">任务详情</p>
+                  <p className="mt-1 text-xs text-[var(--muted-strong)]">项目 · {selected?.name ?? "—"}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailTaskId(null)}
+                  className="rounded-lg p-1.5 text-[var(--muted)] hover:bg-[var(--surface)]"
+                  aria-label="关闭"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap text-base font-semibold leading-relaxed text-[var(--foreground)] sm:text-lg">
+                {detailTask.content}
+              </p>
+              <dl className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
+                <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
+                  <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">优先级</dt>
+                  <dd className="mt-0.5">
+                    <span
+                      className={[
+                        "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
+                        priorityConfig[detailTask.priority ?? "medium"].bg,
+                      ].join(" ")}
+                    >
+                      {priorityConfig[detailTask.priority ?? "medium"].label}
+                    </span>
+                  </dd>
+                </div>
+                <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
+                  <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">截止时间</dt>
+                  <dd className="mt-0.5 text-[var(--foreground)]">
+                    {detailTask.dueAt ? formatDueInput(detailTask.dueAt) : "未设置"}
+                  </dd>
+                </div>
+                <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
+                  <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">创建时间</dt>
+                  <dd className="mt-0.5 text-[var(--foreground)]">{formatDateTime(detailTask.createdAt)}</dd>
+                </div>
+                {detailTask.status === "done" ? (
+                  <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
+                    <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">完成时间</dt>
+                    <dd className="mt-0.5 text-[var(--foreground)]">
+                      {formatDueInput(detailTask.completedAt || detailTask.updatedAt)}
+                    </dd>
+                  </div>
+                ) : null}
+                <div className="rounded-lg bg-[var(--surface)] px-3 py-2 sm:col-span-2">
+                  <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">滴答清单</dt>
+                  <dd className="mt-0.5 text-[var(--foreground)]">
+                    {detailTask.syncedAt ? `已同步 · ${formatDateTime(detailTask.syncedAt)}` : "尚未同步"}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="mt-8">
+                <h4 className="text-sm font-semibold text-[var(--foreground)]">关联信源</h4>
+                {taskLinksLoading ? (
+                  <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-4 text-xs text-[var(--muted)]">
+                    <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[var(--muted)] border-t-[var(--foreground)]" aria-hidden />
+                    <span>正在加载关联资料…</span>
+                  </div>
+                ) : (linksByTaskId[detailTask.id] ?? []).length === 0 ? (
+                  <p className="mt-2 text-xs text-[var(--muted)]">暂未关联资料，可在下方「管理关联信源」中添加。</p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {(linksByTaskId[detailTask.id] ?? []).map((row) => (
+                      <li
+                        key={row.linkId}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--card)] px-3 py-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[var(--foreground)]">{row.title || "未命名"}</p>
+                          {row.sourceLabel ? (
+                            <p className="mt-0.5 text-[11px] text-[var(--muted)]">{row.sourceLabel}</p>
+                          ) : null}
+                        </div>
+                        <Link
+                          href={`/?tab=history&record=${encodeURIComponent(row.recordId)}`}
+                          onClick={() => setDetailTaskId(null)}
+                          className="shrink-0 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground)] hover:bg-[var(--surface)]"
+                        >
+                          查看原信息
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-8 flex flex-wrap gap-2 border-t border-[var(--line)] pt-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tid = detailTask.id;
+                    setDetailTaskId(null);
+                    void openTaskSourcePicker(tid);
+                  }}
+                  className="rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] hover:opacity-90"
+                >
+                  管理关联信源
+                </button>
+                <Link
+                  href="/?tab=record"
+                  className="rounded-lg border border-[var(--line)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface)]"
+                  onClick={() => setDetailTaskId(null)}
+                >
+                  新建记录
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setDetailTaskId(null)}
+                  className="rounded-lg px-4 py-2 text-sm text-[var(--muted-strong)] hover:bg-[var(--surface)]"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
@@ -1114,14 +1962,13 @@ function ProjectDuePicker({
           if (!disabled) setOpen(true);
         }}
         disabled={disabled}
-        className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-[var(--line)] bg-[var(--card)] px-2 py-1 text-[11px] font-medium text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:opacity-50"
+        className="inline-flex shrink-0 items-center justify-center rounded-md p-1 text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:opacity-50"
         title="设定提醒"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <circle cx="12" cy="12" r="9" />
           <path d="M12 7v5l3 3" />
         </svg>
-        提醒
       </button>
       {open &&
         typeof document !== "undefined" &&
@@ -1138,7 +1985,7 @@ function ProjectDuePicker({
             >
               <h3 className="mb-4 text-lg font-bold text-[var(--foreground)]">设定提醒时间</h3>
               <p className="mb-3 text-xs text-[var(--muted)]">选择日期和时刻，将保存为任务的截止时间（同步滴答时会写入邮件正文）</p>
-              <div className="flex gap-3">
+              <div className="flex gap-3 pb-1">
                 <input
                   type="date"
                   value={dateVal}
@@ -1153,7 +2000,7 @@ function ProjectDuePicker({
                   className="w-28 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)] focus:border-[var(--foreground)] focus:outline-none"
                 />
               </div>
-              <div className="mt-4 flex justify-between gap-2">
+              <div className="mt-6 flex justify-between gap-2">
                 <button
                   type="button"
                   onClick={clear}

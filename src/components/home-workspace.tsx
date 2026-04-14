@@ -16,6 +16,7 @@ import { StatsBar } from "@/components/stats-bar";
 import { TodoPanel } from "@/components/todo-panel";
 import { RecordDetailModal } from "@/components/record-detail-modal";
 import { TagManager } from "@/components/tag-manager";
+import { RecordProjectBacklinks } from "@/components/record-project-backlinks";
 import { ProjectsPanel } from "@/components/projects-panel";
 import { SyncIndicator } from "@/components/sync-indicator";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -192,7 +193,7 @@ const tabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "record", label: "开始记录" },
   { id: "todos", label: "待办" },
   { id: "projects", label: "项目" },
-  { id: "history", label: "历史" },
+  { id: "history", label: "历史信源" },
   { id: "favorites", label: "收藏" },
   { id: "tags", label: "标签" },
   { id: "trash", label: "回收站" },
@@ -283,6 +284,9 @@ export function HomeWorkspace({
   const [prefetchedTags, setPrefetchedTags] = useState<Array<{ tag: string; count: number }> | null>(null);
   const [prefetchedTrash, setPrefetchedTrash] = useState<Array<KnowledgeRecord & { deletedAt: string }> | null>(null);
   const [prefetchedProjects, setPrefetchedProjects] = useState<Project[] | undefined>(undefined);
+  /** 从资料详情「项目中的引用」等入口跳转：/?tab=projects&project=&task= */
+  const [projectsDeepLink, setProjectsDeepLink] = useState<{ projectId: string; taskId?: string } | null>(null);
+  const consumeProjectsDeepLink = useCallback(() => setProjectsDeepLink(null), []);
   /** 曾打开过的 Tab 保持挂载，避免反复切换时整页重挂载与重复请求 */
   const [tabsEverOpened, setTabsEverOpened] = useState<Set<WorkspaceTab>>(() => new Set<WorkspaceTab>(["record"]));
   const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
@@ -557,13 +561,28 @@ export function HomeWorkspace({
     }
   }, []);
 
-  // 支持 URL 参数：/?tab=history&record=xxx → 跳转历史 tab 并选中该记录（用于「源信息」入口）
+  // 支持 URL：/?tab=history&record=xxx；/?tab=record；/?tab=projects&project=&task=
   useEffect(() => {
     const tab = searchParams.get("tab");
     const recordId = searchParams.get("record");
+    const projectId = searchParams.get("project");
+    const taskId = searchParams.get("task");
     if (tab === "history" && tabs.some((t) => t.id === tab)) {
       setActiveTabRaw("history");
       if (recordId) setSelectedRecordId(recordId);
+      router.replace("/", { scroll: false });
+      return;
+    }
+    if (tab === "record" && tabs.some((t) => t.id === tab)) {
+      setActiveTabRaw("record");
+      router.replace("/", { scroll: false });
+      return;
+    }
+    if (tab === "projects" && tabs.some((t) => t.id === tab)) {
+      setActiveTabRaw("projects");
+      if (projectId) {
+        setProjectsDeepLink({ projectId, taskId: taskId || undefined });
+      }
       router.replace("/", { scroll: false });
     }
   }, [searchParams, router]);
@@ -635,12 +654,30 @@ export function HomeWorkspace({
 
   /** 离线优先：先乐观更新 UI，再后台 PATCH；失败时回滚并抛出，由 RecordPane 轻量提示 */
   const handleUpdate = useCallback(
-    (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => {
+    (
+      id: string,
+      fields: {
+        title?: string;
+        contextNote?: string;
+        sourceLabel?: string;
+        contentText?: string;
+        keywords?: string[];
+        confirmSource?: boolean;
+      },
+    ) => {
       let prev: KnowledgeRecord | undefined;
       setRecords((p) => {
         prev = p.find((r) => r.id === id);
-        const merged = prev ? { ...prev, ...fields } : null;
-        return merged ? p.map((r) => (r.id === id ? merged : r)) : p;
+        if (!prev) return p;
+        const { confirmSource, ...rest } = fields;
+        const merged: KnowledgeRecord = {
+          ...prev,
+          ...rest,
+          ...(confirmSource !== undefined
+            ? { confirmedAt: confirmSource ? new Date().toISOString() : null }
+            : {}),
+        };
+        return p.map((r) => (r.id === id ? merged : r));
       });
       return fetch(`/api/records/${id}`, {
         method: "PATCH",
@@ -1108,7 +1145,11 @@ export function HomeWorkspace({
                       按工作主题汇总待办，可单条或批量投递到滴答清单（与「设置 → 滴答清单」相同链路）。
                     </p>
                   </div>
-                  <ProjectsPanel initialProjects={prefetchedProjects} />
+                  <ProjectsPanel
+                    initialProjects={prefetchedProjects}
+                    projectsDeepLink={projectsDeepLink}
+                    onProjectsDeepLinkConsumed={consumeProjectsDeepLink}
+                  />
                 </div>
               )}
 
@@ -1278,7 +1319,17 @@ function HistoryTab({
   onSelectRecord: (id: string) => void;
   onLoadMore: () => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void;
+  onUpdate: (
+    id: string,
+    fields: {
+      title?: string;
+      contextNote?: string;
+      sourceLabel?: string;
+      contentText?: string;
+      keywords?: string[];
+      confirmSource?: boolean;
+    },
+  ) => void;
   onOpenDetail: (id: string) => void;
   onRefresh: () => Promise<void>;
   onReplaceRecord?: (id: string) => Promise<void>;
@@ -1973,7 +2024,7 @@ function TrashTab({
             onClick={onGoToHistory}
             className="mt-2 text-xs text-[var(--muted-strong)] underline hover:no-underline"
           >
-            返回历史
+            返回历史信源
           </button>
         </div>
       ) : (
@@ -2094,7 +2145,17 @@ function FavoritesTab({
   onFavoriteCommitted,
 }: {
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void;
+  onUpdate: (
+    id: string,
+    fields: {
+      title?: string;
+      contextNote?: string;
+      sourceLabel?: string;
+      contentText?: string;
+      keywords?: string[];
+      confirmSource?: boolean;
+    },
+  ) => void;
   onOpenDetail: (id: string) => void;
   initialRecords?: KnowledgeRecord[] | null;
   onFavoriteCommitted?: (recordId: string, isFavorite: boolean) => void;
@@ -2244,12 +2305,32 @@ function FavoritesTab({
   }, []);
 
   const handleUpdateFavorite = useCallback(
-    (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => {
+    (
+      id: string,
+      fields: {
+        title?: string;
+        contextNote?: string;
+        sourceLabel?: string;
+        contentText?: string;
+        keywords?: string[];
+        confirmSource?: boolean;
+      },
+    ) => {
       let prevRecord: KnowledgeRecord | null = null;
       setRecords((prev) => {
         const r = prev.find((x) => x.id === id);
         if (r) prevRecord = r;
-        return prev.map((r) => (r.id === id ? { ...r, ...fields } : r));
+        return prev.map((rec) => {
+          if (rec.id !== id) return rec;
+          const { confirmSource, ...rest } = fields;
+          return {
+            ...rec,
+            ...rest,
+            ...(confirmSource !== undefined
+              ? { confirmedAt: confirmSource ? new Date().toISOString() : null }
+              : {}),
+          };
+        });
       });
       return fetch(`/api/records/${id}`, {
         method: "PATCH",
@@ -2466,7 +2547,17 @@ function RecordPane({
 }: {
   record: KnowledgeRecord;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] }) => void | Promise<unknown>;
+  onUpdate: (
+    id: string,
+    fields: {
+      title?: string;
+      contextNote?: string;
+      sourceLabel?: string;
+      contentText?: string;
+      keywords?: string[];
+      confirmSource?: boolean;
+    },
+  ) => void | Promise<unknown>;
   onOpenDetail: (id: string) => void;
   onReplaceRecord?: (id: string) => Promise<void>;
   favorited?: boolean;
@@ -2735,6 +2826,8 @@ function RecordPane({
           <span className="text-[var(--line-strong)]">·</span>
           <span>{formatDateTime(record.createdAt)}</span>
         </div>
+
+        <RecordProjectBacklinks recordId={record.id} />
 
         <h2 className="mt-3 text-lg font-bold leading-snug text-[var(--foreground)] sm:text-xl">
           {record.title}

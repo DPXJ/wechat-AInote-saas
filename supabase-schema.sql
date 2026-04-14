@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS records (
   action_items JSONB NOT NULL DEFAULT '[]',
   suggested_targets JSONB NOT NULL DEFAULT '[]',
   deleted_at TIMESTAMPTZ,
+  confirmed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -156,6 +157,36 @@ CREATE TABLE IF NOT EXISTS project_tasks (
 CREATE INDEX IF NOT EXISTS idx_project_tasks_project_id ON project_tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_tasks_user_id ON project_tasks(user_id);
 
+-- 项目 ↔ 已确认信源（records.confirmed_at 非空才可关联）
+CREATE TABLE IF NOT EXISTS project_records (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(project_id, record_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_records_project_id ON project_records(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_records_record_id ON project_records(record_id);
+CREATE INDEX IF NOT EXISTS idx_project_records_user_id ON project_records(user_id);
+
+-- 任务 ↔ 已确认信源（同一任务内同一记录唯一）
+CREATE TABLE IF NOT EXISTS project_task_records (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_task_id TEXT NOT NULL REFERENCES project_tasks(id) ON DELETE CASCADE,
+  record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(project_task_id, record_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_task_records_task ON project_task_records(project_task_id);
+CREATE INDEX IF NOT EXISTS idx_project_task_records_record ON project_task_records(record_id);
+CREATE INDEX IF NOT EXISTS idx_project_task_records_user ON project_task_records(user_id);
+
 -- ============================================================
 -- Row Level Security (RLS) — enable on all tables
 -- ============================================================
@@ -169,6 +200,8 @@ ALTER TABLE todos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_task_records ENABLE ROW LEVEL SECURITY;
 
 -- Policy: users can only access their own data
 CREATE POLICY "Users manage own records" ON records FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -180,6 +213,8 @@ CREATE POLICY "Users manage own todos" ON todos FOR ALL USING (auth.uid() = user
 CREATE POLICY "Users manage own favorites" ON favorites FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users manage own projects" ON projects FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users manage own project_tasks" ON project_tasks FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users manage own project_records" ON project_records FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users manage own project_task_records" ON project_task_records FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Service role bypass: allow service_role key to access all data (for server-side operations)
 CREATE POLICY "Service role full access records" ON records FOR ALL TO service_role USING (true) WITH CHECK (true);
@@ -191,3 +226,5 @@ CREATE POLICY "Service role full access todos" ON todos FOR ALL TO service_role 
 CREATE POLICY "Service role full access favorites" ON favorites FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access projects" ON projects FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access project_tasks" ON project_tasks FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access project_records" ON project_records FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access project_task_records" ON project_task_records FOR ALL TO service_role USING (true) WITH CHECK (true);

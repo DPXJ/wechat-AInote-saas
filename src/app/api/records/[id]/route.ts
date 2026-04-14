@@ -48,9 +48,18 @@ export async function PATCH(
       sourceLabel?: string;
       contentText?: string;
       keywords?: string[];
+      /** 将记录标为已确认信源（可与项目关联）或取消 */
+      confirmSource?: boolean;
     };
 
-    const record = await updateKnowledgeRecord(userId, id, body);
+    const record = await updateKnowledgeRecord(userId, id, {
+      title: body.title,
+      contextNote: body.contextNote,
+      sourceLabel: body.sourceLabel,
+      contentText: body.contentText,
+      keywords: body.keywords,
+      confirmSource: body.confirmSource,
+    });
     return NextResponse.json({ record });
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {

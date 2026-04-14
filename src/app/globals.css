@@ -382,20 +382,48 @@ nextjs-portal,
   left: 12px;
 }
 
-/* 历史 / 收藏 / 搜索 等左侧列表卡片：悬浮 + 圆角选中描边 */
+/* 历史 / 收藏 / 搜索 等左侧列表卡片：悬浮 + 左侧居中竖条选中指示 */
 .record-list-card {
+  position: relative;
   border-radius: 0.75rem;
   border: 1px solid transparent;
-  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  overflow: hidden;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .record-list-card:hover:not(.record-list-card--active) {
   background: var(--surface);
   border-color: var(--line-strong);
 }
 .record-list-card--active {
-  background: var(--surface-strong);
-  border-color: var(--list-card-selected-ring);
-  box-shadow: 0 0 0 1px var(--list-card-selected-ring);
+  background: var(--sidebar-active);
+  border-color: transparent;
+}
+.record-list-card--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 30px;
+  border-radius: 0 3px 3px 0;
+  background: var(--foreground);
+}
+
+/* 项目列表左侧选中竖条（与 record-list-card--active 视觉统一） */
+.project-list-item--active {
+  background: var(--sidebar-active);
+}
+.project-list-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 22px;
+  border-radius: 0 4px 4px 0;
+  background: var(--foreground);
 }
 
 /* Markdown prose */

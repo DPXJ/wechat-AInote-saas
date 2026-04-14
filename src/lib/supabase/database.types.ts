@@ -17,6 +17,7 @@ export interface Database {
           action_items: string[];
           suggested_targets: string[];
           deleted_at: string | null;
+          confirmed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -35,6 +36,7 @@ export interface Database {
           action_items?: string[];
           suggested_targets?: string[];
           deleted_at?: string | null;
+          confirmed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -53,6 +55,7 @@ export interface Database {
           action_items?: string[];
           suggested_targets?: string[];
           deleted_at?: string | null;
+          confirmed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -290,6 +293,7 @@ export interface Database {
           sort_order: number;
           synced_at: string | null;
           completed_at: string | null;
+          tags: string[] | null;
           created_at: string;
           updated_at: string;
         };
@@ -304,6 +308,7 @@ export interface Database {
           sort_order?: number;
           synced_at?: string | null;
           completed_at?: string | null;
+          tags?: string[] | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -318,8 +323,63 @@ export interface Database {
           sort_order?: number;
           synced_at?: string | null;
           completed_at?: string | null;
+          tags?: string[] | null;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      project_records: {
+        Row: {
+          id: string;
+          user_id: string;
+          project_id: string;
+          record_id: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          project_id: string;
+          record_id: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          project_id?: string;
+          record_id?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      project_task_records: {
+        Row: {
+          id: string;
+          user_id: string;
+          project_task_id: string;
+          record_id: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          project_task_id: string;
+          record_id: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          project_task_id?: string;
+          record_id?: string;
+          sort_order?: number;
+          created_at?: string;
         };
         Relationships: [];
       };

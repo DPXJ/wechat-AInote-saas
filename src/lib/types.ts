@@ -54,6 +54,8 @@ export interface KnowledgeRecord {
   updatedAt: string;
   assets: RecordAsset[];
   syncRuns: SyncRun[];
+  /** 非空表示已确认为可关联项目的信源 */
+  confirmedAt?: string | null;
   /** 仅回收站列表返回：删除时间 */
   deletedAt?: string;
 }

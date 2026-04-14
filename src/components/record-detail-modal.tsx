@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AssetGallery } from "@/components/asset-gallery";
+import { RecordProjectBacklinks } from "@/components/record-project-backlinks";
 import { RecordQuickActions } from "@/components/record-quick-actions";
 import { SyncPreview } from "@/components/sync-preview";
 import { sanitizeSummary } from "@/lib/ai";
@@ -169,6 +170,8 @@ export function RecordDetailModal({
                     ))}
                   </div>
                 )}
+
+                <RecordProjectBacklinks recordId={record.id} />
               </section>
 
               {/* Quick actions */}

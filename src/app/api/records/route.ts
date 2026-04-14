@@ -96,10 +96,24 @@ export async function GET(request: Request) {
   try {
     const userId = await requireUserId();
     const url = new URL(request.url);
-    const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 100);
+    const forTaskLink = url.searchParams.get("forTaskLink") === "1";
+    const defaultLimit = forTaskLink ? 500 : 20;
+    const maxCap = forTaskLink ? 500 : 100;
+    const limit = Math.min(
+      Number(url.searchParams.get("limit")) || defaultLimit,
+      maxCap,
+    );
     const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+    const confirmedOnly =
+      !forTaskLink &&
+      (url.searchParams.get("confirmedOnly") === "1" ||
+        url.searchParams.get("confirmedOnly") === "true");
 
-    const { records, total } = await listKnowledgeRecords(userId, { limit, offset });
+    const { records, total } = await listKnowledgeRecords(userId, {
+      limit,
+      offset,
+      confirmedOnly,
+    });
     return NextResponse.json({ records, total, limit, offset });
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {

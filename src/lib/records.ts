@@ -70,6 +70,7 @@ function mapRecord(row: RecordRow, assets: AssetRow[], syncRows: SyncRow[]): Kno
     suggestedTargets: (row.suggested_targets || []) as SyncTarget[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    confirmedAt: row.confirmed_at ?? null,
     assets: assets.map(mapAsset),
     syncRuns: syncRows.map(mapSync),
   };
@@ -282,6 +283,7 @@ export async function createKnowledgeRecord(
       createdAt: a.created_at as string,
     })),
     syncRuns: [],
+    confirmedAt: null,
   };
 
   const { extractTodosFromRecord, createTodoFromRecord } = await import("@/lib/todos");
@@ -298,7 +300,7 @@ export async function createKnowledgeRecord(
 
 export async function listKnowledgeRecords(
   userId: string,
-  opts?: { limit?: number; offset?: number; includeDeleted?: boolean },
+  opts?: { limit?: number; offset?: number; includeDeleted?: boolean; confirmedOnly?: boolean },
 ) {
   const supabase = getSupabaseAdmin();
   const limit = opts?.limit ?? 20;
@@ -311,6 +313,9 @@ export async function listKnowledgeRecords(
   if (!opts?.includeDeleted) {
     countQuery = countQuery.is("deleted_at", null);
   }
+  if (opts?.confirmedOnly) {
+    countQuery = countQuery.not("confirmed_at", "is", null);
+  }
 
   let query = supabase
     .from("records")
@@ -320,6 +325,9 @@ export async function listKnowledgeRecords(
     .range(offset, offset + limit - 1);
   if (!opts?.includeDeleted) {
     query = query.is("deleted_at", null);
+  }
+  if (opts?.confirmedOnly) {
+    query = query.not("confirmed_at", "is", null);
   }
 
   const [{ count: total }, { data: rows }] = await Promise.all([countQuery, query]);
@@ -503,7 +511,15 @@ export async function hardDeleteRecord(userId: string, recordId: string) {
 export async function updateKnowledgeRecord(
   userId: string,
   recordId: string,
-  fields: { title?: string; contextNote?: string; sourceLabel?: string; contentText?: string; keywords?: string[] },
+  fields: {
+    title?: string;
+    contextNote?: string;
+    sourceLabel?: string;
+    contentText?: string;
+    keywords?: string[];
+    /** true = 标记为已确认信源（当前时间），false = 取消确认 */
+    confirmSource?: boolean;
+  },
 ) {
   const updates: Record<string, unknown> = { updated_at: nowIso() };
 
@@ -512,6 +528,11 @@ export async function updateKnowledgeRecord(
   if (fields.sourceLabel !== undefined) updates.source_label = fields.sourceLabel;
   if (fields.contentText !== undefined) updates.content_text = fields.contentText;
   if (fields.keywords !== undefined) updates.keywords = fields.keywords;
+  if (fields.confirmSource === true) {
+    updates.confirmed_at = nowIso();
+  } else if (fields.confirmSource === false) {
+    updates.confirmed_at = null;
+  }
 
   await getSupabaseAdmin()
     .from("records")

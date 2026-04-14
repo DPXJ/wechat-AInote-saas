@@ -26,6 +26,7 @@ export async function PATCH(
       priority?: TodoPriority;
       dueAt?: string | null;
       sortOrder?: number;
+      tags?: string[];
     };
     const task = await updateProjectTask(
       userId,
@@ -36,6 +37,7 @@ export async function PATCH(
         priority: body.priority,
         dueAt: body.dueAt,
         sortOrder: body.sortOrder,
+        tags: body.tags,
       },
       projectId,
     );
