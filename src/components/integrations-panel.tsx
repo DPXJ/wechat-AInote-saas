@@ -39,6 +39,12 @@ export function IntegrationsPanel({
   const [activeTab, setActiveTab] = useState<SettingsTab>("ai");
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [flashTokenBusy, setFlashTokenBusy] = useState(false);
+  const [pageOrigin, setPageOrigin] = useState("");
+
+  useEffect(() => {
+    setPageOrigin(typeof window !== "undefined" ? window.location.origin : "");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -310,6 +316,80 @@ export function IntegrationsPanel({
             <div className="flex flex-wrap items-center gap-2 pt-2">
               <SaveBtn saving={saving} onSave={handleSave} />
               <FlomoTestBtn webhookUrl={settings.flomoWebhookUrl || ""} />
+            </div>
+
+            <div className="mt-6 space-y-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
+              <p className="text-sm font-medium text-[var(--foreground)]">闪念 HTTP 接入</p>
+              <p className="text-[13px] leading-relaxed text-[var(--muted-strong)]">
+                在其它工具里调用浮墨 API 写入 flomo 的同时，可再请求本接口把同一条内容同步到左侧「闪念」列表。先点击下方生成令牌，再在自动化里使用 Bearer 鉴权。
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Btn
+                  label={flashTokenBusy ? "生成中…" : "生成 / 轮换令牌"}
+                  disabled={flashTokenBusy}
+                  primary
+                  onClick={async () => {
+                    setFlashTokenBusy(true);
+                    try {
+                      const res = await fetch("/api/flash-memos/token", { method: "POST" });
+                      const data = await res.json();
+                      if (res.ok && data.settings) {
+                        setSettings(data.settings);
+                        setMsg("已生成新令牌，请复制保存；旧令牌随即失效。");
+                      } else {
+                        setMsg(data.error || "生成失败。");
+                      }
+                    } catch {
+                      setMsg("生成失败，请重试。");
+                    } finally {
+                      setFlashTokenBusy(false);
+                    }
+                  }}
+                />
+                {settings.flashMemoIngestToken ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-strong)]"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(settings.flashMemoIngestToken);
+                        setMsg("已复制令牌。");
+                      } catch {
+                        setMsg("复制失败，请手动选择复制。");
+                      }
+                    }}
+                  >
+                    复制令牌
+                  </button>
+                ) : null}
+              </div>
+              {settings.flashMemoIngestToken ? (
+                <>
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-[var(--foreground)]">接入令牌（保密）</span>
+                    <input
+                      type="password"
+                      readOnly
+                      value={settings.flashMemoIngestToken}
+                      className="w-full rounded-lg border border-[var(--line)] bg-[var(--card)] px-3 py-2 font-mono text-[12px] text-[var(--foreground)] outline-none"
+                    />
+                  </label>
+                  <p className="text-[12px] text-[var(--muted)] break-all">
+                    端点：<code className="rounded bg-[var(--card)] px-1 py-0.5">{pageOrigin || "…"}/api/flash-memos/ingest</code>
+                  </p>
+                  <pre className="overflow-x-auto rounded-lg bg-[var(--card)] p-3 text-[11px] leading-relaxed text-[var(--muted-strong)]">
+{`curl -X POST '${pageOrigin || ""}/api/flash-memos/ingest' \\
+  -H 'Authorization: Bearer <令牌>' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"content":"一条闪念","source":"flomo"}'`}
+                  </pre>
+                  <p className="text-[11px] text-[var(--muted)]">
+                    可选字段 <code className="rounded bg-[var(--card)] px-1">externalId</code>：若重复提交相同 id，将不会重复写入。
+                  </p>
+                </>
+              ) : (
+                <p className="text-[12px] text-[var(--muted)]">尚未生成令牌。</p>
+              )}
             </div>
           </>
         )}

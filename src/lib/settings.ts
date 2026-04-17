@@ -35,6 +35,7 @@ const settingKeys = [
   "imapPass",
   "imapSecure",
   "flomoWebhookUrl",
+  "flashMemoIngestToken",
 ] as const;
 
 type SettingKey = (typeof settingKeys)[number];
@@ -71,6 +72,7 @@ const envDefaults: IntegrationSettings = {
   imapPass: "",
   imapSecure: true,
   flomoWebhookUrl: "",
+  flashMemoIngestToken: "",
 };
 
 function normalizeBoolean(value: string | boolean | null | undefined) {
@@ -119,6 +121,7 @@ export async function getIntegrationSettings(userId: string): Promise<Integratio
     imapPass: stored.get("imapPass") ?? envDefaults.imapPass,
     imapSecure: normalizeBoolean(stored.get("imapSecure") ?? String(envDefaults.imapSecure)),
     flomoWebhookUrl: stored.get("flomoWebhookUrl") ?? envDefaults.flomoWebhookUrl,
+    flashMemoIngestToken: stored.get("flashMemoIngestToken") ?? envDefaults.flashMemoIngestToken,
   };
 }
 
@@ -158,6 +161,7 @@ export async function saveIntegrationSettings(userId: string, input: Integration
     { key: "imapPass", value: input.imapPass || "" },
     { key: "imapSecure", value: String(input.imapSecure ?? true) },
     { key: "flomoWebhookUrl", value: (input.flomoWebhookUrl || "").trim() },
+    { key: "flashMemoIngestToken", value: (input.flashMemoIngestToken || "").trim() },
   ];
 
   for (const entry of entries) {
@@ -172,5 +176,20 @@ export async function saveIntegrationSettings(userId: string, input: Integration
     );
   }
 
+  return getIntegrationSettings(userId);
+}
+
+export async function setFlashMemoIngestToken(userId: string, token: string) {
+  const supabase = getSupabaseAdmin();
+  const updatedAt = nowIso();
+  await supabase.from("settings").upsert(
+    {
+      user_id: userId,
+      key: "flashMemoIngestToken",
+      value: token.trim(),
+      updated_at: updatedAt,
+    },
+    { onConflict: "user_id,key" },
+  );
   return getIntegrationSettings(userId);
 }

@@ -13,6 +13,7 @@ import { InboxForm } from "@/components/inbox-form";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { IntegrationsPanel } from "@/components/integrations-panel";
 import { StatsBar } from "@/components/stats-bar";
+import { FlashMemoPanel } from "@/components/flash-memo-panel";
 import { TodoPanel } from "@/components/todo-panel";
 import { RecordDetailModal } from "@/components/record-detail-modal";
 import { TagManager } from "@/components/tag-manager";
@@ -47,6 +48,7 @@ type WorkspaceTab =
   | "history"
   | "favorites"
   | "todos"
+  | "flash_memos"
   | "projects"
   | "tags"
   | "trash"
@@ -124,6 +126,19 @@ function TabIcon({ id, className = "w-[18px] h-[18px]" }: { id: string; classNam
   switch (id) {
     case "record": return <svg {...props}><path d="M12 5v14M5 12h14" /></svg>;
     case "todos": return <svg {...props}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M9 12l2 2 4-4" /></svg>;
+    case "flash_memos":
+      return (
+        <svg
+          width={18}
+          height={18}
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className={className}
+          aria-hidden
+        >
+          <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
+        </svg>
+      );
     case "projects":
       return (
         <svg {...props}>
@@ -192,6 +207,7 @@ function ProjectsCountBadge({
 const tabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "record", label: "开始记录" },
   { id: "todos", label: "待办" },
+  { id: "flash_memos", label: "闪念" },
   { id: "projects", label: "项目" },
   { id: "history", label: "历史信源" },
   { id: "favorites", label: "收藏" },
@@ -583,6 +599,11 @@ export function HomeWorkspace({
       if (projectId) {
         setProjectsDeepLink({ projectId, taskId: taskId || undefined });
       }
+      router.replace("/", { scroll: false });
+      return;
+    }
+    if (tab === "flash_memos" && tabs.some((t) => t.id === tab)) {
+      setActiveTabRaw("flash_memos");
       router.replace("/", { scroll: false });
     }
   }, [searchParams, router]);
@@ -1069,7 +1090,10 @@ export function HomeWorkspace({
             <div
               className={[
                 "content-card flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)]/80 shadow-sm backdrop-blur-sm overflow-hidden",
-                activeTab !== "todos" && activeTab !== "projects" && "p-5 lg:p-6",
+                activeTab !== "todos" &&
+                  activeTab !== "flash_memos" &&
+                  activeTab !== "projects" &&
+                  "p-5 lg:p-6",
               ].filter(Boolean).join(" ")}
             >
               {tabsEverOpened.has("record") && (
@@ -1168,6 +1192,17 @@ export function HomeWorkspace({
                     getRecordById={(id) => records.find((r) => r.id === id) ?? null}
                     onGoToRecord={(id) => { setActiveTab("history"); setSelectedRecordId(id); }}
                   />
+                </div>
+              )}
+              {tabsEverOpened.has("flash_memos") && (
+                <div
+                  className={
+                    activeTab === "flash_memos"
+                      ? "hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] lg:p-6 lg:pb-[max(6rem,calc(5rem+env(safe-area-inset-bottom)))]"
+                      : "hidden"
+                  }
+                >
+                  <FlashMemoPanel />
                 </div>
               )}
               {tabsEverOpened.has("tags") && (

@@ -37,6 +37,7 @@ const settingsSchema = z.object({
   imapPass: z.string().optional().default(""),
   imapSecure: z.boolean().optional().default(true),
   flomoWebhookUrl: z.string().optional().default(""),
+  flashMemoIngestToken: z.string().optional().default(""),
 });
 
 export async function GET() {

@@ -55,7 +55,9 @@ export async function updateSession(request: NextRequest) {
   const isPublic =
     publicPaths.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon");
+    pathname.startsWith("/favicon") ||
+    /** 闪念 HTTP 接入：Bearer 令牌鉴权，不依赖浏览器会话 */
+    pathname === "/api/flash-memos/ingest";
 
   if (!user && !isPublic) {
     // API 不要 302 到登录页（返回 HTML），否则前端 await res.json() 会报 Unexpected token '<'

@@ -187,6 +187,23 @@ CREATE INDEX IF NOT EXISTS idx_project_task_records_task ON project_task_records
 CREATE INDEX IF NOT EXISTS idx_project_task_records_record ON project_task_records(record_id);
 CREATE INDEX IF NOT EXISTS idx_project_task_records_user ON project_task_records(user_id);
 
+-- 闪念（Flomo / 外部接口同步的短笔记列表）
+CREATE TABLE IF NOT EXISTS flash_memos (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'web',
+  external_id TEXT,
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_flash_memos_user_created ON flash_memos(user_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flash_memos_user_external
+  ON flash_memos(user_id, external_id)
+  WHERE external_id IS NOT NULL AND deleted_at IS NULL;
+
 -- ============================================================
 -- Row Level Security (RLS) — enable on all tables
 -- ============================================================
@@ -202,6 +219,7 @@ ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_task_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flash_memos ENABLE ROW LEVEL SECURITY;
 
 -- Policy: users can only access their own data
 CREATE POLICY "Users manage own records" ON records FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -215,6 +233,7 @@ CREATE POLICY "Users manage own projects" ON projects FOR ALL USING (auth.uid() 
 CREATE POLICY "Users manage own project_tasks" ON project_tasks FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users manage own project_records" ON project_records FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users manage own project_task_records" ON project_task_records FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users manage own flash_memos" ON flash_memos FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Service role bypass: allow service_role key to access all data (for server-side operations)
 CREATE POLICY "Service role full access records" ON records FOR ALL TO service_role USING (true) WITH CHECK (true);
@@ -228,3 +247,4 @@ CREATE POLICY "Service role full access projects" ON projects FOR ALL TO service
 CREATE POLICY "Service role full access project_tasks" ON project_tasks FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access project_records" ON project_records FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access project_task_records" ON project_task_records FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access flash_memos" ON flash_memos FOR ALL TO service_role USING (true) WITH CHECK (true);

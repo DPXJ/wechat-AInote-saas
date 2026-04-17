@@ -447,6 +447,7 @@ export function ProjectsPanel({
       sortOrder: Number.MAX_SAFE_INTEGER,
       syncedAt: null,
       completedAt: null,
+      tags: [],
       createdAt: nowIso,
       updatedAt: nowIso,
     };

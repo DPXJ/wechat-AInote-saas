@@ -124,6 +124,19 @@ export interface Todo {
   syncedAt: string | null;
 }
 
+/** 闪念来源：flomo 同步、HTTP 接入、本应用内新建 */
+export type FlashMemoSource = "flomo" | "api" | "web";
+
+export interface FlashMemo {
+  id: string;
+  content: string;
+  source: FlashMemoSource;
+  externalId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
 export interface StatsData {
   totalRecords: number;
   todayRecords: number;
@@ -171,6 +184,8 @@ export interface IntegrationSettings {
   imapPass: string;
   imapSecure: boolean;
   flomoWebhookUrl: string;
+  /** 用于 POST /api/flash-memos/ingest 的 Bearer 令牌；在设置中生成 */
+  flashMemoIngestToken: string;
 }
 
 export interface IntegrationStatusItem {
