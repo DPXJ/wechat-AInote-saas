@@ -1,5 +1,6 @@
 const AUTH_ERROR_MAP: Record<string, string> = {
   "Failed to fetch": "无法连接认证服务，请稍后重试。若持续失败，请联系管理员检查服务器网络配置。",
+  "fetch failed": "无法连接认证服务，请稍后重试。若持续失败，请联系管理员检查 Supabase 项目状态和服务器网络配置。",
   "Invalid login credentials": "邮箱或密码错误",
   "Email not confirmed": "邮箱尚未确认，请查收注册确认邮件后再登录",
   "User already registered": "该邮箱已注册，请直接登录或找回密码",
@@ -10,5 +11,8 @@ const AUTH_ERROR_MAP: Record<string, string> = {
 
 export function formatAuthError(message: string | undefined, fallback = "操作失败，请重试"): string {
   if (!message) return fallback;
+  if (/fetch failed|authretryablefetcherror/i.test(message)) {
+    return AUTH_ERROR_MAP["fetch failed"];
+  }
   return AUTH_ERROR_MAP[message] ?? message;
 }
