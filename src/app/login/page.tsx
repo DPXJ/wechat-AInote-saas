@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { hasSupabasePublicEnv } from "@/lib/supabase/env";
 import { LoginParticles } from "@/components/login-particles";
 
@@ -12,6 +11,21 @@ const SAVED_PASSWORD_KEY = "ai-box-login-password";
 
 const supabaseReady = hasSupabasePublicEnv();
 
+type AuthMode = "login" | "register" | "forgot";
+
+async function postAuth(path: string, body: Record<string, string>) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+  if (!res.ok) {
+    throw new Error(data.error || "请求失败，请重试");
+  }
+  return data;
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,7 +33,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<AuthMode>("login");
   const router = useRouter();
 
   useEffect(() => {
@@ -43,57 +57,50 @@ export default function LoginPage() {
 
     if (!supabaseReady) {
       setError(
-        "未配置 Supabase：在项目根目录创建 .env.local，填写 NEXT_PUBLIC_SUPABASE_URL 与 NEXT_PUBLIC_SUPABASE_ANON_KEY，保存后重启 npm run dev。",
+        "未配置 Supabase：在服务器 .env.production 中填写 NEXT_PUBLIC_SUPABASE_URL 与 NEXT_PUBLIC_SUPABASE_ANON_KEY，重新 build 并重启。",
       );
       setLoading(false);
       return;
     }
 
-    const supabase = createSupabaseBrowser();
-
     try {
       if (mode === "register") {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (signUpError) {
-          setError(signUpError.message);
-        } else {
-          setMessage("注册成功！请查看邮箱确认链接，或直接登录。");
-          setMode("login");
-        }
+        await postAuth("/api/auth/register", { email, password });
+        setMessage("注册成功！若启用了邮箱确认，请先查收邮件；否则可直接登录。");
+        setMode("login");
+      } else if (mode === "forgot") {
+        await postAuth("/api/auth/reset-password", { email });
+        setMessage("重置邮件已发送，请查收邮箱（含垃圾箱）。点击邮件中的链接后可设置新密码。");
+        setMode("login");
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (signInError) {
-          setError(signInError.message);
-        } else {
-          try {
-            if (rememberPassword) {
-              localStorage.setItem(REMEMBER_KEY, "1");
-              localStorage.setItem(SAVED_EMAIL_KEY, email);
-              localStorage.setItem(SAVED_PASSWORD_KEY, password);
-            } else {
-              localStorage.removeItem(REMEMBER_KEY);
-              localStorage.removeItem(SAVED_EMAIL_KEY);
-              localStorage.removeItem(SAVED_PASSWORD_KEY);
-            }
-          } catch {
-            /* ignore */
+        await postAuth("/api/auth/login", { email, password });
+        try {
+          if (rememberPassword) {
+            localStorage.setItem(REMEMBER_KEY, "1");
+            localStorage.setItem(SAVED_EMAIL_KEY, email);
+            localStorage.setItem(SAVED_PASSWORD_KEY, password);
+          } else {
+            localStorage.removeItem(REMEMBER_KEY);
+            localStorage.removeItem(SAVED_EMAIL_KEY);
+            localStorage.removeItem(SAVED_PASSWORD_KEY);
           }
-          router.push("/");
-          router.refresh();
+        } catch {
+          /* ignore */
         }
+        router.push("/");
+        router.refresh();
       }
-    } catch {
-      setError("网络错误，请重试");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "网络错误，请重试");
     } finally {
       setLoading(false);
     }
   }
+
+  const submitLabel =
+    mode === "login" ? "登录" : mode === "register" ? "注册" : "发送重置邮件";
+  const loadingLabel =
+    mode === "login" ? "登录中…" : mode === "register" ? "注册中…" : "发送中…";
 
   return (
     <div className="login-page flex min-h-screen items-center justify-center">
@@ -110,17 +117,17 @@ export default function LoginPage() {
             <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-left text-sm text-amber-100">
               <p className="font-medium text-amber-50">需要先配置 Supabase</p>
               <p className="mt-2 text-amber-100/90">
-                在项目根目录新建{" "}
-                <code className="rounded bg-black/30 px-1 py-0.5 text-xs">.env.local</code>，从
-                Supabase 控制台复制 Project URL 与 anon public key，写入：
+                在服务器项目根目录的{" "}
+                <code className="rounded bg-black/30 px-1 py-0.5 text-xs">.env.production</code>{" "}
+                中配置：
               </p>
               <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-zinc-300">
                 {`NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+APP_BASE_URL=https://你的域名`}
               </pre>
               <p className="mt-2 text-amber-100/80">
-                保存后<strong>重启</strong>开发服务（<code className="text-xs">npm run dev</code>
-                ）。
+                保存后执行 <code className="text-xs">npm run build</code> 并重启 PM2。
               </p>
             </div>
           )}
@@ -138,7 +145,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
               AI 信迹
             </h1>
             <p className="mt-1 text-sm text-zinc-400">
-              {mode === "login" ? "登录以继续" : "创建新账户"}
+              {mode === "login"
+                ? "登录以继续"
+                : mode === "register"
+                  ? "创建新账户"
+                  : "找回密码"}
             </p>
           </div>
 
@@ -154,15 +165,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
               />
             </div>
 
-            <div className="relative">
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="密码（至少 6 位）"
-                className="input-focus-bar w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[var(--line-strong)]"
-              />
-            </div>
+            {mode !== "forgot" && (
+              <div className="relative">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="密码（至少 6 位）"
+                  className="input-focus-bar w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[var(--line-strong)]"
+                />
+              </div>
+            )}
 
             {mode === "login" && (
               <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
@@ -176,30 +189,38 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
               </label>
             )}
 
-            {error && (
-              <p className="text-center text-sm text-rose-400">{error}</p>
-            )}
-            {message && (
-              <p className="text-center text-sm text-emerald-400">{message}</p>
-            )}
+            {error && <p className="text-center text-sm text-rose-400">{error}</p>}
+            {message && <p className="text-center text-sm text-emerald-400">{message}</p>}
 
             <button
               type="submit"
-              disabled={loading || !email || !password || !supabaseReady}
+              disabled={
+                loading ||
+                !email ||
+                (mode !== "forgot" && !password) ||
+                !supabaseReady
+              }
               className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
               style={{ background: "var(--ai-gradient)" }}
             >
-              {loading
-                ? mode === "login"
-                  ? "登录中…"
-                  : "注册中…"
-                : mode === "login"
-                  ? "登录"
-                  : "注册"}
+              {loading ? loadingLabel : submitLabel}
             </button>
           </form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-6 space-y-2 text-center">
+            {mode === "login" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("forgot");
+                  setError("");
+                  setMessage("");
+                }}
+                className="block w-full text-sm text-zinc-400 transition hover:text-zinc-200"
+              >
+                忘记密码？发送重置邮件
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -211,7 +232,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...`}
             >
               {mode === "login"
                 ? "没有账户？点击注册"
-                : "已有账户？点击登录"}
+                : mode === "register"
+                  ? "已有账户？点击登录"
+                  : "返回登录"}
             </button>
           </div>
         </div>

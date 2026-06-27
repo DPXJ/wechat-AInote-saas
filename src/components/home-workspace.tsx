@@ -29,7 +29,6 @@ import {
   syncPendingRecordsToCloud,
 } from "@/lib/local-record-store";
 import { getPendingTodosForSync, syncPendingTodosToCloud } from "@/lib/local-todo-store";
-import { createSupabaseBrowser } from "@/lib/supabase/client";
 import type {
   IntegrationSettings,
   IntegrationStatus,
@@ -495,15 +494,16 @@ export function HomeWorkspace({
   }, []);
 
   useEffect(() => {
-    const supabase = createSupabaseBrowser();
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email) setUserEmail(data.user.email);
-    });
+    fetch("/api/auth", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { authenticated?: boolean; user?: { email?: string } }) => {
+        if (data.authenticated && data.user?.email) setUserEmail(data.user.email);
+      })
+      .catch(() => {});
   }, []);
 
   const handleLogout = async () => {
-    const supabase = createSupabaseBrowser();
-    await supabase.auth.signOut();
+    await fetch("/api/auth", { method: "DELETE" }).catch(() => {});
     router.push("/login");
     router.refresh();
   };
@@ -738,12 +738,12 @@ export function HomeWorkspace({
     });
     setPrefetchedFavorites((prev) => {
       if (!isFavorite) return (prev ?? []).filter((r) => r.id !== recordId);
-      const rec = records.find((r) => r.id === recordId);
+      const rec = [...localPendingRecords, ...records].find((r) => r.id === recordId);
       if (!rec) return prev ?? [];
       const rest = (prev ?? []).filter((r) => r.id !== recordId);
       return [rec, ...rest];
     });
-  }, [records]);
+  }, [records, localPendingRecords]);
 
   const handleHistoryFilterChange = useCallback((f: HistoryFilter) => {
     setHistoryFilter(f);
@@ -2203,6 +2203,7 @@ function FavoritesTab({
   const [mobileFavoriteDetailOpen, setMobileFavoriteDetailOpen] = useState(false);
   const [favSearch, setFavSearch] = useState("");
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     try {
@@ -2297,6 +2298,11 @@ function FavoritesTab({
   }, []);
 
   useEffect(() => {
+    if (!initialRecords) return;
+    setRecords(initialRecords);
+  }, [initialRecords]);
+
+  useEffect(() => {
     if (hasInitial) {
       setLoading(false);
       const idle =
@@ -2329,6 +2335,12 @@ function FavoritesTab({
     },
     [fetchFavorites, onFavoriteCommitted],
   );
+
+  const handleManualRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchFavorites("silent");
+    setRefreshing(false);
+  }, [fetchFavorites]);
 
   const replaceFavoriteRecord = useCallback(async (id: string) => {
     const res = await fetch(`/api/records/${id}`, { cache: "no-store" });
@@ -2444,7 +2456,17 @@ function FavoritesTab({
               </button>
             ) : null}
           </div>
-          <span className="shrink-0 text-xs text-[var(--muted)]">{displayRecords.length} 条</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleManualRefresh()}
+              disabled={refreshing}
+              className="rounded-lg border border-[var(--line)] bg-[var(--card)] px-2.5 py-1.5 text-xs text-[var(--muted-strong)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {refreshing ? "刷新中..." : "刷新"}
+            </button>
+            <span className="text-xs text-[var(--muted)]">{displayRecords.length} 条</span>
+          </div>
         </div>
       </CollapsibleMobileToolbar>
 
