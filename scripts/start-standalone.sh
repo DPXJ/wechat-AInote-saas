@@ -15,6 +15,9 @@ fi
 
 export NODE_ENV="${NODE_ENV:-production}"
 export PORT="${PORT:-3000}"
-export HOSTNAME="${HOSTNAME:-0.0.0.0}"
+# Next's standalone server treats HOSTNAME as a bind address. Linux shells often
+# expose HOSTNAME as the machine name, which may not resolve locally, so default
+# to all interfaces unless explicitly overridden.
+export HOSTNAME="${APP_HOSTNAME:-0.0.0.0}"
 
 exec node "$ROOT/.next/standalone/server.js"
