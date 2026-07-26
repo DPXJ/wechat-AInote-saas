@@ -3,8 +3,13 @@ import { type NextRequest, NextResponse } from "next/server";
 import { hasSupabasePublicEnv } from "@/lib/supabase/env";
 
 export async function updateSession(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isPublicStaticAsset =
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    /^\/[^/]+\.(svg|png|jpg|jpeg|gif|webp|ico|txt)$/i.test(pathname);
+
   if (!hasSupabasePublicEnv()) {
-    const { pathname } = request.nextUrl;
     if (pathname.startsWith("/api")) {
       return NextResponse.next({ request });
     }
@@ -12,7 +17,8 @@ export async function updateSession(request: NextRequest) {
     const isPublic =
       publicPaths.some((p) => pathname.startsWith(p)) ||
       pathname.startsWith("/_next") ||
-      pathname.startsWith("/favicon");
+      pathname.startsWith("/favicon") ||
+      isPublicStaticAsset;
     if (!isPublic) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
@@ -49,13 +55,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-
   const publicPaths = ["/login", "/api/auth"];
   const isPublic =
     publicPaths.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
+    isPublicStaticAsset ||
     /** 闪念 HTTP 接入：Bearer 令牌鉴权，不依赖浏览器会话 */
     pathname === "/api/flash-memos/ingest";
 
