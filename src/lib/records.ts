@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 import type {
   AnalysisOutput,
+  FileTimelineItem,
   KnowledgeRecord,
   RecordAsset,
   RecordInput,
@@ -24,6 +25,16 @@ import {
 type RecordRow = Database["public"]["Tables"]["records"]["Row"];
 type AssetRow = Database["public"]["Tables"]["assets"]["Row"];
 type SyncRow = Database["public"]["Tables"]["sync_runs"]["Row"];
+type FileTimelineAssetRow = AssetRow & {
+  records?: {
+    id: string;
+    title: string;
+    summary: string;
+    source_label: string;
+    created_at: string;
+    deleted_at: string | null;
+  } | null;
+};
 
 export function mapAsset(row: AssetRow): RecordAsset {
   return {
@@ -37,6 +48,18 @@ export function mapAsset(row: AssetRow): RecordAsset {
     description: row.description || "",
     ocrText: row.ocr_text || "",
     createdAt: row.created_at,
+  };
+}
+
+function mapFileTimelineItem(row: FileTimelineAssetRow): FileTimelineItem {
+  const asset = mapAsset(row);
+  const record = row.records;
+  return {
+    ...asset,
+    recordTitle: record?.title || "未命名信源",
+    recordSummary: record?.summary || "",
+    recordSourceLabel: record?.source_label || "",
+    recordCreatedAt: record?.created_at || row.created_at,
   };
 }
 
@@ -466,6 +489,45 @@ export async function getAssetById(userId: string, assetId: string): Promise<Ass
     .eq("user_id", userId)
     .maybeSingle();
   return (data ?? null) as AssetRow | null;
+}
+
+export async function listFileTimeline(
+  userId: string,
+  options?: { limit?: number; offset?: number },
+): Promise<{ files: FileTimelineItem[]; total: number }> {
+  const limit = Math.min(Math.max(options?.limit ?? 80, 1), 200);
+  const offset = Math.max(options?.offset ?? 0, 0);
+  const supabase = getSupabaseAdmin();
+
+  const { data, count, error } = await supabase
+    .from("assets")
+    .select(
+      `
+        *,
+        records!inner (
+          id,
+          title,
+          summary,
+          source_label,
+          created_at,
+          deleted_at
+        )
+      `,
+      { count: "exact" },
+    )
+    .eq("user_id", userId)
+    .is("records.deleted_at", null)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    throw new Error(`读取文件时间线失败：${error.message}`);
+  }
+
+  return {
+    files: ((data || []) as unknown as FileTimelineAssetRow[]).map(mapFileTimelineItem),
+    total: count ?? 0,
+  };
 }
 
 export async function readAssetBuffer(

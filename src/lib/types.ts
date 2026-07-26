@@ -25,6 +25,13 @@ export interface RecordAsset {
   createdAt: string;
 }
 
+export interface FileTimelineItem extends RecordAsset {
+  recordTitle: string;
+  recordSummary: string;
+  recordSourceLabel: string;
+  recordCreatedAt: string;
+}
+
 export interface SyncRun {
   id: string;
   recordId: string;

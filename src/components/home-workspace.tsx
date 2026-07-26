@@ -19,6 +19,7 @@ import { RecordDetailModal } from "@/components/record-detail-modal";
 import { TagManager } from "@/components/tag-manager";
 import { RecordProjectBacklinks } from "@/components/record-project-backlinks";
 import { ProjectsPanel } from "@/components/projects-panel";
+import { FileTimelinePanel } from "@/components/file-timeline-panel";
 import { SyncIndicator } from "@/components/sync-indicator";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import {
@@ -49,6 +50,7 @@ type WorkspaceTab =
   | "todos"
   | "flash_memos"
   | "projects"
+  | "file_timeline"
   | "tags"
   | "trash"
   | "settings";
@@ -146,6 +148,14 @@ function TabIcon({ id, className = "w-[18px] h-[18px]" }: { id: string; classNam
           <path d="M8 12h8M8 16h5" />
         </svg>
       );
+    case "file_timeline":
+      return (
+        <svg {...props}>
+          <path d="M6 3h8l4 4v14H6z" />
+          <path d="M14 3v5h5" />
+          <path d="M8.5 13h7M8.5 17h5" />
+        </svg>
+      );
     case "history": return <svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>;
     case "favorites": return <StarIconRounded className={className} size={18} />;
     case "search": return <svg {...props}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
@@ -208,6 +218,7 @@ const tabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "todos", label: "待办" },
   { id: "flash_memos", label: "闪念" },
   { id: "projects", label: "项目" },
+  { id: "file_timeline", label: "文件时间线" },
   { id: "history", label: "历史信源" },
   { id: "favorites", label: "收藏" },
   { id: "tags", label: "标签" },
@@ -577,7 +588,7 @@ export function HomeWorkspace({
     }
   }, []);
 
-  // 支持 URL：/?tab=history&record=xxx；/?tab=record；/?tab=projects&project=&task=
+  // 支持 URL：/?tab=history&record=xxx；/?tab=record；/?tab=projects&project=&task=；/?tab=file_timeline
   useEffect(() => {
     const tab = searchParams.get("tab");
     const recordId = searchParams.get("record");
@@ -604,6 +615,11 @@ export function HomeWorkspace({
     }
     if (tab === "flash_memos" && tabs.some((t) => t.id === tab)) {
       setActiveTabRaw("flash_memos");
+      router.replace("/", { scroll: false });
+      return;
+    }
+    if (tab === "file_timeline" && tabs.some((t) => t.id === tab)) {
+      setActiveTabRaw("file_timeline");
       router.replace("/", { scroll: false });
     }
   }, [searchParams, router]);
@@ -1093,6 +1109,7 @@ export function HomeWorkspace({
                 activeTab !== "todos" &&
                   activeTab !== "flash_memos" &&
                   activeTab !== "projects" &&
+                  activeTab !== "file_timeline" &&
                   "p-5 lg:p-6",
               ].filter(Boolean).join(" ")}
             >
@@ -1203,6 +1220,17 @@ export function HomeWorkspace({
                   }
                 >
                   <FlashMemoPanel />
+                </div>
+              )}
+              {tabsEverOpened.has("file_timeline") && (
+                <div
+                  className={
+                    activeTab === "file_timeline"
+                      ? "hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] lg:p-6"
+                      : "hidden"
+                  }
+                >
+                  <FileTimelinePanel />
                 </div>
               )}
               {tabsEverOpened.has("tags") && (
