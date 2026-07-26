@@ -4,6 +4,7 @@
 /node_modules
 apps/mobile/node_modules
 apps/macos/.build
+apps/macos/dist
 /.pnp
 .pnp.*
 .yarn/*

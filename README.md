@@ -17,7 +17,7 @@ git push origin master
 2. SSH 到服务器并拉代码
 
 ```bash
-ssh root@123.57.226.34
+ssh -i ~/.ssh/aliyun_signal_deck admin@123.57.226.34
 cd /var/www/signal-deck
 git pull
 ```
@@ -27,7 +27,9 @@ git pull
 ```bash
 npm ci
 npm run build
-pm2 restart signal-deck --update-env
+pm2 delete signal-deck || true
+pm2 start scripts/start-standalone.sh --name signal-deck
+pm2 save
 ```
 
 快速健康检查：
@@ -121,13 +123,16 @@ npm run backup:supabase
 - Bearer Token 调用云端 API
 - 文件时间线列表
 - 文件打开链接
+- 最近记录列表
+- 待办列表与新增待办
+- 选择本机文件并保存到云端资料库
 
 启动方式：
 
 ```bash
 cd apps/mobile
 cp .env.example .env
-npm install
+npm install --legacy-peer-deps
 npm run start
 ```
 
@@ -145,8 +150,10 @@ Mac 端在 [apps/macos](apps/macos) 下，是真正的 SwiftUI 原生客户端�
 
 - Supabase 邮箱密码登录
 - Bearer Token 调用云端 API
+- Keychain 保存登录 token
 - 文件时间线列表
 - 打开云端文件链接
+- `.app` 和 `.dmg` 打包脚本
 
 运行方式：
 
@@ -156,6 +163,16 @@ AI_XINJI_API_BASE_URL=https://aixinji.linknewai.com \
 AI_XINJI_SUPABASE_URL=https://你的项目.supabase.co \
 AI_XINJI_SUPABASE_ANON_KEY=你的anon key \
 swift run
+```
+
+打包：
+
+```bash
+cd apps/macos
+AI_XINJI_API_BASE_URL=https://aixinji.linknewai.com \
+AI_XINJI_SUPABASE_URL=https://你的项目.supabase.co \
+AI_XINJI_SUPABASE_ANON_KEY=你的anon key \
+./scripts/package-app.sh
 ```
 
 ## 可选配置
@@ -193,8 +210,6 @@ swift run
 
 - 飞书发送：配置飞书机器人或用户授权后，可把文件链接、摘要和标签发送到指定会话
 - 微信发送：建议优先走企业微信机器人、公众号模板消息或系统分享；个人微信自动发送受官方能力限制
-- 手机端补上传、历史信源、待办模块
-- Mac 端补 Keychain token 持久化和 `.app/.dmg` 打包
 - 补音视频转写
 
 详细设计见 [docs/architecture.md](docs/architecture.md)。

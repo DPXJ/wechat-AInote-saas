@@ -9,6 +9,7 @@ struct AIXinjiMacApp: App {
             ContentView()
                 .environmentObject(state)
                 .frame(minWidth: 980, minHeight: 680)
+                .task { await state.bootstrap() }
         }
         .windowStyle(.hiddenTitleBar)
     }

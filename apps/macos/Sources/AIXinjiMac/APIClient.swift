@@ -12,15 +12,28 @@ final class AppState: ObservableObject {
     var isSignedIn: Bool { !accessToken.isEmpty }
 
     private let apiBaseURL = URL(string: ProcessInfo.processInfo.environment["AI_XINJI_API_BASE_URL"] ?? "https://aixinji.linknewai.com")!
-    private let supabaseURL = URL(string: ProcessInfo.processInfo.environment["AI_XINJI_SUPABASE_URL"] ?? "")!
+    private let supabaseURL = URL(string: ProcessInfo.processInfo.environment["AI_XINJI_SUPABASE_URL"] ?? "")
     private let supabaseAnonKey = ProcessInfo.processInfo.environment["AI_XINJI_SUPABASE_ANON_KEY"] ?? ""
+    private let tokenAccount = "supabase-access-token"
+    private let emailAccount = "last-email"
+
+    init() {
+        accessToken = KeychainStore.read(account: tokenAccount)
+        email = KeychainStore.read(account: emailAccount)
+    }
+
+    func bootstrap() async {
+        if isSignedIn {
+            await loadTimeline()
+        }
+    }
 
     func signIn() async {
         guard !email.trimmingCharacters(in: .whitespaces).isEmpty, !password.isEmpty else {
             message = "请填写邮箱和密码"
             return
         }
-        guard !supabaseAnonKey.isEmpty else {
+        guard let supabaseURL, !supabaseAnonKey.isEmpty else {
             message = "请配置 AI_XINJI_SUPABASE_URL 和 AI_XINJI_SUPABASE_ANON_KEY"
             return
         }
@@ -48,6 +61,8 @@ final class AppState: ObservableObject {
             let auth = try JSONDecoder().decode(AuthResponse.self, from: data)
             accessToken = auth.accessToken
             email = auth.user.email ?? email
+            KeychainStore.save(accessToken, account: tokenAccount)
+            KeychainStore.save(email, account: emailAccount)
             message = ""
             await loadTimeline()
         } catch {
@@ -59,6 +74,7 @@ final class AppState: ObservableObject {
         accessToken = ""
         password = ""
         files = []
+        KeychainStore.delete(account: tokenAccount)
     }
 
     func loadTimeline() async {
