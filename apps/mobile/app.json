@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "AI 信迹",
+    "slug": "ai-xinji",
+    "scheme": "aixinji",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.aixinji.mobile",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.aixinji.mobile"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# AI 信迹服务器定时任务示例
+# 安装方式：
+#   crontab -e
+#   粘贴下面两行，按实际项目路径和 node 路径调整
+
+# 每天 09:10 访问 /api/health，触发 Supabase 轻量查询，避免长期不活跃暂停
+10 9 * * * cd /var/www/signal-deck && /usr/bin/node scripts/keepalive.mjs >> /var/log/signal-deck-keepalive.log 2>&1
+
+# 每周一 03:20 备份 Supabase 核心表到 /var/backups/signal-deck
+20 3 * * 1 cd /var/www/signal-deck && BACKUP_DIR=/var/backups/signal-deck /usr/bin/node scripts/supabase-backup.mjs >> /var/log/signal-deck-backup.log 2>&1

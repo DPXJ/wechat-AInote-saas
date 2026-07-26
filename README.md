@@ -45,7 +45,7 @@ curl -I https://aixinji.linknewai.com
 - 自动生成摘要、关键词、行动项
 - 支持可追溯的 AI 搜索
 - 一键同步到 Notion、Flomo 或滴答清单邮箱
-- 支持 PWA 安装到手机主屏幕，并提供 Mac 桌面端 Electron 壳
+- 提供 React Native / Expo 手机端和 SwiftUI Mac 端工程骨架，原生调用云端 API
 
 ## 技术栈
 
@@ -56,7 +56,8 @@ curl -I https://aixinji.linknewai.com
 - 本地文件存储与阿里云 OSS 适配层
 - OpenAI Provider（可选）
 - Notion / SMTP / Flomo 适配器
-- Electron Mac 桌面端
+- React Native / Expo 手机端
+- SwiftUI Mac 端
 
 ## 本地启动
 
@@ -80,27 +81,81 @@ npm run dev
 
 打开 [http://localhost:3100](http://localhost:3100)。
 
-## 手机 App（PWA）
+## Supabase 保活与健康检查
 
-生产环境已提供 Web App Manifest 和 Service Worker。用手机浏览器打开线上地址后，可以通过系统菜单添加到主屏幕：
-
-- iOS Safari：分享 → 添加到主屏幕
-- Android Chrome：菜单 → 安装应用
-
-PWA 复用云端账号、文件时间线、历史信源、待办和设置，不需要单独维护一套后端。
-
-## Mac 桌面端
-
-桌面端使用 Electron 包一层云端应用。默认打开线上地址：
+健康检查接口：
 
 ```bash
-npm run desktop
+curl https://aixinji.linknewai.com/api/health
 ```
 
-如需指向其他环境：
+如果配置了 `HEALTHCHECK_TOKEN`，访问时带 token：
 
 ```bash
-AI_XINJI_DESKTOP_URL=http://localhost:3100 npm run desktop
+curl "https://aixinji.linknewai.com/api/health?token=你的token"
+```
+
+服务器本地保活：
+
+```bash
+npm run keepalive
+```
+
+推荐把 [scripts/cron.example](scripts/cron.example) 里的保活任务加入服务器 crontab。
+
+## Supabase 定期备份
+
+导出核心业务表：
+
+```bash
+npm run backup:supabase
+```
+
+默认输出到 `backups/`，可用 `BACKUP_DIR=/var/backups/signal-deck` 指定目录。备份文件是 gzip JSON，包含 records、assets、todos、projects、flash_memos 等核心表。
+
+## 手机 App（React Native / Expo）
+
+手机端在 [apps/mobile](apps/mobile) 下，是真正的 React Native App，不是 WebView。第一版已接入：
+
+- Supabase 邮箱密码登录
+- Bearer Token 调用云端 API
+- 文件时间线列表
+- 文件打开链接
+
+启动方式：
+
+```bash
+cd apps/mobile
+cp .env.example .env
+npm install
+npm run start
+```
+
+`.env` 需要填写：
+
+```env
+EXPO_PUBLIC_APP_API_BASE_URL=https://aixinji.linknewai.com
+EXPO_PUBLIC_SUPABASE_URL=https://你的项目.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=你的anon key
+```
+
+## Mac 桌面端（SwiftUI）
+
+Mac 端在 [apps/macos](apps/macos) 下，是真正的 SwiftUI 原生客户端，不是 Electron/WebView。第一版已接入：
+
+- Supabase 邮箱密码登录
+- Bearer Token 调用云端 API
+- 文件时间线列表
+- 打开云端文件链接
+
+运行方式：
+
+```bash
+cd apps/macos
+AI_XINJI_API_BASE_URL=https://aixinji.linknewai.com \
+AI_XINJI_SUPABASE_URL=https://你的项目.supabase.co \
+AI_XINJI_SUPABASE_ANON_KEY=你的anon key \
+swift run
 ```
 
 ## 可选配置
@@ -122,19 +177,24 @@ AI_XINJI_DESKTOP_URL=http://localhost:3100 npm run desktop
 
 - `src/app/page.tsx`: 收件箱首页
 - `src/app/api/files/timeline/route.ts`: 文件时间线 API
+- `src/app/api/health/route.ts`: 健康检查与 Supabase 保活
 - `src/app/records/[id]/page.tsx`: 资料详情页
 - `src/components/file-timeline-panel.tsx`: 文件时间线前端面板
 - `src/lib/records.ts`: 入库与索引服务
 - `src/lib/search.ts`: 搜索服务
 - `src/lib/sync.ts`: Notion / 滴答邮件同步
-- `desktop/main.cjs`: Mac 桌面端 Electron 入口
+- `scripts/keepalive.mjs`: 保活脚本
+- `scripts/supabase-backup.mjs`: Supabase 备份脚本
+- `apps/mobile`: React Native / Expo 手机端
+- `apps/macos`: SwiftUI Mac 端
 - `docs/architecture.md`: 技术架构说明
 
 ## 后续演进
 
 - 飞书发送：配置飞书机器人或用户授权后，可把文件链接、摘要和标签发送到指定会话
 - 微信发送：建议优先走企业微信机器人、公众号模板消息或系统分享；个人微信自动发送受官方能力限制
-- 桌面端打包 `.dmg`
+- 手机端补上传、历史信源、待办模块
+- Mac 端补 Keychain token 持久化和 `.app/.dmg` 打包
 - 补音视频转写
 
 详细设计见 [docs/architecture.md](docs/architecture.md)。

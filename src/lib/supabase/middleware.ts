@@ -61,6 +61,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     isPublicStaticAsset ||
+    pathname === "/api/health" ||
     /** 闪念 HTTP 接入：Bearer 令牌鉴权，不依赖浏览器会话 */
     pathname === "/api/flash-memos/ingest";
 
