@@ -32,13 +32,13 @@ echo "==> npm run build"
 export NODE_ENV=production
 npm run build
 
-echo "==> PM2 启动或重启"
+echo "==> PM2 启动或重启（Next standalone）"
+chmod +x scripts/start-standalone.sh
 if pm2 describe "$APP_NAME" &>/dev/null; then
-  pm2 restart "$APP_NAME" --update-env
-else
-  pm2 start npm --name "$APP_NAME" -- start
-  pm2 save
+  pm2 delete "$APP_NAME"
 fi
+pm2 start scripts/start-standalone.sh --name "$APP_NAME"
+pm2 save
 
 pm2 status "$APP_NAME"
 echo ""
