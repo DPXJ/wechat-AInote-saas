@@ -2,11 +2,42 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$ROOT/../.." && pwd)"
 DIST="$ROOT/dist"
 APP_NAME="AI 信迹"
 APP="$DIST/$APP_NAME.app"
-DMG="$DIST/$APP_NAME.dmg"
+DMG="$DIST/$APP_NAME-0.1.0.dmg"
 BINARY="$ROOT/.build/release/AIXinjiMac"
+
+APP_VERSION="${APP_VERSION:-0.1.0}"
+API_BASE_URL="${AI_XINJI_API_BASE_URL:-https://aixinji.linknewai.com}"
+SUPABASE_URL="${AI_XINJI_SUPABASE_URL:-}"
+SUPABASE_ANON_KEY="${AI_XINJI_SUPABASE_ANON_KEY:-}"
+
+if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
+  for env_file in "$REPO_ROOT/.env.local" "$REPO_ROOT/.env.production" "$REPO_ROOT/.env"; do
+    [[ -f "$env_file" ]] || continue
+    SUPABASE_URL="${SUPABASE_URL:-$(grep -E '^NEXT_PUBLIC_SUPABASE_URL=' "$env_file" | tail -1 | cut -d= -f2-)}"
+    SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-$(grep -E '^NEXT_PUBLIC_SUPABASE_ANON_KEY=' "$env_file" | tail -1 | cut -d= -f2-)}"
+  done
+fi
+
+if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
+  echo "缺少 Supabase 公共配置：请设置 AI_XINJI_SUPABASE_URL / AI_XINJI_SUPABASE_ANON_KEY，或在仓库 .env.local 填写 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY。" >&2
+  exit 1
+fi
+
+plist_escape() {
+  python3 - "$1" <<'PY'
+import html
+import sys
+print(html.escape(sys.argv[1], quote=False))
+PY
+}
+
+API_BASE_ESCAPED="$(plist_escape "$API_BASE_URL")"
+SUPABASE_URL_ESCAPED="$(plist_escape "$SUPABASE_URL")"
+SUPABASE_ANON_ESCAPED="$(plist_escape "$SUPABASE_ANON_KEY")"
 
 cd "$ROOT"
 swift build -c release
@@ -15,7 +46,7 @@ rm -rf "$APP" "$DMG"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/$APP_NAME"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -31,16 +62,38 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>AIXinjiAPIBaseURL</key>
+  <string>$API_BASE_ESCAPED</string>
+  <key>AIXinjiSupabaseURL</key>
+  <string>$SUPABASE_URL_ESCAPED</string>
+  <key>AIXinjiSupabaseAnonKey</key>
+  <string>$SUPABASE_ANON_ESCAPED</string>
 </dict>
 </plist>
 PLIST
 
-hdiutil create -volname "$APP_NAME" -srcfolder "$APP" -ov -format UDZO "$DMG"
+cat > "$DIST/README-Mac-0.1.txt" <<TXT
+AI 信迹 Mac 0.1
+
+打开方式：
+1. 双击“AI 信迹.app”。
+2. 用网页端同一个邮箱和密码登录。
+3. 登录后会自动同步文件时间线，可搜索、查看详情、打开或下载附件。
+
+说明：
+- 这是原生 SwiftUI Mac App，不是网页套壳。
+- Supabase 公共配置已写入 App 包，双击即可使用。
+- 若 macOS 提示无法验证开发者，请在系统设置 > 隐私与安全性中允许打开。
+TXT
+
+hdiutil create -volname "$APP_NAME 0.1" -srcfolder "$APP" -ov -format UDZO "$DMG"
+echo "$APP"
 echo "$DMG"
+

@@ -39,6 +39,10 @@ function buildAssetPath(id: string, download = false) {
   return `/api/assets/${id}${suffix}`;
 }
 
+function buildAssetPreviewPath(id: string, thumb = false) {
+  return `/api/assets/${id}${thumb ? "?thumb=1" : ""}`;
+}
+
 function buildAbsoluteAssetUrl(id: string) {
   if (typeof window === "undefined") return buildAssetPath(id);
   return `${window.location.origin}${buildAssetPath(id)}`;
@@ -64,6 +68,26 @@ function compactText(text: string, max = 180) {
   return `${clean.slice(0, max)}...`;
 }
 
+function fileMatchesQuery(file: FileTimelineItem, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [
+    file.originalName,
+    file.description,
+    file.ocrText,
+    file.recordTitle,
+    file.recordSummary,
+    file.recordSourceLabel,
+    file.recordContentText,
+    file.recordExtractedText,
+    ...file.tags,
+    ...file.recordKeywords,
+    ...file.recordActionItems,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(q));
+}
+
 function StarIcon({ filled = false }: { filled?: boolean }) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
@@ -80,14 +104,9 @@ function StarIcon({ filled = false }: { filled?: boolean }) {
 }
 
 function PreviewPane({ file }: { file: FileTimelineItem }) {
-  const src = buildAssetPath(file.id);
+  const src = buildAssetPreviewPath(file.id);
   if (file.mimeType.startsWith("image/")) {
-    return (
-      <div className="flex min-h-[260px] items-center justify-center overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={file.originalName} className="max-h-[48vh] w-full object-contain" />
-      </div>
-    );
+    return <ImagePreview file={file} />;
   }
   if (file.mimeType === "application/pdf") {
     return (
@@ -118,6 +137,46 @@ function PreviewPane({ file }: { file: FileTimelineItem }) {
   );
 }
 
+function ImagePreview({ file }: { file: FileTimelineItem }) {
+  const [src, setSrc] = useState(buildAssetPreviewPath(file.id));
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setSrc(buildAssetPreviewPath(file.id));
+    setFailed(false);
+  }, [file.id]);
+
+  return (
+    <div className="flex min-h-[260px] items-center justify-center overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)]">
+      {failed ? (
+        <div className="px-6 py-10 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--card)] text-xs font-semibold text-[var(--muted-strong)]">
+            IMG
+          </div>
+          <p className="mt-3 text-sm font-medium text-[var(--foreground)]">图片预览失败</p>
+          <p className="mt-1 max-w-sm text-xs leading-5 text-[var(--muted)]">
+            可能是原始附件缺失、OSS 临时地址失效或格式暂不支持。可以用“新窗口打开”或“下载”查看。
+          </p>
+        </div>
+      ) : (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={src}
+          alt={file.originalName}
+          className="max-h-[48vh] w-full object-contain"
+          onError={() => {
+            if (!src.includes("thumb=1")) {
+              setSrc(buildAssetPreviewPath(file.id, true));
+              return;
+            }
+            setFailed(true);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)]/55 p-4">
@@ -135,10 +194,12 @@ export function FileTimelinePanel() {
   const [error, setError] = useState("");
   const [selectedFile, setSelectedFile] = useState<FileTimelineItem | null>(null);
   const [shareStatus, setShareStatus] = useState("");
+  const [query, setQuery] = useState("");
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
   const [favoriteBusyId, setFavoriteBusyId] = useState("");
 
-  const groups = useMemo(() => groupByDate(files), [files]);
+  const filteredFiles = useMemo(() => files.filter((file) => fileMatchesQuery(file, query)), [files, query]);
+  const groups = useMemo(() => groupByDate(filteredFiles), [filteredFiles]);
   const hasMore = files.length < total;
 
   const loadFavorites = useCallback(async () => {
@@ -230,17 +291,34 @@ export function FileTimelinePanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 flex shrink-0 flex-col gap-3 border-b border-[var(--line)] pb-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-4 flex shrink-0 flex-col gap-3 border-b border-[var(--line)] pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[var(--foreground)]">时间线</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
             每一天保存过哪些资料，一眼看清；点开后可预览文件、查看 AI 摘要和 OCR / 文档抽取内容。
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted-strong)] transition focus-within:border-[var(--line-strong)] sm:w-72">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索文件、标签、OCR、摘要"
+              className="min-w-0 flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery("")} className="rounded-md px-1 text-xs text-[var(--muted)] hover:bg-[var(--card)] hover:text-[var(--foreground)]" aria-label="清空搜索">
+                ×
+              </button>
+            )}
+          </label>
           {shareStatus && <span className="text-xs text-[var(--success)]">{shareStatus}</span>}
           <span className="rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--muted-strong)]">
-            {total} 个文件
+            {query ? `${filteredFiles.length} / ${total} 个文件` : `${total} 个文件`}
           </span>
           <button
             type="button"
@@ -268,6 +346,10 @@ export function FileTimelinePanel() {
         ) : files.length === 0 ? (
           <div className="flex h-full min-h-[260px] items-center justify-center rounded-xl border border-dashed border-[var(--line)] text-center text-sm text-[var(--muted)]">
             还没有资料。去“录入”里粘贴微信/飞书内容，或拖入文件后保存。
+          </div>
+        ) : filteredFiles.length === 0 ? (
+          <div className="flex h-full min-h-[260px] items-center justify-center rounded-xl border border-dashed border-[var(--line)] text-center text-sm text-[var(--muted)]">
+            没有匹配的资料。换个关键词试试文件名、标签、来源或 OCR 内容。
           </div>
         ) : (
           <div className="space-y-8">
@@ -485,4 +567,3 @@ export function FileTimelinePanel() {
     </div>
   );
 }
-

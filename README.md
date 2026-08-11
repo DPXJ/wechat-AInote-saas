@@ -44,6 +44,7 @@ curl -I https://aixinji.linknewai.com
 - 在“录入”里手动把微信、飞书、网页里的文本、截图、PDF、文档同步到网页收件箱
 - 保存原文和原文件
 - 在“时间线”里按日期查看资料、文件预览、标签、描述和来源信源
+- 在“时间线”里搜索文件名、标签、来源、摘要、OCR 和文档抽取内容
 - 自动生成摘要、关键词、行动项
 - 支持图片 OCR、文档/PDF 抽取内容和详情预览
 - 支持把来源记录加入收藏
@@ -148,13 +149,15 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=你的anon key
 
 ## Mac 桌面端（SwiftUI）
 
-Mac 端在 [apps/macos](apps/macos) 下，是真正的 SwiftUI 原生客户端，不是 Electron/WebView。第一版已接入：
+Mac 端在 [apps/macos](apps/macos) 下，是真正的 SwiftUI 原生客户端，不是 Electron/WebView。0.1 版已接入：
 
 - Supabase 邮箱密码登录
 - Bearer Token 调用云端 API
 - Keychain 保存登录 token
 - 文件时间线列表
-- 打开云端文件链接
+- 时间线搜索
+- 文件详情、AI 摘要、标签、OCR / 文档抽取内容
+- 原生下载附件并调用 macOS 打开
 - `.app` 和 `.dmg` 打包脚本
 
 后续剪贴板同步建议走原生 `NSPasteboard` 监听：记录最近一次 `changeCount`，检测到文本、图片或文件 URL 后先在本地排队，再调用云端 `/api/records` 上传，避免重复同步和网络不稳定导致丢数据。
@@ -173,11 +176,10 @@ swift run
 
 ```bash
 cd apps/macos
-AI_XINJI_API_BASE_URL=https://aixinji.linknewai.com \
-AI_XINJI_SUPABASE_URL=https://你的项目.supabase.co \
-AI_XINJI_SUPABASE_ANON_KEY=你的anon key \
 ./scripts/package-app.sh
 ```
+
+脚本会从仓库 `.env.local` 读取 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_ANON_KEY`，写入 App 的 `Info.plist`，所以生成后的 [apps/macos/dist/AI 信迹.app](apps/macos/dist/AI%20信迹.app) 可以直接双击打开。0.1 DMG 输出为 `apps/macos/dist/AI 信迹-0.1.0.dmg`。
 
 ## 可选配置
 
