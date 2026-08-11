@@ -20,4 +20,12 @@ export PORT="${PORT:-3000}"
 # to all interfaces unless explicitly overridden.
 export HOSTNAME="${APP_HOSTNAME:-0.0.0.0}"
 
+mkdir -p "$ROOT/.next/standalone/.next"
+if [[ -d "$ROOT/.next/static" && ! -e "$ROOT/.next/standalone/.next/static" ]]; then
+  ln -s ../../static "$ROOT/.next/standalone/.next/static"
+fi
+if [[ -d "$ROOT/public" && ! -e "$ROOT/.next/standalone/public" ]]; then
+  ln -s ../../public "$ROOT/.next/standalone/public"
+fi
+
 exec node "$ROOT/.next/standalone/server.js"
