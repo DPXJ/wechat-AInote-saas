@@ -26,6 +26,31 @@ struct FavoriteRecord: Decodable {
     let id: String
 }
 
+enum AppSection: String, CaseIterable {
+    case timeline
+    case favorites
+    case sources
+    case todos
+
+    var title: String {
+        switch self {
+        case .timeline: return "文件时间线"
+        case .favorites: return "收藏"
+        case .sources: return "信源"
+        case .todos: return "待办"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .timeline: return "doc.text"
+        case .favorites: return "star"
+        case .sources: return "clock"
+        case .todos: return "checkmark.square"
+        }
+    }
+}
+
 struct FileTimelineItem: Identifiable, Decodable, Hashable {
     let id: String
     let recordId: String
@@ -112,6 +137,10 @@ struct FileTimelineItem: Identifiable, Decodable, Hashable {
     var timeText: String {
         guard let createdDate else { return createdAt }
         return DateFormatter.aixinjiTime.string(from: createdDate)
+    }
+
+    var hasTodo: Bool {
+        !recordActionItems.isEmpty || searchHaystack.localizedCaseInsensitiveContains("待办")
     }
 }
 

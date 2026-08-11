@@ -32,7 +32,23 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .background(WindowConfigurator())
     }
+}
+
+struct WindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.isMovableByWindowBackground = true
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 struct AppBackground: View {
@@ -66,7 +82,7 @@ struct LoginView: View {
                 VStack(spacing: 4) {
                     Text("AI 信迹")
                         .font(.system(size: 32, weight: .bold))
-                    Text("原生 Mac 客户端 · 0.1")
+                    Text("原生 Mac 客户端 · 0.03")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -142,8 +158,20 @@ struct TimelineWorkspace: View {
 
     var filteredFiles: [FileTimelineItem] {
         let q = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return state.files }
-        return state.files.filter { $0.searchHaystack.localizedCaseInsensitiveContains(q) }
+        let scoped = state.files.filter { file in
+            switch state.currentSection {
+            case .timeline:
+                return true
+            case .favorites:
+                return state.favoriteRecordIds.contains(file.recordId)
+            case .sources:
+                return !file.recordSourceLabel.isEmpty || !file.recordTitle.isEmpty
+            case .todos:
+                return file.hasTodo
+            }
+        }
+        guard !q.isEmpty else { return scoped }
+        return scoped.filter { $0.searchHaystack.localizedCaseInsensitiveContains(q) }
     }
 
     var dayGroups: [TimelineDayGroup] {
@@ -183,10 +211,34 @@ struct TimelineWorkspace: View {
                 }
             }
         }
+        .overlay(alignment: .top) {
+            DragStrip()
+        }
         .onChange(of: filteredFiles.map(\.id)) { _, ids in
             if let current = state.selectedFileId, ids.contains(current) { return }
             state.selectedFileId = ids.first
         }
+    }
+}
+
+struct DragStrip: View {
+    var body: some View {
+        WindowDragView()
+            .frame(height: 28)
+    }
+}
+
+struct WindowDragView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        DraggingNSView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+final class DraggingNSView: NSView {
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
     }
 }
 
@@ -212,11 +264,20 @@ struct SidebarView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                SidebarButton(title: "时间线", systemImage: "doc.text", active: true) {
-                    Task { await state.loadTimeline() }
+                SidebarButton(title: AppSection.timeline.title, systemImage: AppSection.timeline.systemImage, active: state.currentSection == .timeline) {
+                    state.currentSection = .timeline
                 }
                 SidebarButton(title: "网页录入", systemImage: "plus.circle", active: false) {
                     state.openWebCapture()
+                }
+                SidebarButton(title: AppSection.favorites.title, systemImage: AppSection.favorites.systemImage, badge: state.favoriteRecordIds.count, active: state.currentSection == .favorites) {
+                    state.currentSection = .favorites
+                }
+                SidebarButton(title: AppSection.sources.title, systemImage: AppSection.sources.systemImage, active: state.currentSection == .sources) {
+                    state.currentSection = .sources
+                }
+                SidebarButton(title: AppSection.todos.title, systemImage: AppSection.todos.systemImage, badge: state.files.filter(\.hasTodo).count, active: state.currentSection == .todos) {
+                    state.currentSection = .todos
                 }
                 SidebarButton(title: "刷新同步", systemImage: "arrow.clockwise", active: false) {
                     Task { await state.loadTimeline() }
@@ -258,17 +319,26 @@ struct SidebarView: View {
 struct SidebarButton: View {
     let title: String
     let systemImage: String
+    var badge: Int = 0
     let active: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 15, weight: active ? .semibold : .regular))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(active ? .white.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 14))
+            HStack(spacing: 10) {
+                Label(title, systemImage: systemImage)
+                    .font(.system(size: 15, weight: active ? .semibold : .regular))
+                Spacer()
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.pink)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(active ? .white.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
         .foregroundStyle(active ? .primary : .secondary)
@@ -283,7 +353,7 @@ struct HeaderView: View {
     var body: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("文件时间线")
+                Text(state.currentSection.title)
                     .font(.title2.bold())
                 Text(state.searchText.isEmpty ? "\(total) 个文件" : "\(filtered) / \(total) 个文件")
                     .font(.caption)

@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     @Published var searchText = ""
     @Published var message = ""
     @Published var isLoading = false
+    @Published var currentSection: AppSection = .timeline
     @Published var favoriteRecordIds: Set<String> = []
     @Published var previewImages: [String: NSImage] = [:]
     @Published var previewLoadingIds: Set<String> = []

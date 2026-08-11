@@ -6,6 +6,7 @@
 
 - `0.01`：第一版原生客户端
 - `0.02`：文件时间线按日期分组、图片预览、收藏同步、复制链接、网页录入入口
+- `0.03`：窗口可拖动、补齐收藏/信源/待办入口、恢复线上本地附件预览
 
 后续每次打包都使用新的版本号输出独立 `.app` 和 `.dmg`，不会覆盖旧包。
 
@@ -34,16 +35,16 @@ cd apps/macos
 指定下一个版本：
 
 ```bash
-APP_VERSION=0.03 ./scripts/package-app.sh
+APP_VERSION=0.04 ./scripts/package-app.sh
 ```
 
 输出：
 
-- `apps/macos/dist/AI 信迹 0.02.app`
-- `apps/macos/dist/AI 信迹-0.02.dmg`
+- `apps/macos/dist/AI 信迹 0.03.app`
+- `apps/macos/dist/AI 信迹-0.03.dmg`
 
 ## 迭代方向
 
-- 0.03：剪贴板监听与本地队列
-- 0.04：菜单栏快速收藏
-- 0.05：PDF 内嵌预览
+- 0.04：剪贴板监听与本地队列
+- 0.05：菜单栏快速收藏
+- 0.06：PDF 内嵌预览

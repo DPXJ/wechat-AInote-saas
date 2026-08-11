@@ -15,6 +15,7 @@ fi
 
 export NODE_ENV="${NODE_ENV:-production}"
 export PORT="${PORT:-3000}"
+export DATA_ROOT="${DATA_ROOT:-$ROOT/.local-data/signal-deck}"
 # Next's standalone server treats HOSTNAME as a bind address. Linux shells often
 # expose HOSTNAME as the machine name, which may not resolve locally, so default
 # to all interfaces unless explicitly overridden.
