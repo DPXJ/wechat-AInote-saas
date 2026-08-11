@@ -4,9 +4,11 @@ import { hasSupabasePublicEnv } from "@/lib/supabase/env";
 
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const hasBearerAuthorization = /^Bearer\s+.+/i.test(request.headers.get("authorization") || "");
   const isPublicStaticAsset =
     pathname === "/manifest.webmanifest" ||
     pathname === "/sw.js" ||
+    pathname.startsWith("/icons/") ||
     /^\/[^/]+\.(svg|png|jpg|jpeg|gif|webp|ico|txt)$/i.test(pathname);
 
   if (!hasSupabasePublicEnv()) {
@@ -61,6 +63,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     isPublicStaticAsset ||
+    (pathname.startsWith("/api/") && hasBearerAuthorization) ||
     pathname === "/api/health" ||
     /** 闪念 HTTP 接入：Bearer 令牌鉴权，不依赖浏览器会话 */
     pathname === "/api/flash-memos/ingest";
