@@ -5,11 +5,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$ROOT/../.." && pwd)"
 DIST="$ROOT/dist"
 APP_NAME="AI 信迹"
-APP="$DIST/$APP_NAME.app"
-DMG="$DIST/$APP_NAME-0.1.0.dmg"
 BINARY="$ROOT/.build/release/AIXinjiMac"
 
-APP_VERSION="${APP_VERSION:-0.1.0}"
+APP_VERSION="${APP_VERSION:-0.02}"
+APP="$DIST/$APP_NAME $APP_VERSION.app"
+DMG="$DIST/$APP_NAME-$APP_VERSION.dmg"
+README="$DIST/README-Mac-$APP_VERSION.txt"
 API_BASE_URL="${AI_XINJI_API_BASE_URL:-https://aixinji.linknewai.com}"
 SUPABASE_URL="${AI_XINJI_SUPABASE_URL:-}"
 SUPABASE_ANON_KEY="${AI_XINJI_SUPABASE_ANON_KEY:-}"
@@ -42,7 +43,11 @@ SUPABASE_ANON_ESCAPED="$(plist_escape "$SUPABASE_ANON_KEY")"
 cd "$ROOT"
 swift build -c release
 
-rm -rf "$APP" "$DMG"
+if [[ -e "$APP" || -e "$DMG" ]]; then
+  echo "版本 $APP_VERSION 已存在：$APP 或 $DMG。请设置新的 APP_VERSION，例如 APP_VERSION=0.03 ./scripts/package-app.sh" >&2
+  exit 1
+fi
+
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
@@ -82,11 +87,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-cat > "$DIST/README-Mac-0.1.txt" <<TXT
-AI 信迹 Mac 0.1
+cat > "$README" <<TXT
+AI 信迹 Mac $APP_VERSION
 
 打开方式：
-1. 双击“AI 信迹.app”。
+1. 双击“AI 信迹 $APP_VERSION.app”。
 2. 用网页端同一个邮箱和密码登录。
 3. 登录后会自动同步文件时间线，可搜索、查看详情、打开或下载附件。
 
@@ -96,6 +101,6 @@ AI 信迹 Mac 0.1
 - 若 macOS 提示无法验证开发者，请在系统设置 > 隐私与安全性中允许打开。
 TXT
 
-hdiutil create -volname "$APP_NAME 0.1" -srcfolder "$APP" -ov -format UDZO "$DMG"
+hdiutil create -volname "$APP_NAME $APP_VERSION" -srcfolder "$APP" -format UDZO "$DMG"
 echo "$APP"
 echo "$DMG"
