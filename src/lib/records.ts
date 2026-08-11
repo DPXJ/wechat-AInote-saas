@@ -33,6 +33,10 @@ type FileTimelineAssetRow = AssetRow & {
     source_label: string;
     created_at: string;
     deleted_at: string | null;
+    content_text: string;
+    extracted_text: string;
+    keywords: string[] | null;
+    action_items: string[] | null;
   } | null;
 };
 
@@ -60,6 +64,10 @@ function mapFileTimelineItem(row: FileTimelineAssetRow): FileTimelineItem {
     recordSummary: record?.summary || "",
     recordSourceLabel: record?.source_label || "",
     recordCreatedAt: record?.created_at || row.created_at,
+    recordContentText: record?.content_text || "",
+    recordExtractedText: record?.extracted_text || "",
+    recordKeywords: record?.keywords || [],
+    recordActionItems: record?.action_items || [],
   };
 }
 
@@ -510,7 +518,11 @@ export async function listFileTimeline(
           summary,
           source_label,
           created_at,
-          deleted_at
+          deleted_at,
+          content_text,
+          extracted_text,
+          keywords,
+          action_items
         )
       `,
       { count: "exact" },

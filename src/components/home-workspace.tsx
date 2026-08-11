@@ -214,15 +214,11 @@ function ProjectsCountBadge({
 }
 
 const tabs: Array<{ id: WorkspaceTab; label: string }> = [
-  { id: "record", label: "开始记录" },
-  { id: "todos", label: "待办" },
-  { id: "flash_memos", label: "闪念" },
-  { id: "projects", label: "项目" },
-  { id: "file_timeline", label: "文件时间线" },
-  { id: "history", label: "历史信源" },
+  { id: "record", label: "录入" },
+  { id: "file_timeline", label: "时间线" },
   { id: "favorites", label: "收藏" },
-  { id: "tags", label: "标签" },
-  { id: "trash", label: "回收站" },
+  { id: "history", label: "信源" },
+  { id: "todos", label: "待办" },
   { id: "settings", label: "设置" },
 ];
 
@@ -286,7 +282,7 @@ export function HomeWorkspace({
   integrationStatus: IntegrationStatus;
 }) {
   const router = useRouter();
-  const [activeTab, setActiveTabRaw] = useState<WorkspaceTab>("record");
+  const [activeTab, setActiveTabRaw] = useState<WorkspaceTab>("file_timeline");
   const tabRestoredRef = useRef(false);
   const [records, setRecords] = useState<KnowledgeRecord[]>(initialRecords);
   const [total, setTotal] = useState(initialTotal);
@@ -314,7 +310,7 @@ export function HomeWorkspace({
   const [projectsDeepLink, setProjectsDeepLink] = useState<{ projectId: string; taskId?: string } | null>(null);
   const consumeProjectsDeepLink = useCallback(() => setProjectsDeepLink(null), []);
   /** 曾打开过的 Tab 保持挂载，避免反复切换时整页重挂载与重复请求 */
-  const [tabsEverOpened, setTabsEverOpened] = useState<Set<WorkspaceTab>>(() => new Set<WorkspaceTab>(["record"]));
+  const [tabsEverOpened, setTabsEverOpened] = useState<Set<WorkspaceTab>>(() => new Set<WorkspaceTab>(["file_timeline"]));
   const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [todosInitialPriority, setTodosInitialPriority] = useState<TodoPriority | "">("");

@@ -30,6 +30,10 @@ export interface FileTimelineItem extends RecordAsset {
   recordSummary: string;
   recordSourceLabel: string;
   recordCreatedAt: string;
+  recordContentText: string;
+  recordExtractedText: string;
+  recordKeywords: string[];
+  recordActionItems: string[];
 }
 
 export interface SyncRun {
