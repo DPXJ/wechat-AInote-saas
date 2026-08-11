@@ -13,9 +13,21 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait",
     icons: [
       {
-        src: "/window.svg",
+        src: "/icons/aixinji.svg",
         sizes: "any",
         type: "image/svg+xml",
+        purpose: "any",
+      },
+      {
+        src: "/icons/aixinji-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
+      },
+      {
+        src: "/icons/aixinji-512.png",
+        sizes: "512x512",
+        type: "image/png",
         purpose: "any",
       },
     ],

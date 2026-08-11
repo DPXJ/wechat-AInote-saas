@@ -118,6 +118,11 @@ final class AppState: ObservableObject {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                if (response as? HTTPURLResponse)?.statusCode == 401 {
+                    signOut()
+                    message = "登录已过期，请重新登录"
+                    return
+                }
                 message = readableError(data) ?? "读取失败"
                 return
             }
@@ -194,4 +199,3 @@ extension JSONDecoder {
         return decoder
     }
 }
-

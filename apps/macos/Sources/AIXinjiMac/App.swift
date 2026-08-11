@@ -43,6 +43,7 @@ struct RootView: View {
 
 struct LoginView: View {
     @EnvironmentObject private var state: AppState
+    @State private var showPassword = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -64,12 +65,30 @@ struct LoginView: View {
                         .frame(height: 44)
                         .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)))
-                    SecureField("密码", text: $state.password)
+                    HStack(spacing: 8) {
+                        Group {
+                            if showPassword {
+                                TextField("密码", text: $state.password)
+                            } else {
+                                SecureField("密码", text: $state.password)
+                            }
+                        }
                         .textFieldStyle(.plain)
-                        .padding(.horizontal, 14)
-                        .frame(height: 44)
-                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)))
+
+                        Button {
+                            showPassword.toggle()
+                        } label: {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .frame(width: 22)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help(showPassword ? "隐藏密码" : "显示密码")
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 44)
+                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)))
                 }
                 .frame(width: 360)
 
@@ -500,4 +519,3 @@ struct AppMark: View {
             .overlay(Text("✦").font(.system(size: size * 0.42, weight: .bold)).foregroundStyle(.white))
     }
 }
-

@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { listFileTimeline } from "@/lib/records";
-import { requireUserId } from "@/lib/supabase/server";
+import { requireUserIdFromRequest } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const url = new URL(request.url);
     const limit = Math.min(Number(url.searchParams.get("limit")) || 80, 200);
     const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);

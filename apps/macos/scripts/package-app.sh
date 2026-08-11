@@ -45,6 +45,7 @@ swift build -c release
 rm -rf "$APP" "$DMG"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/$APP_NAME"
+cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -59,6 +60,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <string>AI 信迹</string>
   <key>CFBundleDisplayName</key>
   <string>AI 信迹</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -96,4 +99,3 @@ TXT
 hdiutil create -volname "$APP_NAME 0.1" -srcfolder "$APP" -ov -format UDZO "$DMG"
 echo "$APP"
 echo "$DMG"
-

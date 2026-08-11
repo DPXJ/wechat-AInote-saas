@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { deleteAssetForUser, mapAsset, readAssetBuffer, readAssetThumbnail, updateAssetMetadata } from "@/lib/records";
 import { readOssObjectBufferForApi } from "@/lib/storage";
-import { requireUserId } from "@/lib/supabase/server";
+import { requireUserIdFromRequest } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -10,7 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const { id } = await params;
     const url = new URL(request.url);
     const forceDownload = url.searchParams.get("download") === "1";
@@ -129,7 +129,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const { id } = await params;
     const body = (await request.json()) as { description?: string; tags?: string[] };
     const row = await updateAssetMetadata(userId, id, {
@@ -155,7 +155,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(_request);
     const { id } = await params;
     const result = await deleteAssetForUser(userId, id);
     if (!result.ok) {

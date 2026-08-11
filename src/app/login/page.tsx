@@ -29,6 +29,7 @@ async function postAuth(path: string, body: Record<string, string>) {
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberPassword, setRememberPassword] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -168,12 +169,33 @@ APP_BASE_URL=https://你的域名`}
             {mode !== "forgot" && (
               <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="密码（至少 6 位）"
-                  className="input-focus-bar w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[var(--line-strong)]"
+                  className="input-focus-bar w-full rounded-xl border px-4 py-3 pr-12 outline-none transition focus:border-[var(--line-strong)]"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200"
+                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                  title={showPassword ? "隐藏密码" : "显示密码"}
+                >
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M2 2l20 20" />
+                      <path d="M10.6 10.6A2 2 0 0 0 13.4 13.4" />
+                      <path d="M8.5 5.2A10.6 10.6 0 0 1 12 4c5 0 9 4.5 10 8a12.2 12.2 0 0 1-3 4.6" />
+                      <path d="M15.5 18.8A10.6 10.6 0 0 1 12 20c-5 0-9-4.5-10-8a12 12 0 0 1 4.3-5.5" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
               </div>
             )}
 
