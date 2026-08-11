@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { requireUserId } from "@/lib/supabase/server";
+import { requireUserIdFromRequest } from "@/lib/supabase/server";
 import { removeFavorite } from "@/lib/favorites";
 
 export const runtime = "nodejs";
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ recordId: string }> },
 ) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const { recordId } = await params;
     await removeFavorite(userId, recordId);
     return NextResponse.json({ ok: true });

@@ -18,6 +18,14 @@ struct FileTimelineResponse: Decodable {
     let files: [FileTimelineItem]
 }
 
+struct FavoriteTimelineResponse: Decodable {
+    let records: [FavoriteRecord]
+}
+
+struct FavoriteRecord: Decodable {
+    let id: String
+}
+
 struct FileTimelineItem: Identifiable, Decodable, Hashable {
     let id: String
     let recordId: String
@@ -84,18 +92,83 @@ struct FileTimelineItem: Identifiable, Decodable, Hashable {
         if byteSize < 1024 * 1024 { return String(format: "%.1f KB", Double(byteSize) / 1024) }
         return String(format: "%.1f MB", Double(byteSize) / 1024 / 1024)
     }
+
+    var createdDate: Date? {
+        Date.aixinjiISODate(from: createdAt)
+    }
+
+    var dayKey: String {
+        guard let createdDate else { return "unknown" }
+        return DateFormatter.aixinjiDayKey.string(from: createdDate)
+    }
+
+    var dayTitle: String {
+        guard let createdDate else { return "未知日期" }
+        if Calendar.current.isDateInToday(createdDate) { return "今天" }
+        if Calendar.current.isDateInYesterday(createdDate) { return "昨天" }
+        return DateFormatter.aixinjiDayTitle.string(from: createdDate)
+    }
+
+    var timeText: String {
+        guard let createdDate else { return createdAt }
+        return DateFormatter.aixinjiTime.string(from: createdDate)
+    }
 }
 
 extension String {
     var shortDateTime: String {
-        let iso = ISO8601DateFormatter()
-        if let date = iso.date(from: self) {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "zh_CN")
-            formatter.dateFormat = "yyyy/MM/dd HH:mm"
-            return formatter.string(from: date)
+        if let date = Date.aixinjiISODate(from: self) {
+            return DateFormatter.aixinjiDateTime.string(from: date)
         }
         return self
     }
 }
 
+extension Date {
+    static func aixinjiISODate(from text: String) -> Date? {
+        if let date = ISO8601DateFormatter.aixinji.date(from: text) {
+            return date
+        }
+        let fallback = ISO8601DateFormatter()
+        fallback.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fallback.date(from: text)
+    }
+}
+
+extension ISO8601DateFormatter {
+    static let aixinji: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+}
+
+extension DateFormatter {
+    static let aixinjiDayKey: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    static let aixinjiDayTitle: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月d日 EEEE"
+        return formatter
+    }()
+
+    static let aixinjiTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    static let aixinjiDateTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy/MM/dd HH:mm"
+        return formatter
+    }()
+}

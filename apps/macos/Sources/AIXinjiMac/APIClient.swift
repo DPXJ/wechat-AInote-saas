@@ -11,6 +11,9 @@ final class AppState: ObservableObject {
     @Published var searchText = ""
     @Published var message = ""
     @Published var isLoading = false
+    @Published var favoriteRecordIds: Set<String> = []
+    @Published var previewImages: [String: NSImage] = [:]
+    @Published var previewLoadingIds: Set<String> = []
 
     var isSignedIn: Bool { !accessToken.isEmpty }
     var selectedFile: FileTimelineItem? {
@@ -100,6 +103,9 @@ final class AppState: ObservableObject {
         password = ""
         files = []
         selectedFileId = nil
+        favoriteRecordIds = []
+        previewImages = [:]
+        previewLoadingIds = []
         KeychainStore.delete(account: tokenAccount)
     }
 
@@ -109,13 +115,13 @@ final class AppState: ObservableObject {
         defer { isLoading = false }
 
         do {
-            var components = URLComponents(url: apiBaseURL.appending(path: "/api/files/timeline"), resolvingAgainstBaseURL: false)!
-            components.queryItems = [
-                URLQueryItem(name: "limit", value: "200"),
-                URLQueryItem(name: "offset", value: "0")
-            ]
-            var request = URLRequest(url: components.url!)
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            let request = authorizedRequest(
+                path: "/api/files/timeline",
+                queryItems: [
+                    URLQueryItem(name: "limit", value: "200"),
+                    URLQueryItem(name: "offset", value: "0")
+                ]
+            )
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 if (response as? HTTPURLResponse)?.statusCode == 401 {
@@ -131,9 +137,100 @@ final class AppState: ObservableObject {
                 selectedFileId = files.first?.id
             }
             message = ""
+            await loadFavorites()
         } catch {
             message = error.localizedDescription
         }
+    }
+
+    func loadFavorites() async {
+        guard !accessToken.isEmpty else { return }
+        do {
+            let request = authorizedRequest(path: "/api/favorites")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return
+            }
+            let result = try JSONDecoder.aixinji.decode(FavoriteTimelineResponse.self, from: data)
+            favoriteRecordIds = Set(result.records.map(\.id))
+        } catch {
+            return
+        }
+    }
+
+    func toggleFavorite(_ file: FileTimelineItem) async {
+        guard !accessToken.isEmpty else { return }
+        let wasFavorite = favoriteRecordIds.contains(file.recordId)
+        if wasFavorite {
+            favoriteRecordIds.remove(file.recordId)
+        } else {
+            favoriteRecordIds.insert(file.recordId)
+        }
+
+        do {
+            var request: URLRequest
+            if wasFavorite {
+                request = authorizedRequest(path: "/api/favorites/\(file.recordId)")
+                request.httpMethod = "DELETE"
+            } else {
+                request = authorizedRequest(path: "/api/favorites")
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: ["recordId": file.recordId])
+            }
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                if wasFavorite {
+                    favoriteRecordIds.insert(file.recordId)
+                } else {
+                    favoriteRecordIds.remove(file.recordId)
+                }
+                message = readableError(data) ?? "收藏同步失败"
+                return
+            }
+            message = wasFavorite ? "已取消收藏" : "已收藏"
+        } catch {
+            if wasFavorite {
+                favoriteRecordIds.insert(file.recordId)
+            } else {
+                favoriteRecordIds.remove(file.recordId)
+            }
+            message = "收藏同步失败：\(error.localizedDescription)"
+        }
+    }
+
+    func loadPreview(for file: FileTimelineItem) async {
+        guard file.mimeType.hasPrefix("image/"), previewImages[file.id] == nil, !previewLoadingIds.contains(file.id) else {
+            return
+        }
+        previewLoadingIds.insert(file.id)
+        defer { previewLoadingIds.remove(file.id) }
+
+        do {
+            let thumbData = try await fetchAssetData(file, thumbnail: true)
+            if let image = NSImage(data: thumbData) {
+                previewImages[file.id] = image
+                return
+            }
+            let originalData = try await fetchAssetData(file, thumbnail: false)
+            if let image = NSImage(data: originalData) {
+                previewImages[file.id] = image
+            }
+        } catch {
+            return
+        }
+    }
+
+    func copyShareLink(_ file: FileTimelineItem) {
+        let url = apiBaseURL.appending(path: "/api/assets/\(file.id)").absoluteString
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url, forType: .string)
+        message = "链接已复制"
+    }
+
+    func openWebCapture() {
+        NSWorkspace.shared.open(apiBaseURL)
     }
 
     func openAsset(_ file: FileTimelineItem) async {
@@ -165,21 +262,39 @@ final class AppState: ObservableObject {
     }
 
     private func fetchAssetToTemporaryFile(_ file: FileTimelineItem) async throws -> URL {
-        guard !accessToken.isEmpty else { throw URLError(.userAuthenticationRequired) }
-        var request = URLRequest(url: apiBaseURL.appending(path: "/api/assets/\(file.id)"))
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "AIXinjiMac", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: readableError(data) ?? "附件读取失败"
-            ])
-        }
+        let data = try await fetchAssetData(file, thumbnail: false)
         let safeName = file.originalName.replacingOccurrences(of: "/", with: "-")
         let dir = FileManager.default.temporaryDirectory.appending(path: "AI-Xinji-Mac", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appending(path: "\(file.id)-\(safeName)")
         try data.write(to: url, options: .atomic)
         return url
+    }
+
+    private func fetchAssetData(_ file: FileTimelineItem, thumbnail: Bool) async throws -> Data {
+        guard !accessToken.isEmpty else { throw URLError(.userAuthenticationRequired) }
+        var queryItems: [URLQueryItem] = []
+        if thumbnail {
+            queryItems.append(URLQueryItem(name: "thumb", value: "1"))
+        }
+        let request = authorizedRequest(path: "/api/assets/\(file.id)", queryItems: queryItems)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "AIXinjiMac", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: readableError(data) ?? "附件读取失败"
+            ])
+        }
+        return data
+    }
+
+    private func authorizedRequest(path: String, queryItems: [URLQueryItem] = []) -> URLRequest {
+        var components = URLComponents(url: apiBaseURL.appending(path: path), resolvingAgainstBaseURL: false)!
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        return request
     }
 
     private func readableError(_ data: Data) -> String? {

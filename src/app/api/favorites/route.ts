@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireUserId } from "@/lib/supabase/server";
+import { requireUserIdFromRequest } from "@/lib/supabase/server";
 import { addFavorite, isFavorite, listFavorites } from "@/lib/favorites";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const url = new URL(request.url);
     const recordId = url.searchParams.get("recordId");
     if (recordId) {
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const body = await request.json();
     const recordId = body.recordId;
     if (!recordId) {

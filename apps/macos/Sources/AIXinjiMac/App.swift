@@ -9,7 +9,7 @@ struct AIXinjiMacApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(state)
-                .frame(minWidth: 1080, minHeight: 720)
+                .frame(minWidth: 1120, minHeight: 760)
                 .task { await state.bootstrap() }
         }
         .windowStyle(.hiddenTitleBar)
@@ -24,13 +24,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.05, green: 0.05, blue: 0.08), Color(red: 0.08, green: 0.06, blue: 0.12)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
+            AppBackground()
             if state.isSignedIn {
                 TimelineWorkspace()
             } else {
@@ -38,6 +32,25 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+struct AppBackground: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.03, green: 0.03, blue: 0.06),
+                    Color(red: 0.08, green: 0.06, blue: 0.12),
+                    Color(red: 0.03, green: 0.05, blue: 0.07)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            RadialGradient(colors: [.purple.opacity(0.16), .clear], center: .topLeading, startRadius: 80, endRadius: 620)
+            RadialGradient(colors: [.cyan.opacity(0.10), .clear], center: .bottomTrailing, startRadius: 120, endRadius: 700)
+        }
+        .ignoresSafeArea()
     }
 }
 
@@ -65,6 +78,7 @@ struct LoginView: View {
                         .frame(height: 44)
                         .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)))
+
                     HStack(spacing: 8) {
                         Group {
                             if showPassword {
@@ -79,7 +93,7 @@ struct LoginView: View {
                             showPassword.toggle()
                         } label: {
                             Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .frame(width: 22)
+                                .frame(width: 24, height: 24)
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
@@ -127,11 +141,17 @@ struct TimelineWorkspace: View {
     @EnvironmentObject private var state: AppState
 
     var filteredFiles: [FileTimelineItem] {
-        let q = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let q = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return state.files }
-        return state.files.filter { file in
-            file.searchHaystack.localizedCaseInsensitiveContains(q)
-        }
+        return state.files.filter { $0.searchHaystack.localizedCaseInsensitiveContains(q) }
+    }
+
+    var dayGroups: [TimelineDayGroup] {
+        Dictionary(grouping: filteredFiles, by: \.dayKey)
+            .map { TimelineDayGroup(key: $0.key, title: $0.value.first?.dayTitle ?? "未知日期", files: $0.value) }
+            .sorted { lhs, rhs in
+                (lhs.files.first?.createdDate ?? .distantPast) > (rhs.files.first?.createdDate ?? .distantPast)
+            }
     }
 
     var selectedFile: FileTimelineItem? {
@@ -149,16 +169,8 @@ struct TimelineWorkspace: View {
                 HeaderView(total: state.files.count, filtered: filteredFiles.count)
 
                 HStack(spacing: 0) {
-                    List(filteredFiles, selection: $state.selectedFileId) { file in
-                        FileRow(file: file)
-                            .tag(file.id)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .frame(minWidth: 360, idealWidth: 420)
-                    .background(.white.opacity(0.035))
+                    TimelineColumn(groups: dayGroups)
+                        .frame(minWidth: 420, idealWidth: 460)
 
                     Divider().overlay(.white.opacity(0.08))
 
@@ -166,7 +178,7 @@ struct TimelineWorkspace: View {
                         FileDetailView(file: file)
                             .id(file.id)
                     } else {
-                        EmptyTimelineView()
+                        EmptyTimelineView(searching: !state.searchText.isEmpty)
                     }
                 }
             }
@@ -178,6 +190,14 @@ struct TimelineWorkspace: View {
     }
 }
 
+struct TimelineDayGroup: Identifiable {
+    let key: String
+    let title: String
+    let files: [FileTimelineItem]
+
+    var id: String { key }
+}
+
 struct SidebarView: View {
     @EnvironmentObject private var state: AppState
 
@@ -185,7 +205,7 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("AI 信迹")
-                    .font(.system(size: 25, weight: .bold))
+                    .font(.system(size: 27, weight: .bold))
                 Text("知识收件箱")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -195,7 +215,10 @@ struct SidebarView: View {
                 SidebarButton(title: "时间线", systemImage: "doc.text", active: true) {
                     Task { await state.loadTimeline() }
                 }
-                SidebarButton(title: "刷新", systemImage: "arrow.clockwise", active: false) {
+                SidebarButton(title: "网页录入", systemImage: "plus.circle", active: false) {
+                    state.openWebCapture()
+                }
+                SidebarButton(title: "刷新同步", systemImage: "arrow.clockwise", active: false) {
                     Task { await state.loadTimeline() }
                 }
             }
@@ -206,7 +229,7 @@ struct SidebarView: View {
                 HStack(spacing: 10) {
                     Circle()
                         .fill(LinearGradient(colors: [.purple, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 34, height: 34)
+                        .frame(width: 36, height: 36)
                         .overlay(Text(String(state.email.prefix(1)).uppercased()).font(.headline))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(state.email)
@@ -227,8 +250,8 @@ struct SidebarView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08)))
         }
         .padding(24)
-        .frame(width: 250)
-        .background(.black.opacity(0.28))
+        .frame(width: 260)
+        .background(.black.opacity(0.34))
     }
 }
 
@@ -245,7 +268,7 @@ struct SidebarButton: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .background(active ? .white.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 14))
+                .background(active ? .white.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
         .foregroundStyle(active ? .primary : .secondary)
@@ -260,7 +283,7 @@ struct HeaderView: View {
     var body: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("时间线")
+                Text("文件时间线")
                     .font(.title2.bold())
                 Text(state.searchText.isEmpty ? "\(total) 个文件" : "\(filtered) / \(total) 个文件")
                     .font(.caption)
@@ -283,57 +306,141 @@ struct HeaderView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .frame(width: 320, height: 38)
-            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+            .frame(width: 360, height: 40)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 13))
+            .overlay(RoundedRectangle(cornerRadius: 13).stroke(.white.opacity(0.08)))
 
             if state.isLoading {
                 ProgressView().controlSize(.small)
             }
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 24)
         .padding(.vertical, 18)
-        .background(.black.opacity(0.18))
+        .background(.black.opacity(0.20))
         .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.08)).frame(height: 1) }
     }
 }
 
-struct FileRow: View {
-    let file: FileTimelineItem
+struct TimelineColumn: View {
+    @EnvironmentObject private var state: AppState
+    let groups: [TimelineDayGroup]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                FileBadge(mimeType: file.mimeType)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(file.originalName)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text("\(file.kindLabel) · \(file.byteSizeText)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                if groups.isEmpty {
+                    EmptyListHint(searching: !state.searchText.isEmpty)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 120)
+                } else {
+                    ForEach(groups) { group in
+                        TimelineDaySection(group: group)
+                    }
                 }
-                Spacer()
             }
-
-            Text(file.bestDescription)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-
-            HStack {
-                Text(file.recordSourceLabel.isEmpty ? "手动收件箱" : file.recordSourceLabel)
-                Spacer()
-                Text(file.createdAt.shortDateTime)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .padding(22)
         }
-        .padding(14)
-        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.06)))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
+        .background(.white.opacity(0.035))
+    }
+}
+
+struct TimelineDaySection: View {
+    let group: TimelineDayGroup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Text(group.title)
+                    .font(.headline)
+                Text("\(group.files.count) 个文件")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.white.opacity(0.06), in: Capsule())
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(group.files) { file in
+                    TimelineFileCard(file: file)
+                }
+            }
+        }
+    }
+}
+
+struct TimelineFileCard: View {
+    @EnvironmentObject private var state: AppState
+    let file: FileTimelineItem
+
+    var isSelected: Bool { state.selectedFileId == file.id }
+    var isFavorite: Bool { state.favoriteRecordIds.contains(file.recordId) }
+
+    var body: some View {
+        Button {
+            state.selectedFileId = file.id
+            Task { await state.loadPreview(for: file) }
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(spacing: 0) {
+                    Circle()
+                        .fill(isSelected ? Color.accentColor : .white.opacity(0.22))
+                        .frame(width: 10, height: 10)
+                    Rectangle()
+                        .fill(.white.opacity(0.10))
+                        .frame(width: 1)
+                        .frame(maxHeight: .infinity)
+                }
+                .frame(width: 12)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        FileBadge(mimeType: file.mimeType)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 8) {
+                                Text(file.originalName)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                if isFavorite {
+                                    Image(systemName: "star.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.yellow)
+                                }
+                            }
+                            Text("\(file.kindLabel) · \(file.byteSizeText) · \(file.timeText)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+
+                    Text(file.bestDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: 8) {
+                        Text(file.recordSourceLabel.isEmpty ? "手动收件箱" : file.recordSourceLabel)
+                            .lineLimit(1)
+                        Spacer()
+                        ForEach(Array(file.allTags.prefix(2)), id: \.self) { tag in
+                            Text("#\(tag)")
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(14)
+                .background(isSelected ? .white.opacity(0.105) : .white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(isSelected ? Color.accentColor.opacity(0.45) : .white.opacity(0.07), lineWidth: 1)
+                )
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -341,15 +448,24 @@ struct FileDetailView: View {
     @EnvironmentObject private var state: AppState
     let file: FileTimelineItem
 
+    var isFavorite: Bool { state.favoriteRecordIds.contains(file.recordId) }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 7) {
                     Text(file.kindLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(file.originalName)
-                        .font(.title2.bold())
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(file.originalName)
+                            .font(.title2.bold())
+                            .lineLimit(2)
+                        if isFavorite {
+                            Image(systemName: "star.fill")
+                                .foregroundStyle(.yellow)
+                        }
+                    }
                     Text("\(file.byteSizeText) · \(file.createdAt.shortDateTime)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -357,7 +473,14 @@ struct FileDetailView: View {
 
                 PreviewCard(file: file)
 
-                HStack {
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await state.toggleFavorite(file) }
+                    } label: {
+                        Label(isFavorite ? "已收藏" : "收藏", systemImage: isFavorite ? "star.fill" : "star")
+                    }
+                    .buttonStyle(.bordered)
+
                     Button {
                         Task { await state.openAsset(file) }
                     } label: {
@@ -372,10 +495,18 @@ struct FileDetailView: View {
                     }
                     .buttonStyle(.bordered)
 
+                    Button {
+                        state.copyShareLink(file)
+                    } label: {
+                        Label("复制链接", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+
                     if !state.message.isEmpty {
                         Text(state.message)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
 
@@ -387,9 +518,7 @@ struct FileDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         LabeledContent("来源", value: file.recordSourceLabel.isEmpty ? "手动收件箱" : file.recordSourceLabel)
                         LabeledContent("记录", value: file.recordTitle)
-                        if !file.description.isEmpty {
-                            Text(file.description)
-                        }
+                        Text(file.bestDescription)
                     }
                 }
 
@@ -407,13 +536,17 @@ struct FileDetailView: View {
                     }
                 }
             }
-            .padding(26)
+            .padding(28)
         }
         .background(.white.opacity(0.02))
+        .task(id: file.id) {
+            await state.loadPreview(for: file)
+        }
     }
 }
 
 struct PreviewCard: View {
+    @EnvironmentObject private var state: AppState
     let file: FileTimelineItem
 
     var body: some View {
@@ -421,14 +554,30 @@ struct PreviewCard: View {
             RoundedRectangle(cornerRadius: 18)
                 .fill(.white.opacity(0.045))
                 .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
-            VStack(spacing: 10) {
-                FileBadge(mimeType: file.mimeType, size: 54)
-                Text(file.mimeType.hasPrefix("image/") ? "图片预览请点击打开文件" : "原生预览将在后续版本增强")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+
+            if file.mimeType.hasPrefix("image/"), let image = state.previewImages[file.id] {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(12)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            } else if state.previewLoadingIds.contains(file.id) {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("正在加载预览")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                VStack(spacing: 10) {
+                    FileBadge(mimeType: file.mimeType, size: 56)
+                    Text(file.mimeType.hasPrefix("image/") ? "未能加载图片预览，可直接打开文件" : "当前文件可打开或下载查看")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .frame(minHeight: 240)
+        .frame(minHeight: 300)
     }
 }
 
@@ -454,17 +603,36 @@ struct DetailCard<Content: View>: View {
 }
 
 struct EmptyTimelineView: View {
+    let searching: Bool
+
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "tray")
+            Image(systemName: searching ? "magnifyingglass" : "tray")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
-            Text("暂无资料")
+            Text(searching ? "没有匹配结果" : "暂无资料")
                 .font(.headline)
-            Text("在网页端录入后会自动同步到这里。")
+            Text(searching ? "换个关键词再试试。" : "在网页端录入后会自动同步到这里。")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct EmptyListHint: View {
+    let searching: Bool
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: searching ? "magnifyingglass" : "tray")
+                .font(.system(size: 26))
+                .foregroundStyle(.secondary)
+            Text(searching ? "没有找到资料" : "还没有资料")
+                .font(.headline)
+            Text(searching ? "搜索范围包含文件名、标签、OCR 和摘要。" : "点击左侧网页录入，新增后刷新即可同步。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
