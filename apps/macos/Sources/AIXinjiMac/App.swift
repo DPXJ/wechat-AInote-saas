@@ -1434,7 +1434,6 @@ struct SplitHandle: View {
     let availableWidth: CGFloat
     let minPrimaryWidth: CGFloat
     let minSecondaryWidth: CGFloat
-    @State private var dragStartWidth: CGFloat?
     @State private var hovering = false
     @State private var dragging = false
 
@@ -1450,7 +1449,7 @@ struct SplitHandle: View {
         ZStack {
             Rectangle()
                 .fill((hovering || dragging) ? Color.accentColor.opacity(0.10) : .white.opacity(0.035))
-                .frame(width: hovering || dragging ? 22 : 14)
+                .frame(width: hovering || dragging ? 44 : 34)
             RoundedRectangle(cornerRadius: 3)
                 .fill((hovering || dragging) ? Color.accentColor.opacity(0.92) : .white.opacity(0.42))
                 .frame(width: hovering || dragging ? 6 : 4, height: hovering || dragging ? 108 : 78)
@@ -1462,40 +1461,25 @@ struct SplitHandle: View {
             .font(.system(size: 9, weight: .bold))
             .foregroundStyle((hovering || dragging) ? .white : .secondary)
         }
-        .frame(width: hovering || dragging ? 22 : 16)
+        .frame(width: hovering || dragging ? 44 : 34)
         .frame(maxHeight: .infinity)
         .contentShape(Rectangle())
-        .cursorHover(.resizeLeftRight)
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    dragging = true
-                    let baseWidth = dragStartWidth ?? clamp(width)
-                    if dragStartWidth == nil {
-                        dragStartWidth = baseWidth
-                    }
-                    width = clamp(baseWidth + value.translation.width)
-                    NSCursor.resizeLeftRight.set()
+        .overlay(
+            SplitDragSurface(
+                cursor: .resizeLeftRight,
+                onHover: { inside in
+                    hovering = inside
+                    inside ? NSCursor.resizeLeftRight.set() : NSCursor.arrow.set()
+                },
+                onDraggingChanged: { active in
+                    dragging = active
+                    active ? NSCursor.resizeLeftRight.set() : NSCursor.arrow.set()
+                },
+                onDelta: { delta in
+                    width = clamp(width + delta)
                 }
-                .onEnded { _ in
-                    width = clamp(width)
-                    dragStartWidth = nil
-                    dragging = false
-                    NSCursor.arrow.set()
-                }
+            )
         )
-        .onContinuousHover { phase in
-            switch phase {
-            case .active:
-                hovering = true
-                NSCursor.resizeLeftRight.set()
-            case .ended:
-                hovering = false
-                if !dragging {
-                    NSCursor.arrow.set()
-                }
-            }
-        }
         .animation(.spring(response: 0.20, dampingFraction: 0.86), value: hovering)
         .animation(.spring(response: 0.20, dampingFraction: 0.86), value: dragging)
         .zIndex(20)
@@ -3032,12 +3016,18 @@ struct InteractiveHoverModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .background(RoundedRectangle(cornerRadius: radius).fill(Color.black.opacity(enabled ? 0.001 : 0)))
             .scaleEffect(enabled && hovering ? 1.015 : 1.0)
             .offset(y: enabled && hovering ? -1 : 0)
-            .shadow(color: enabled && hovering ? .black.opacity(0.42) : .clear, radius: enabled && hovering ? 24 : 0, y: enabled && hovering ? 14 : 0)
-            .shadow(color: enabled && hovering ? Color.accentColor.opacity(0.18) : .clear, radius: enabled && hovering ? 10 : 0, y: enabled && hovering ? 3 : 0)
-            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: hovering)
+            .shadow(color: enabled && hovering ? .black.opacity(0.42) : .clear, radius: enabled && hovering ? 22 : 0, y: enabled && hovering ? 12 : 0)
+            .shadow(color: enabled && hovering ? Color.accentColor.opacity(0.20) : .clear, radius: enabled && hovering ? 9 : 0, y: enabled && hovering ? 3 : 0)
+            .animation(.easeOut(duration: 0.11), value: hovering)
             .contentShape(RoundedRectangle(cornerRadius: radius))
+            .overlay(
+                CursorSurface(cursor: .pointingHand, enabled: enabled) { inside in
+                    hovering = inside
+                }
+            )
             .onContinuousHover { phase in
                 guard enabled else { return }
                 switch phase {
@@ -3058,12 +3048,18 @@ struct DestructiveHoverModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .background(RoundedRectangle(cornerRadius: radius).fill(Color.black.opacity(0.001)))
             .foregroundStyle(hovering ? .white : .secondary)
             .background(hovering ? Color.red.opacity(0.92) : Color.clear, in: RoundedRectangle(cornerRadius: radius))
             .scaleEffect(hovering ? 1.04 : 1)
             .shadow(color: hovering ? .black.opacity(0.36) : .clear, radius: hovering ? 18 : 0, y: hovering ? 10 : 0)
             .contentShape(RoundedRectangle(cornerRadius: radius))
-            .animation(.spring(response: 0.2, dampingFraction: 0.84), value: hovering)
+            .animation(.easeOut(duration: 0.10), value: hovering)
+            .overlay(
+                CursorSurface(cursor: .pointingHand, enabled: true) { inside in
+                    hovering = inside
+                }
+            )
             .onContinuousHover { phase in
                 switch phase {
                 case .active:
@@ -3083,15 +3079,7 @@ struct CursorHoverModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onContinuousHover { phase in
-                guard enabled else { return }
-                switch phase {
-                case .active:
-                    cursor.set()
-                case .ended:
-                    NSCursor.arrow.set()
-                }
-            }
+            .overlay(CursorSurface(cursor: cursor, enabled: enabled) { _ in })
     }
 }
 
@@ -3110,6 +3098,174 @@ struct CursorTrackingOverlay: NSViewRepresentable {
         nsView.cursor = cursor
         nsView.enabled = enabled
         nsView.resetCursorRects()
+    }
+}
+
+struct CursorSurface: NSViewRepresentable {
+    let cursor: NSCursor
+    let enabled: Bool
+    let onHover: (Bool) -> Void
+
+    func makeNSView(context: Context) -> CursorSurfaceView {
+        let view = CursorSurfaceView()
+        view.cursor = cursor
+        view.enabled = enabled
+        view.onHover = onHover
+        return view
+    }
+
+    func updateNSView(_ nsView: CursorSurfaceView, context: Context) {
+        nsView.cursor = cursor
+        nsView.enabled = enabled
+        nsView.onHover = onHover
+        nsView.updateTrackingAreas()
+        nsView.resetCursorRects()
+    }
+}
+
+final class CursorSurfaceView: NSView {
+    var cursor: NSCursor = .pointingHand
+    var enabled = true
+    var onHover: ((Bool) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func updateTrackingAreas() {
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingArea = area
+        addTrackingArea(area)
+        super.updateTrackingAreas()
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard enabled else { return }
+        addCursorRect(bounds, cursor: cursor)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard enabled else { return }
+        cursor.set()
+        onHover?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard enabled else { return }
+        NSCursor.arrow.set()
+        onHover?(false)
+    }
+}
+
+struct SplitDragSurface: NSViewRepresentable {
+    let cursor: NSCursor
+    let onHover: (Bool) -> Void
+    let onDraggingChanged: (Bool) -> Void
+    let onDelta: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> SplitDragSurfaceView {
+        let view = SplitDragSurfaceView()
+        view.cursor = cursor
+        view.onHover = onHover
+        view.onDraggingChanged = onDraggingChanged
+        view.onDelta = onDelta
+        return view
+    }
+
+    func updateNSView(_ nsView: SplitDragSurfaceView, context: Context) {
+        nsView.cursor = cursor
+        nsView.onHover = onHover
+        nsView.onDraggingChanged = onDraggingChanged
+        nsView.onDelta = onDelta
+        nsView.updateTrackingAreas()
+        nsView.resetCursorRects()
+    }
+}
+
+final class SplitDragSurfaceView: NSView {
+    var cursor: NSCursor = .resizeLeftRight
+    var onHover: ((Bool) -> Void)?
+    var onDraggingChanged: ((Bool) -> Void)?
+    var onDelta: ((CGFloat) -> Void)?
+    private var trackingArea: NSTrackingArea?
+    private var lastDragLocation: NSPoint?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func updateTrackingAreas() {
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingArea = area
+        addTrackingArea(area)
+        super.updateTrackingAreas()
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: cursor)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        cursor.set()
+        onHover?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if lastDragLocation == nil {
+            NSCursor.arrow.set()
+            onHover?(false)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        lastDragLocation = window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow
+        cursor.set()
+        onDraggingChanged?(true)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let delta = event.deltaX
+        if abs(delta) > 0 {
+            onDelta?(delta)
+        } else {
+            let current = window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow
+            if let last = lastDragLocation {
+                onDelta?(current.x - last.x)
+            }
+            lastDragLocation = current
+        }
+        cursor.set()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        lastDragLocation = nil
+        let point = convert(event.locationInWindow, from: nil)
+        let inside = bounds.contains(point)
+        onDraggingChanged?(false)
+        onHover?(inside)
+        inside ? cursor.set() : NSCursor.arrow.set()
     }
 }
 
