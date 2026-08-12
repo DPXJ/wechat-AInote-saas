@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 struct AuthResponse: Decodable {
     let accessToken: String
@@ -51,6 +52,32 @@ enum AppSection: String, CaseIterable {
         case .sources: return "clock"
         case .todos: return "checkmark.square"
         }
+    }
+}
+
+struct CaptureAttachment: Identifiable, Hashable {
+    let id = UUID()
+    let url: URL
+    let name: String
+    let byteSize: Int64
+    let mimeType: String
+
+    var byteSizeText: String {
+        if byteSize < 1024 { return "\(byteSize) B" }
+        if byteSize < 1024 * 1024 { return String(format: "%.1f KB", Double(byteSize) / 1024) }
+        return String(format: "%.1f MB", Double(byteSize) / 1024 / 1024)
+    }
+
+    static func make(url: URL) -> CaptureAttachment {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .typeIdentifierKey])
+        let typeIdentifier = values?.typeIdentifier ?? UTType(filenameExtension: url.pathExtension)?.identifier
+        let mimeType = typeIdentifier.flatMap { UTType($0)?.preferredMIMEType } ?? "application/octet-stream"
+        return CaptureAttachment(
+            url: url,
+            name: url.lastPathComponent,
+            byteSize: Int64(values?.fileSize ?? 0),
+            mimeType: mimeType
+        )
     }
 }
 

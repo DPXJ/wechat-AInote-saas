@@ -82,7 +82,7 @@ struct LoginView: View {
                 VStack(spacing: 4) {
                     Text("AI 信迹")
                         .font(.system(size: 32, weight: .bold))
-                    Text("原生 Mac 客户端 · 0.05")
+                    Text("原生 Mac 客户端 · 0.06")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -155,7 +155,7 @@ struct LoginView: View {
 
 struct TimelineWorkspace: View {
     @EnvironmentObject private var state: AppState
-    @State private var listWidth: CGFloat = 520
+    @State private var listWidth: CGFloat = 560
     @State private var detailHidden = false
 
     var filteredFiles: [FileTimelineItem] {
@@ -204,30 +204,58 @@ struct TimelineWorkspace: View {
                     NativeCaptureView()
                 } else {
                     GeometryReader { geometry in
-                        HStack(spacing: 0) {
-                            TimelineColumn(groups: dayGroups)
-                                .frame(width: min(max(listWidth, 380), max(geometry.size.width - 360, 420)))
-
-                            SplitHandle(
-                                detailHidden: detailHidden,
-                                onToggle: { detailHidden.toggle() },
-                                onDrag: { delta in
-                                    listWidth = min(max(listWidth + delta, 380), max(geometry.size.width - 360, 420))
+                        if detailHidden {
+                            ZStack(alignment: .topTrailing) {
+                                TimelineColumn(groups: dayGroups, expanded: true) {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                        detailHidden = false
+                                    }
                                 }
-                            )
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                            if detailHidden {
-                                CollapsedDetailRail { detailHidden = false }
-                            } else if let file = selectedFile {
-                                FileDetailView(file: file)
-                                    .id(file.id)
-                                    .frame(maxWidth: .infinity)
-                            } else {
-                                EmptyTimelineView(searching: !state.searchText.isEmpty)
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                        detailHidden = false
+                                    }
+                                } label: {
+                                    Label("展开详情", systemImage: "sidebar.right")
+                                        .labelStyle(.iconOnly)
+                                        .frame(width: 42, height: 42)
+                                }
+                                .buttonStyle(.plain)
+                                .interactiveHover(radius: 14)
+                                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.10)))
+                                .help("展开详情")
+                                .padding(18)
                             }
-                        }
-                        .onChange(of: geometry.size.width) { _, width in
-                            listWidth = min(max(listWidth, 380), max(width - 360, 420))
+                        } else {
+                            HStack(spacing: 0) {
+                                TimelineColumn(groups: dayGroups, expanded: false) {}
+                                    .frame(width: min(max(listWidth, 420), max(geometry.size.width - 420, 480)))
+
+                                SplitHandle(
+                                    onToggle: {
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                            detailHidden = true
+                                        }
+                                    },
+                                    onDrag: { delta in
+                                        listWidth = min(max(listWidth + delta, 420), max(geometry.size.width - 420, 480))
+                                    }
+                                )
+
+                                if let file = selectedFile {
+                                    FileDetailView(file: file)
+                                        .id(file.id)
+                                        .frame(maxWidth: .infinity)
+                                } else {
+                                    EmptyTimelineView(searching: !state.searchText.isEmpty)
+                                }
+                            }
+                            .onChange(of: geometry.size.width) { _, width in
+                                listWidth = min(max(listWidth, 420), max(width - 420, 480))
+                            }
                         }
                     }
                     .background(.white.opacity(0.02))
@@ -246,7 +274,6 @@ struct TimelineWorkspace: View {
 }
 
 struct SplitHandle: View {
-    let detailHidden: Bool
     let onToggle: () -> Void
     let onDrag: (CGFloat) -> Void
     @State private var dragStartWidthDelta: CGFloat = 0
@@ -260,15 +287,16 @@ struct SplitHandle: View {
                 .fill(.white.opacity(0.38))
                 .frame(width: 4, height: 72)
             Button(action: onToggle) {
-                Image(systemName: detailHidden ? "sidebar.right" : "sidebar.trailing")
+                Image(systemName: "sidebar.trailing")
                     .font(.caption.weight(.semibold))
                     .frame(width: 24, height: 24)
                     .background(.black.opacity(0.22), in: Circle())
             }
             .buttonStyle(.plain)
+            .interactiveHover(radius: 12)
             .foregroundStyle(.secondary)
             .offset(y: -54)
-            .help(detailHidden ? "展开详情" : "收起详情")
+            .help("收起详情")
         }
         .frame(width: 14)
         .contentShape(Rectangle())
@@ -285,32 +313,6 @@ struct SplitHandle: View {
     }
 }
 
-struct CollapsedDetailRail: View {
-    let onExpand: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Button(action: onExpand) {
-                Image(systemName: "sidebar.right")
-                    .font(.title3)
-                    .frame(width: 40, height: 40)
-                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-            .help("展开详情")
-            Text("详情已收起")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(90))
-                .fixedSize()
-            Spacer()
-        }
-        .padding(.top, 72)
-        .frame(width: 70)
-        .background(.white.opacity(0.025))
-    }
-}
-
 struct NativeCaptureView: View {
     @EnvironmentObject private var state: AppState
 
@@ -319,10 +321,10 @@ struct NativeCaptureView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("把微信、飞书、网页里复制来的内容直接收进时间线。")
-                            .font(.headline)
-                        Text("开启剪贴板监听后，新复制的文本会自动填入这里；识别到待办语义时会默认勾选待办。")
-                            .font(.subheadline)
+                        Text("原生录入")
+                            .font(.title2.bold())
+                        Text("文字、文件、剪贴板内容统一进入文件时间线")
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -332,6 +334,9 @@ struct NativeCaptureView: View {
                     ))
                     .toggleStyle(.switch)
                 }
+                .padding(20)
+                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("来源")
@@ -366,6 +371,75 @@ struct NativeCaptureView: View {
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.08)))
                 }
 
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("文件")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            state.chooseCaptureFiles()
+                        } label: {
+                            Label("选择文件", systemImage: "paperclip")
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        .interactiveHover(radius: 10)
+                    }
+
+                    if state.captureFiles.isEmpty {
+                        Button {
+                            state.chooseCaptureFiles()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "tray.and.arrow.up")
+                                    .font(.title3)
+                                Text("添加图片、PDF、文档或表格")
+                                    .font(.callout.weight(.semibold))
+                                Spacer()
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity)
+                            .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.08)))
+                        }
+                        .buttonStyle(.plain)
+                        .interactiveHover(radius: 14)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], alignment: .leading, spacing: 10) {
+                            ForEach(state.captureFiles) { attachment in
+                                HStack(spacing: 10) {
+                                    Image(systemName: "doc")
+                                        .frame(width: 28, height: 28)
+                                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(attachment.name)
+                                            .font(.caption.weight(.semibold))
+                                            .lineLimit(1)
+                                        Text(attachment.byteSizeText)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button {
+                                        state.removeCaptureFile(attachment)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                                    .interactiveHover(radius: 8)
+                                }
+                                .padding(10)
+                                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+                            }
+                        }
+                    }
+                }
+
                 HStack(spacing: 12) {
                     Toggle("自动识别并创建待办", isOn: $state.autoCreateTodo)
                         .toggleStyle(.checkbox)
@@ -375,7 +449,11 @@ struct NativeCaptureView: View {
                     } label: {
                         Label("读取剪贴板", systemImage: "doc.on.clipboard")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                    .interactiveHover(radius: 10)
 
                     Button {
                         Task { await state.submitCapture() }
@@ -387,7 +465,9 @@ struct NativeCaptureView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(state.isLoading || state.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .interactiveHover(radius: 10)
+                    .disabled(state.isLoading || (state.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state.captureFiles.isEmpty))
                 }
 
                 if !state.message.isEmpty {
@@ -397,7 +477,7 @@ struct NativeCaptureView: View {
                 }
             }
             .padding(28)
-            .frame(maxWidth: 960, alignment: .leading)
+            .frame(maxWidth: 1040, alignment: .leading)
         }
         .background(.white.opacity(0.025))
     }
@@ -420,7 +500,11 @@ struct WindowDragView: NSViewRepresentable {
 
 final class DraggingNSView: NSView {
     override func mouseDown(with event: NSEvent) {
-        window?.performDrag(with: event)
+        if event.clickCount == 2 {
+            window?.zoom(nil)
+        } else {
+            window?.performDrag(with: event)
+        }
     }
 }
 
@@ -436,10 +520,10 @@ struct SidebarView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("AI 信迹")
-                    .font(.system(size: 27, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
                 Text("知识收件箱")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -452,9 +536,6 @@ struct SidebarView: View {
                 SidebarButton(title: AppSection.timeline.title, systemImage: AppSection.timeline.systemImage, active: state.currentSection == .timeline) {
                     state.currentSection = .timeline
                 }
-                SidebarButton(title: "网页录入", systemImage: "plus.circle", active: false) {
-                    state.openWebCapture()
-                }
                 SidebarButton(title: AppSection.favorites.title, systemImage: AppSection.favorites.systemImage, badge: state.favoriteRecordIds.count, active: state.currentSection == .favorites) {
                     state.currentSection = .favorites
                 }
@@ -464,39 +545,43 @@ struct SidebarView: View {
                 SidebarButton(title: AppSection.todos.title, systemImage: AppSection.todos.systemImage, badge: state.files.filter(\.hasTodo).count, active: state.currentSection == .todos) {
                     state.currentSection = .todos
                 }
-                SidebarButton(title: "刷新同步", systemImage: "arrow.clockwise", active: false) {
-                    Task { await state.loadTimeline() }
-                }
             }
 
             Spacer()
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                SidebarButton(title: "打开网页版", systemImage: "safari", active: false) {
+                    state.openWebCapture()
+                }
+                SidebarButton(title: "刷新同步", systemImage: "arrow.clockwise", active: false) {
+                    Task { await state.loadTimeline() }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
                     Circle()
                         .fill(LinearGradient(colors: [.purple, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 36, height: 36)
+                        .frame(width: 42, height: 42)
                         .overlay(Text(String(state.email.prefix(1)).uppercased()).font(.headline))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(state.email)
-                            .font(.footnote.weight(.semibold))
-                            .lineLimit(1)
-                        Text("已登录")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(state.email)
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                    Text("已登录")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("退出登录") { state.signOut() }
+                        .buttonStyle(.plain)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .interactiveHover(radius: 8)
                 }
-                Button("退出登录") { state.signOut() }
-                    .buttonStyle(.plain)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08)))
             }
-            .padding(14)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08)))
         }
-        .padding(24)
-        .frame(width: 260)
+        .padding(22)
+        .frame(width: 230)
         .background(.black.opacity(0.34))
     }
 }
@@ -526,6 +611,7 @@ struct SidebarButton: View {
             .background(active ? .white.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
+        .interactiveHover(radius: 14, enabled: !active)
         .foregroundStyle(active ? .primary : .secondary)
     }
 }
@@ -579,6 +665,8 @@ struct HeaderView: View {
 struct TimelineColumn: View {
     @EnvironmentObject private var state: AppState
     let groups: [TimelineDayGroup]
+    let expanded: Bool
+    let onOpenDetail: () -> Void
 
     var body: some View {
         ScrollView {
@@ -589,7 +677,7 @@ struct TimelineColumn: View {
                         .padding(.top, 120)
                 } else {
                     ForEach(groups) { group in
-                        TimelineDaySection(group: group)
+                        TimelineDaySection(group: group, expanded: expanded, onOpenDetail: onOpenDetail)
                     }
                 }
             }
@@ -601,6 +689,8 @@ struct TimelineColumn: View {
 
 struct TimelineDaySection: View {
     let group: TimelineDayGroup
+    let expanded: Bool
+    let onOpenDetail: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -617,7 +707,7 @@ struct TimelineDaySection: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(group.files) { file in
-                    TimelineFileCard(file: file)
+                    TimelineFileCard(file: file, expanded: expanded, onOpenDetail: onOpenDetail)
                 }
             }
         }
@@ -627,6 +717,8 @@ struct TimelineDaySection: View {
 struct TimelineFileCard: View {
     @EnvironmentObject private var state: AppState
     let file: FileTimelineItem
+    let expanded: Bool
+    let onOpenDetail: () -> Void
 
     var isSelected: Bool { state.selectedFileId == file.id }
     var isFavorite: Bool { state.favoriteRecordIds.contains(file.recordId) }
@@ -693,9 +785,19 @@ struct TimelineFileCard: View {
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(isSelected ? Color.accentColor.opacity(0.45) : .white.opacity(0.07), lineWidth: 1)
                 )
+                .shadow(color: isSelected ? Color.accentColor.opacity(0.13) : .black.opacity(0.0), radius: 18, y: 8)
             }
+            .frame(maxWidth: expanded ? 900 : .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
+        .interactiveHover(radius: 16)
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                state.selectedFileId = file.id
+                Task { await state.loadPreview(for: file) }
+                onOpenDetail()
+            }
+        )
     }
 }
 
@@ -884,7 +986,7 @@ struct EmptyListHint: View {
                 .foregroundStyle(.secondary)
             Text(searching ? "没有找到资料" : "还没有资料")
                 .font(.headline)
-            Text(searching ? "搜索范围包含文件名、标签、OCR 和摘要。" : "点击左侧网页录入，新增后刷新即可同步。")
+            Text(searching ? "搜索范围包含文件名、标签、OCR 和摘要。" : "点击左侧打开网页版，新增后刷新即可同步。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -940,5 +1042,34 @@ struct AppMark: View {
             .fill(LinearGradient(colors: [.purple, .blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
             .frame(width: size, height: size)
             .overlay(Text("✦").font(.system(size: size * 0.42, weight: .bold)).foregroundStyle(.white))
+    }
+}
+
+struct InteractiveHoverModifier: ViewModifier {
+    let radius: CGFloat
+    let enabled: Bool
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(enabled && hovering ? 1.015 : 1.0)
+            .shadow(color: enabled && hovering ? .black.opacity(0.24) : .clear, radius: enabled && hovering ? 16 : 0, y: enabled && hovering ? 8 : 0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: hovering)
+            .contentShape(RoundedRectangle(cornerRadius: radius))
+            .onHover { inside in
+                guard enabled else { return }
+                hovering = inside
+                if inside {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+    }
+}
+
+extension View {
+    func interactiveHover(radius: CGFloat = 12, enabled: Bool = true) -> some View {
+        modifier(InteractiveHoverModifier(radius: radius, enabled: enabled))
     }
 }

@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     @Published var searchText = ""
     @Published var captureText = ""
     @Published var captureSource = "Mac 原生录入"
+    @Published var captureFiles: [CaptureAttachment] = []
     @Published var autoClipboardEnabled = false
     @Published var autoCreateTodo = true
     @Published var lastClipboardText = ""
@@ -167,8 +168,8 @@ final class AppState: ObservableObject {
 
     func submitCapture() async {
         let text = captureText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            message = "请先输入或读取一段内容"
+        guard !text.isEmpty || !captureFiles.isEmpty else {
+            message = "请先输入内容或选择文件"
             return
         }
         guard !accessToken.isEmpty else { return }
@@ -184,15 +185,27 @@ final class AppState: ObservableObject {
                 body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
                 body.append("\(value)\r\n".data(using: .utf8)!)
             }
-            appendField("title", captureTitle(from: text))
+            func appendFile(_ attachment: CaptureAttachment) throws {
+                let data = try Data(contentsOf: attachment.url)
+                body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                body.append("Content-Disposition: form-data; name=\"files\"; filename=\"\(escapeMultipartValue(attachment.name))\"\r\n".data(using: .utf8)!)
+                body.append("Content-Type: \(attachment.mimeType)\r\n\r\n".data(using: .utf8)!)
+                body.append(data)
+                body.append("\r\n".data(using: .utf8)!)
+            }
+
+            appendField("title", captureTitle(from: text, files: captureFiles))
             appendField("sourceLabel", captureSource.isEmpty ? "Mac 原生录入" : captureSource)
             appendField("contentText", text)
-            appendField("recordTypeHint", "text")
+            appendField("recordTypeHint", captureFiles.isEmpty ? "text" : "mixed")
             appendField("enableAiSummary", "true")
             appendField("enableAiTodo", "true")
             appendField("linkToTodo", autoCreateTodo ? "true" : "false")
             appendField("syncToNotion", "false")
             appendField("syncToFlomo", "false")
+            for attachment in captureFiles {
+                try appendFile(attachment)
+            }
             body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
             var request = authorizedRequest(path: "/api/records")
@@ -206,12 +219,37 @@ final class AppState: ObservableObject {
             }
             _ = try? JSONDecoder.aixinji.decode(CreateRecordResponse.self, from: data)
             captureText = ""
+            captureFiles = []
             message = "已录入并同步"
             await loadTimeline()
             currentSection = .timeline
         } catch {
             message = "录入失败：\(error.localizedDescription)"
         }
+    }
+
+    func chooseCaptureFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.canCreateDirectories = false
+        if panel.runModal() == .OK {
+            let incoming = panel.urls.map(CaptureAttachment.make)
+            var merged = captureFiles
+            for item in incoming where !merged.contains(where: { $0.url == item.url }) {
+                merged.append(item)
+            }
+            captureFiles = merged
+            if captureSource.isEmpty {
+                captureSource = "Mac 原生录入"
+            }
+            message = incoming.isEmpty ? "" : "已选择 \(incoming.count) 个文件"
+        }
+    }
+
+    func removeCaptureFile(_ attachment: CaptureAttachment) {
+        captureFiles.removeAll { $0.id == attachment.id }
     }
 
     func loadTimeline() async {
@@ -338,9 +376,17 @@ final class AppState: ObservableObject {
         NSWorkspace.shared.open(apiBaseURL)
     }
 
-    private func captureTitle(from text: String) -> String {
+    private func captureTitle(from text: String, files: [CaptureAttachment] = []) -> String {
         let oneLine = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return String(oneLine.prefix(32))
+        if !oneLine.isEmpty { return String(oneLine.prefix(32)) }
+        if let first = files.first { return first.name }
+        return "Mac 原生录入"
+    }
+
+    private func escapeMultipartValue(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     func looksLikeTodo(_ text: String) -> Bool {
