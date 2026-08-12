@@ -83,7 +83,7 @@ struct LoginView: View {
                 VStack(spacing: 4) {
                     Text("AI 信迹")
                         .font(.system(size: 32, weight: .bold))
-                    Text("原生 Mac 客户端 · 0.07")
+                    Text("原生 Mac 客户端 · 0.08")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -162,8 +162,13 @@ struct LoginView: View {
 
 struct TimelineWorkspace: View {
     @EnvironmentObject private var state: AppState
-    @State private var listWidth: CGFloat = 560
+    @AppStorage("timelineListWidth") private var storedListWidth: Double = 560
     @State private var detailHidden = false
+
+    private var listWidth: CGFloat {
+        get { CGFloat(storedListWidth) }
+        nonmutating set { storedListWidth = Double(newValue) }
+    }
 
     var filteredFiles: [FileTimelineItem] {
         let q = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -175,10 +180,8 @@ struct TimelineWorkspace: View {
                 return true
             case .favorites:
                 return state.favoriteRecordIds.contains(file.recordId)
-            case .sources:
-                return !file.recordSourceLabel.isEmpty || !file.recordTitle.isEmpty
             case .todos:
-                return file.hasTodo
+                return true
             }
         }
         guard !q.isEmpty else { return scoped }
@@ -209,6 +212,8 @@ struct TimelineWorkspace: View {
 
                 if state.currentSection == .capture {
                     NativeCaptureView()
+                } else if state.currentSection == .todos {
+                    NativeTodoView()
                 } else {
                     GeometryReader { geometry in
                         if detailHidden {
@@ -294,6 +299,9 @@ struct SplitHandle: View {
         }
         .frame(width: 14)
         .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
+        }
         .gesture(
             DragGesture(minimumDistance: 1)
                 .onChanged { value in
@@ -310,6 +318,7 @@ struct SplitHandle: View {
 struct NativeCaptureView: View {
     @EnvironmentObject private var state: AppState
     @State private var isDragging = false
+    @AppStorage("captureRecordInfoExpanded") private var recordInfoExpanded = false
 
     var canSubmit: Bool {
         !state.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !state.captureFiles.isEmpty
@@ -321,17 +330,42 @@ struct NativeCaptureView: View {
                 CaptureHero()
 
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("记录信息")
-                        .font(.headline)
-
-                    HStack(spacing: 12) {
-                        CaptureField(title: "标题", placeholder: "标题（选填）", text: $state.captureTitle)
-                        CaptureField(title: "标签", placeholder: "标签（空格分隔）", text: $state.captureTags)
+                    Button {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                            recordInfoExpanded.toggle()
+                        }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("记录信息").font(.headline)
+                                Text("标题、标签、来源与备注（选填）")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .rotationEffect(.degrees(recordInfoExpanded ? 180 : 0))
+                        }
+                        .padding(14)
+                        .contentShape(Rectangle())
+                        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
                     }
+                    .buttonStyle(.plain)
+                    .interactiveHover(radius: 14)
 
-                    HStack(spacing: 12) {
-                        CaptureField(title: "来源", placeholder: "微信剪贴板 / 飞书会议 / Mac 录入", text: $state.captureSource)
-                        CaptureField(title: "备注", placeholder: "补充上下文（选填）", text: $state.captureContextNote)
+                    if recordInfoExpanded {
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                CaptureField(title: "标题", placeholder: "标题（选填）", text: $state.captureTitle)
+                                CaptureField(title: "标签", placeholder: "标签（空格分隔）", text: $state.captureTags)
+                            }
+
+                            HStack(spacing: 12) {
+                                CaptureField(title: "来源", placeholder: "微信剪贴板 / 飞书会议 / Mac 录入", text: $state.captureSource)
+                                CaptureField(title: "备注", placeholder: "补充上下文（选填）", text: $state.captureContextNote)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     CaptureEditorBox(isDragging: $isDragging, onDrop: handleDrop(providers:))
@@ -411,6 +445,172 @@ struct NativeCaptureView: View {
     }
 }
 
+struct NativeTodoView: View {
+    @EnvironmentObject private var state: AppState
+    @State private var newContent = ""
+    @State private var priority = "medium"
+    @State private var filter = "pending"
+
+    private var filteredTodos: [TodoItem] {
+        filter == "all" ? state.todos : state.todos.filter { $0.status == filter }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("待办事项").font(.title2.bold())
+                        Text("与网页端实时同步，可新增、完成和删除")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        Task { await state.loadTodos() }
+                    } label: {
+                        Label("刷新", systemImage: "arrow.clockwise")
+                            .controlButton()
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                HStack(spacing: 10) {
+                    TextField("添加新待办…", text: $newContent)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 14)
+                        .frame(height: 42)
+                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.09)))
+                        .onSubmit { submit() }
+
+                    Picker("优先级", selection: $priority) {
+                        Text("紧急").tag("urgent")
+                        Text("高").tag("high")
+                        Text("中").tag("medium")
+                        Text("低").tag("low")
+                    }
+                    .labelsHidden()
+                    .frame(width: 92)
+
+                    Button("添加") { submit() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(newContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                HStack(spacing: 8) {
+                    TodoFilterButton(title: "待处理", value: "pending", selected: $filter)
+                    TodoFilterButton(title: "已完成", value: "done", selected: $filter)
+                    TodoFilterButton(title: "全部", value: "all", selected: $filter)
+                    Spacer()
+                    Text("\(filteredTodos.count) 条")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(24)
+            .background(.black.opacity(0.16))
+
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    if filteredTodos.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle")
+                                .font(.system(size: 38))
+                                .foregroundStyle(.secondary)
+                            Text(filter == "pending" ? "待办已清空" : "暂无待办")
+                                .font(.headline)
+                            Text("在上方输入内容即可新建，网页端也会同步显示。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 110)
+                    } else {
+                        ForEach(filteredTodos) { todo in
+                            TodoRow(todo: todo)
+                        }
+                    }
+                }
+                .padding(24)
+            }
+        }
+        .task { await state.loadTodos() }
+    }
+
+    private func submit() {
+        let content = newContent
+        newContent = ""
+        filter = "pending"
+        Task { await state.createTodo(content: content, priority: priority) }
+    }
+}
+
+struct TodoFilterButton: View {
+    let title: String
+    let value: String
+    @Binding var selected: String
+
+    var body: some View {
+        Button(title) { selected = value }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(selected == value ? .white.opacity(0.16) : .white.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+            .interactiveHover(radius: 9)
+    }
+}
+
+struct TodoRow: View {
+    @EnvironmentObject private var state: AppState
+    let todo: TodoItem
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Button {
+                Task { await state.toggleTodo(todo) }
+            } label: {
+                Image(systemName: todo.isDone ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 21))
+                    .foregroundStyle(todo.isDone ? .green : .secondary)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .interactiveHover(radius: 16)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(todo.content)
+                    .font(.body.weight(.medium))
+                    .strikethrough(todo.isDone)
+                    .foregroundStyle(todo.isDone ? .secondary : .primary)
+                HStack(spacing: 8) {
+                    Text(todo.priorityLabel)
+                        .foregroundStyle(todo.priority == "urgent" ? .red : todo.priority == "high" ? .orange : .secondary)
+                    Text(todo.createdAt.shortDateTime)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                Task { await state.deleteTodo(todo) }
+            } label: {
+                Image(systemName: "trash")
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .destructiveHover(radius: 10)
+            .help("删除待办")
+        }
+        .padding(16)
+        .contentShape(Rectangle())
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.075)))
+    }
+}
+
 struct CaptureHero: View {
     @EnvironmentObject private var state: AppState
 
@@ -419,7 +619,7 @@ struct CaptureHero: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("录入")
                     .font(.system(size: 24, weight: .bold))
-                Text("文字、截图、文件、剪贴板内容统一进入文件时间线")
+                Text("文字、截图、文件、剪贴板内容统一进入信源 · 时间线")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -851,11 +1051,9 @@ struct SidebarView: View {
                 SidebarButton(title: AppSection.favorites.title, systemImage: AppSection.favorites.systemImage, badge: state.favoriteRecordIds.count, active: state.currentSection == .favorites) {
                     state.currentSection = .favorites
                 }
-                SidebarButton(title: AppSection.sources.title, systemImage: AppSection.sources.systemImage, active: state.currentSection == .sources) {
-                    state.currentSection = .sources
-                }
-                SidebarButton(title: AppSection.todos.title, systemImage: AppSection.todos.systemImage, badge: state.files.filter(\.hasTodo).count, active: state.currentSection == .todos) {
+                SidebarButton(title: AppSection.todos.title, systemImage: AppSection.todos.systemImage, badge: state.todos.filter { !$0.isDone }.count, active: state.currentSection == .todos) {
                     state.currentSection = .todos
+                    Task { await state.loadTodos() }
                 }
             }
 
@@ -870,21 +1068,31 @@ struct SidebarView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Circle()
-                        .fill(LinearGradient(colors: [.purple, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 42, height: 42)
-                        .overlay(Text(String(state.email.prefix(1)).uppercased()).font(.headline))
+                    Button { state.chooseAvatar() } label: {
+                        Group {
+                            if let avatar = state.avatarImage {
+                                Image(nsImage: avatar).resizable().scaledToFill()
+                            } else {
+                                Circle()
+                                    .fill(LinearGradient(colors: [.purple, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    .overlay(Text(String(state.email.prefix(1)).uppercased()).font(.headline))
+                            }
+                        }
+                        .frame(width: 46, height: 46)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.18)))
+                    }
+                    .buttonStyle(.plain)
+                    .interactiveHover(radius: 23)
+                    .help("点击更换头像")
                     Text(state.email)
                         .font(.footnote.weight(.semibold))
                         .lineLimit(1)
-                    Text("已登录")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     Button("退出登录") { state.signOut() }
                         .buttonStyle(.plain)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .interactiveHover(radius: 8)
+                        .destructiveHover(radius: 8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
@@ -1043,6 +1251,7 @@ struct TimelineFileCard: View {
         Button {
             state.selectedFileId = file.id
             Task { await state.loadPreview(for: file) }
+            onOpenDetail()
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: 0) {
@@ -1110,13 +1319,6 @@ struct TimelineFileCard: View {
         .task(id: file.id) {
             await state.loadPreview(for: file)
         }
-        .simultaneousGesture(
-            TapGesture(count: 2).onEnded {
-                state.selectedFileId = file.id
-                Task { await state.loadPreview(for: file) }
-                onOpenDetail()
-            }
-        )
     }
 }
 
@@ -1256,7 +1458,7 @@ struct FileDetailView: View {
             .buttonStyle(.plain)
             .background(.black.opacity(0.42), in: Circle())
             .overlay(Circle().stroke(.white.opacity(0.14)))
-            .interactiveHover(radius: 17)
+            .destructiveHover(radius: 17)
             .help("关闭详情")
             .padding(.top, 18)
             .padding(.trailing, 18)
@@ -1351,7 +1553,7 @@ struct EmptyListHint: View {
                 .foregroundStyle(.secondary)
             Text(searching ? "没有找到资料" : "还没有资料")
                 .font(.headline)
-            Text(searching ? "搜索范围包含文件名、标签、OCR 和摘要。" : "点击左侧录入，保存后会进入文件时间线。")
+            Text(searching ? "搜索范围包含文件名、标签、OCR 和摘要。" : "点击左侧录入，保存后会进入信源 · 时间线。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1433,9 +1635,31 @@ struct InteractiveHoverModifier: ViewModifier {
     }
 }
 
+struct DestructiveHoverModifier: ViewModifier {
+    let radius: CGFloat
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(hovering ? .white : .secondary)
+            .background(hovering ? Color.red.opacity(0.92) : Color.clear, in: RoundedRectangle(cornerRadius: radius))
+            .scaleEffect(hovering ? 1.04 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: radius))
+            .animation(.spring(response: 0.2, dampingFraction: 0.84), value: hovering)
+            .onHover { inside in
+                hovering = inside
+                if inside { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+            }
+    }
+}
+
 extension View {
     func interactiveHover(radius: CGFloat = 12, enabled: Bool = true) -> some View {
         modifier(InteractiveHoverModifier(radius: radius, enabled: enabled))
+    }
+
+    func destructiveHover(radius: CGFloat = 10) -> some View {
+        modifier(DestructiveHoverModifier(radius: radius))
     }
 
     func controlButton() -> some View {

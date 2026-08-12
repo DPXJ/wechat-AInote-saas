@@ -389,13 +389,22 @@ export function FileTimelinePanel() {
                     return (
                       <article
                         key={file.id}
-                        className="group relative rounded-xl border border-[var(--line)] bg-[var(--surface)]/45 p-4 transition hover:border-[var(--line-strong)] hover:bg-[var(--surface)]"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedFile(file)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedFile(file);
+                          }
+                        }}
+                        className="group relative cursor-pointer rounded-xl border border-[var(--line)] bg-[var(--surface)]/45 p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:bg-[var(--surface)] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 active:translate-y-0 active:scale-[0.995]"
                       >
                         <span className="absolute -left-[21px] top-6 h-2.5 w-2.5 rounded-full border border-[var(--card)] bg-[var(--foreground)]" />
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                           <button
                             type="button"
-                            onClick={() => setSelectedFile(file)}
+                            onClick={(event) => { event.stopPropagation(); setSelectedFile(file); }}
                             className="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--card)] text-[10px] font-bold text-[var(--muted-strong)] transition group-hover:border-[var(--line-strong)] group-hover:text-[var(--foreground)]"
                             title="查看详情"
                           >
@@ -405,7 +414,7 @@ export function FileTimelinePanel() {
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => setSelectedFile(file)}
+                                onClick={(event) => { event.stopPropagation(); setSelectedFile(file); }}
                                 className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-[var(--foreground)] hover:underline"
                                 title={file.originalName}
                               >
@@ -433,7 +442,7 @@ export function FileTimelinePanel() {
                             <button
                               type="button"
                               disabled={favoriteBusyId === file.recordId}
-                              onClick={() => toggleFavorite(file)}
+                              onClick={(event) => { event.stopPropagation(); void toggleFavorite(file); }}
                               className={[
                                 "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition",
                                 favorite ? "bg-amber-500/10 text-amber-600" : "text-[var(--muted-strong)] hover:bg-[var(--card)] hover:text-[var(--foreground)]",
@@ -445,7 +454,7 @@ export function FileTimelinePanel() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => setSelectedFile(file)}
+                              onClick={(event) => { event.stopPropagation(); setSelectedFile(file); }}
                               className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--muted-strong)] transition hover:bg-[var(--card)] hover:text-[var(--foreground)]"
                             >
                               详情
@@ -489,7 +498,7 @@ export function FileTimelinePanel() {
               <button
                 type="button"
                 onClick={() => setSelectedFile(null)}
-                className="rounded-lg px-2 py-1 text-sm text-[var(--muted)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                className="cursor-pointer rounded-lg px-2 py-1 text-sm text-[var(--muted)] transition hover:bg-rose-500 hover:text-white active:bg-rose-600"
               >
                 关闭
               </button>

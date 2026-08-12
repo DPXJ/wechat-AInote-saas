@@ -215,9 +215,8 @@ function ProjectsCountBadge({
 
 const tabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "record", label: "录入" },
-  { id: "file_timeline", label: "时间线" },
+  { id: "file_timeline", label: "信源 · 时间线" },
   { id: "favorites", label: "收藏" },
-  { id: "history", label: "信源" },
   { id: "todos", label: "待办" },
   { id: "settings", label: "设置" },
 ];
@@ -314,6 +313,8 @@ export function HomeWorkspace({
   const [localPendingRecords, setLocalPendingRecords] = useState<KnowledgeRecord[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [todosInitialPriority, setTodosInitialPriority] = useState<TodoPriority | "">("");
+  const [avatarDataUrl, setAvatarDataUrl] = useState("");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [globalToast, setGlobalToast] = useState<{ status: string; tone: GlobalTone } | null>(null);
   const globalToastDedupeRef = useRef<{ message: string; tone: GlobalTone; at: number } | null>(null);
@@ -541,6 +542,7 @@ export function HomeWorkspace({
     }
     const collapsed = window.localStorage.getItem("ai-box-sidebar-collapsed");
     if (collapsed === "true") setSidebarCollapsed(true);
+    setAvatarDataUrl(window.localStorage.getItem("ai-box-avatar") || "");
   }, []);
 
   useEffect(() => {
@@ -590,7 +592,7 @@ export function HomeWorkspace({
     const recordId = searchParams.get("record");
     const projectId = searchParams.get("project");
     const taskId = searchParams.get("task");
-    if (tab === "history" && tabs.some((t) => t.id === tab)) {
+    if (tab === "history") {
       setActiveTabRaw("history");
       if (recordId) setSelectedRecordId(recordId);
       router.replace("/", { scroll: false });
@@ -889,7 +891,7 @@ export function HomeWorkspace({
                   }}
                   title={sidebarCollapsed ? tab.label : undefined}
                   className={[
-                    "relative flex w-full items-center rounded-xl transition",
+                    "relative flex w-full cursor-pointer items-center rounded-xl transition duration-200 hover:-translate-y-px hover:shadow-sm active:translate-y-0 active:scale-[0.99]",
                     sidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-5 py-2.5 text-left",
                     activeTab === tab.id
                       ? "bg-[var(--sidebar-active)] font-semibold text-[var(--foreground)]"
@@ -923,19 +925,50 @@ export function HomeWorkspace({
 
             {/* Account center */}
             <div className={[
-              "mb-2 flex items-center rounded-xl border border-[var(--line)] bg-[var(--surface)]/50 transition",
+              "mb-2 flex items-center rounded-xl border border-[var(--line)] bg-[var(--surface)]/50 transition hover:border-[var(--line-strong)] hover:bg-[var(--surface)]",
               sidebarCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-5 py-2.5",
             ].join(" ")}>
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-400 to-cyan-400 text-[11px] font-bold text-white">
-                {userEmail ? userEmail[0].toUpperCase() : "U"}
-              </span>
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                className="group relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-400 to-cyan-400 text-[11px] font-bold text-white ring-1 ring-white/20 transition hover:scale-105 hover:ring-2 hover:ring-violet-400/50"
+                title="更换头像"
+              >
+                {avatarDataUrl ? (
+                  <span
+                    aria-label="用户头像"
+                    role="img"
+                    className="h-full w-full bg-cover bg-center"
+                    style={{ backgroundImage: `url(${avatarDataUrl})` }}
+                  />
+                ) : (userEmail ? userEmail[0].toUpperCase() : "U")}
+                <span className="absolute inset-0 hidden items-center justify-center bg-black/45 text-[9px] group-hover:flex">更换</span>
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const value = String(reader.result || "");
+                    setAvatarDataUrl(value);
+                    window.localStorage.setItem("ai-box-avatar", value);
+                  };
+                  reader.readAsDataURL(file);
+                  event.target.value = "";
+                }}
+              />
               {!sidebarCollapsed && (
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium text-[var(--foreground)]">{userEmail || "用户"}</p>
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="truncate text-[11px] text-[var(--muted)] transition hover:text-rose-500"
+                    className="cursor-pointer truncate rounded px-1 py-0.5 text-[11px] text-[var(--muted)] transition hover:bg-rose-500 hover:text-white"
                   >
                     退出登录
                   </button>

@@ -30,6 +30,8 @@ final class AppState: ObservableObject {
     @Published var favoriteRecordIds: Set<String> = []
     @Published var previewImages: [String: NSImage] = [:]
     @Published var previewLoadingIds: Set<String> = []
+    @Published var todos: [TodoItem] = []
+    @Published var avatarImage: NSImage?
 
     var isSignedIn: Bool { !accessToken.isEmpty }
     var selectedFile: FileTimelineItem? {
@@ -71,11 +73,14 @@ final class AppState: ObservableObject {
         if rememberPassword {
             password = KeychainStore.read(account: passwordAccount)
         }
+        avatarImage = loadSavedAvatar()
     }
 
     func bootstrap() async {
         if isSignedIn {
-            await loadTimeline()
+            async let timeline: Void = loadTimeline()
+            async let todoList: Void = loadTodos()
+            _ = await (timeline, todoList)
         }
     }
 
@@ -151,7 +156,7 @@ final class AppState: ObservableObject {
             return
         }
         guard let supabaseURL, !supabaseAnonKey.isEmpty else {
-            message = "App 缺少 Supabase 公共配置，请重新打包 0.07 版"
+            message = "App 缺少 Supabase 公共配置，请重新安装最新版"
             return
         }
 
@@ -204,6 +209,7 @@ final class AppState: ObservableObject {
             KeychainStore.delete(account: rememberAccount)
         }
         files = []
+        todos = []
         selectedFileId = nil
         favoriteRecordIds = []
         previewImages = [:]
@@ -361,6 +367,123 @@ final class AppState: ObservableObject {
             message = error.localizedDescription
         }
     }
+
+    func loadTodos() async {
+        guard !accessToken.isEmpty else { return }
+        do {
+            async let pending = fetchTodos(status: "pending")
+            async let done = fetchTodos(status: "done")
+            let (pendingItems, doneItems) = try await (pending, done)
+            let combined = pendingItems + doneItems
+            todos = combined.sorted { $0.createdAt > $1.createdAt }
+        } catch {
+            message = "读取待办失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func fetchTodos(status: String) async throws -> [TodoItem] {
+        let request = authorizedRequest(
+            path: "/api/todos",
+            queryItems: [
+                URLQueryItem(name: "limit", value: "200"),
+                URLQueryItem(name: "status", value: status)
+            ]
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "AIXinjiMac", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: readableError(data) ?? "服务器返回异常"
+            ])
+        }
+        return try JSONDecoder.aixinji.decode(TodoListResponse.self, from: data).todos
+    }
+
+    func createTodo(content: String, priority: String) async {
+        let value = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        do {
+            var request = authorizedRequest(path: "/api/todos")
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["content": value, "priority": priority])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                message = readableError(data) ?? "新增待办失败"
+                return
+            }
+            await loadTodos()
+            message = "待办已添加"
+        } catch {
+            message = "新增待办失败：\(error.localizedDescription)"
+        }
+    }
+
+    func toggleTodo(_ todo: TodoItem) async {
+        await updateTodo(todo, fields: ["status": todo.isDone ? "pending" : "done"])
+    }
+
+    func deleteTodo(_ todo: TodoItem) async {
+        do {
+            var request = authorizedRequest(path: "/api/todos/\(todo.id)")
+            request.httpMethod = "DELETE"
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                message = readableError(data) ?? "删除待办失败"
+                return
+            }
+            todos.removeAll { $0.id == todo.id }
+            message = "待办已移入回收站"
+        } catch {
+            message = "删除待办失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func updateTodo(_ todo: TodoItem, fields: [String: String]) async {
+        do {
+            var request = authorizedRequest(path: "/api/todos/\(todo.id)")
+            request.httpMethod = "PATCH"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: fields)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                message = readableError(data) ?? "更新待办失败"
+                return
+            }
+            if let changed = try JSONDecoder.aixinji.decode(TodoMutationResponse.self, from: data).todo,
+               let index = todos.firstIndex(where: { $0.id == todo.id }) {
+                todos[index] = changed
+            } else {
+                await loadTodos()
+            }
+        } catch {
+            message = "更新待办失败：\(error.localizedDescription)"
+        }
+    }
+
+    func chooseAvatar() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .heic, .image]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url, let image = NSImage(contentsOf: url) else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            try FileManager.default.createDirectory(at: avatarDirectory, withIntermediateDirectories: true)
+            try data.write(to: avatarURL, options: .atomic)
+            avatarImage = image
+            message = "头像已更新"
+        } catch {
+            message = "头像保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    private var avatarDirectory: URL {
+        (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory)
+            .appending(path: "AI-Xinji-Mac", directoryHint: .isDirectory)
+    }
+
+    private var avatarURL: URL { avatarDirectory.appending(path: "avatar") }
+
+    private func loadSavedAvatar() -> NSImage? { NSImage(contentsOf: avatarURL) }
 
     func loadFavorites() async {
         guard !accessToken.isEmpty else { return }

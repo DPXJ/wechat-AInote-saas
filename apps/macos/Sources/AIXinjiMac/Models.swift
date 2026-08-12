@@ -31,15 +31,13 @@ enum AppSection: String, CaseIterable {
     case capture
     case timeline
     case favorites
-    case sources
     case todos
 
     var title: String {
         switch self {
         case .capture: return "录入"
-        case .timeline: return "文件时间线"
+        case .timeline: return "信源 · 时间线"
         case .favorites: return "收藏"
-        case .sources: return "信源"
         case .todos: return "待办"
         }
     }
@@ -47,9 +45,8 @@ enum AppSection: String, CaseIterable {
     var systemImage: String {
         switch self {
         case .capture: return "plus.circle"
-        case .timeline: return "doc.text"
+        case .timeline: return "clock.arrow.circlepath"
         case .favorites: return "star"
-        case .sources: return "clock"
         case .todos: return "checkmark.square"
         }
     }
@@ -97,12 +94,36 @@ struct CreatedRecord: Decodable {
     let id: String
 }
 
-struct TodoResponse: Decodable {
+struct TodoListResponse: Decodable {
+    let todos: [TodoItem]
+    let total: Int
+}
+
+struct TodoMutationResponse: Decodable {
     let todo: TodoItem?
 }
 
-struct TodoItem: Decodable {
+struct TodoItem: Identifiable, Decodable, Hashable {
     let id: String
+    let recordId: String?
+    let content: String
+    let priority: String
+    let status: String
+    let createdAt: String
+    let completedAt: String?
+    let updatedAt: String
+    let deletedAt: String?
+    let syncedAt: String?
+
+    var isDone: Bool { status == "done" }
+    var priorityLabel: String {
+        switch priority {
+        case "urgent": return "紧急"
+        case "high": return "高"
+        case "low": return "低"
+        default: return "中"
+        }
+    }
 }
 
 struct FileTimelineItem: Identifiable, Decodable, Hashable {

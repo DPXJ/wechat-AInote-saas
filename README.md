@@ -1,6 +1,6 @@
 ## AI 信迹
 
-AI 信迹是一个面向“微信/飞书/网页资料收集”的个人知识收件箱。它可以保存文本、截图、PDF、Office 文档和其他附件，自动生成摘要、关键词、行动项，并把资料按日期归档到“时间线”。
+AI 信迹是一个面向“微信/飞书/网页资料收集”的个人知识收件箱。它可以保存文本、截图、PDF、Office 文档和其他附件，自动生成摘要、关键词、行动项，并把资料按日期归档到“信源 · 时间线”。
 
 ## 线上发版（固定 3 步）
 
@@ -149,7 +149,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=你的anon key
 
 ## Mac 桌面端（SwiftUI）
 
-Mac 端在 [apps/macos](apps/macos) 下，是真正的 SwiftUI 原生客户端，不是 Electron/WebView。0.07 版已接入：
+Mac 端在 [apps/macos](apps/macos) 下，是真正的 SwiftUI 原生客户端，不是 Electron/WebView。0.08 版已接入：
 
 - Supabase 邮箱密码登录
 - Bearer Token 调用云端 API
@@ -185,7 +185,7 @@ cd apps/macos
 ./scripts/package-app.sh
 ```
 
-脚本会从仓库 `.env.local` 读取 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_ANON_KEY`，写入 App 的 `Info.plist`。默认会按版本号生成新包，不覆盖旧包，例如 [apps/macos/dist/AI 信迹 0.07.app](apps/macos/dist/AI%20信迹%200.07.app) 和 `apps/macos/dist/AI 信迹-0.07.dmg`。
+脚本会从仓库 `.env.local` 读取 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_ANON_KEY`，写入 App 的 `Info.plist`。默认会按版本号生成新包，不覆盖旧包，例如 `apps/macos/dist/AI 信迹 0.08.app` 和 `apps/macos/dist/AI 信迹-0.08.dmg`。
 
 ## 可选配置
 
