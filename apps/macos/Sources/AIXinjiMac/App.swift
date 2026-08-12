@@ -208,81 +208,17 @@ struct NativeProjectsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("项目")
-                                .font(.title2.bold())
-                            Text("录入资料时可关联项目，项目里的任务编排可继续在网页版处理。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button {
-                            Task { await state.loadProjects() }
-                        } label: {
-                            Label("刷新项目", systemImage: "arrow.clockwise")
-                                .controlButton()
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    HStack(spacing: 10) {
-                        TextField("搜索项目", text: $localSearch)
-                            .textFieldStyle(.plain)
-                            .padding(.horizontal, 14)
-                            .frame(height: 40)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
-                    }
-                }
-                .padding(20)
-                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("新建项目")
-                        .font(.headline)
-                    HStack(spacing: 10) {
-                        TextField("项目名称", text: $newName)
-                            .textFieldStyle(.plain)
-                            .padding(.horizontal, 14)
-                            .frame(height: 42)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                        TextField("描述（选填）", text: $newDescription)
-                            .textFieldStyle(.plain)
-                            .padding(.horizontal, 14)
-                            .frame(height: 42)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                        Button {
-                            let name = newName
-                            let desc = newDescription
-                            newName = ""
-                            newDescription = ""
-                            Task { await state.createProject(name: name, description: desc) }
-                        } label: {
-                            Label("创建", systemImage: "plus")
-                                .frame(width: 72, height: 42)
-                        }
-                        .buttonStyle(.plain)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 12))
-                        .foregroundStyle(.black)
-                        .interactiveHover(radius: 12, enabled: !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
-                .padding(20)
-                .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+                projectToolbar
+                newProjectComposer
 
                 if filteredProjects.isEmpty {
                     EmptyListHint(searching: !localSearch.isEmpty || !state.searchText.isEmpty)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 80)
                 } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 310), spacing: 14)], spacing: 14) {
+                    LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(filteredProjects) { project in
-                            ProjectCard(project: project)
+                            ProjectListRow(project: project)
                         }
                     }
                 }
@@ -291,72 +227,191 @@ struct NativeProjectsView: View {
         }
         .task { await state.loadProjects() }
     }
-}
 
-struct ProjectCard: View {
-    @EnvironmentObject private var state: AppState
-    let project: Project
-
-    var body: some View {
+    private var projectToolbar: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                Image(systemName: "folder.fill")
-                    .font(.title2)
-                    .foregroundStyle(.cyan)
-                    .frame(width: 40, height: 40)
-                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(project.name)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text(project.progressText)
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("项目列表")
+                        .font(.title2.bold())
+                    Text("录入时可直接关联项目，项目任务继续与网页端保持同一套数据。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Text("\(filteredProjects.count) 个项目")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.07), in: Capsule())
+                Button {
+                    Task { await state.loadProjects() }
+                } label: {
+                    Label("刷新项目", systemImage: "arrow.clockwise")
+                        .controlButton()
+                }
+                .buttonStyle(.plain)
             }
 
-            Text(project.description.isEmpty ? "暂无描述" : project.description)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-
-            HStack {
-                Text(project.createdAt.shortDateTime)
-                    .font(.caption)
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    state.captureProjectId = project.id
-                    state.captureProjectQuery = project.name
-                    state.currentSection = .capture
-                } label: {
-                    Label("用于录入", systemImage: "plus.circle")
-                }
-                .buttonStyle(.plain)
-                .controlButton()
+                TextField("搜索项目名称、描述", text: $localSearch)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 42)
+            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+        }
+        .padding(20)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+    }
 
+    private var newProjectComposer: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("新建项目")
+                .font(.headline)
+            HStack(spacing: 10) {
+                TextField("项目名称", text: $newName)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 14)
+                    .frame(height: 42)
+                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                TextField("描述（选填）", text: $newDescription)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 14)
+                    .frame(height: 42)
+                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                 Button {
-                    state.openProjectInWeb(project)
+                    let name = newName
+                    let desc = newDescription
+                    newName = ""
+                    newDescription = ""
+                    Task { await state.createProject(name: name, description: desc) }
                 } label: {
-                    Label("网页版", systemImage: "arrow.up.right.square")
+                    Label("创建", systemImage: "plus")
+                        .frame(width: 76, height: 42)
                 }
                 .buttonStyle(.plain)
-                .controlButton()
+                .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                .foregroundStyle(.black)
+                .interactiveHover(radius: 12, enabled: !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+    }
+}
+
+struct ProjectListRow: View {
+    @EnvironmentObject private var state: AppState
+    let project: Project
+
+    private var progressRatio: Double {
+        let total = Double(project.totalTasks ?? 0)
+        guard total > 0 else { return 0 }
+        return min(max(Double(project.doneCount ?? 0) / total, 0), 1)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "folder.fill")
+                .font(.title2)
+                .foregroundStyle(.cyan)
+                .frame(width: 46, height: 46)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text(project.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(project.archived ? "已归档" : "进行中")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(project.archived ? Color.secondary : Color.cyan)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.white.opacity(0.07), in: Capsule())
+                }
+
+                Text(project.description.isEmpty ? "暂无描述" : project.description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                HStack(spacing: 12) {
+                    Text("创建 \(project.createdAt.shortDateTime)")
+                    Text("更新 \(project.updatedAt.shortDateTime)")
+                    Text(project.progressText)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 18)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.08))
+                    Capsule().fill(Color.accentColor.opacity(0.82))
+                        .frame(width: max(8, 112 * progressRatio))
+                }
+                .frame(width: 112, height: 6)
+
+                HStack(spacing: 8) {
+                    Text(project.progressText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        state.captureProjectId = project.id
+                        state.captureProjectQuery = project.name
+                        state.currentSection = .capture
+                    } label: {
+                        Label("用于录入", systemImage: "plus.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .controlButton()
+
+                    Button {
+                        state.openProjectInWeb(project)
+                    } label: {
+                        Label("打开项目", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.plain)
+                    .controlButton()
+                }
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
-        .interactiveHover(radius: 18)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08)))
+        .interactiveHover(radius: 16)
     }
 }
-
 struct NativeFavoritesView: View {
     @EnvironmentObject private var state: AppState
+    @AppStorage("favoritesListWidth") private var storedFavoritesListWidth: Double = 620
     @State private var selectedRecordId: String?
     @State private var detailHidden = false
+    private let minListWidth: CGFloat = 430
+    private let minDetailWidth: CGFloat = 430
+
+    private var listWidth: CGFloat {
+        get { CGFloat(storedFavoritesListWidth) }
+        nonmutating set { storedFavoritesListWidth = Double(newValue) }
+    }
+
+    private func clampedListWidth(for totalWidth: CGFloat) -> CGFloat {
+        let maxWidth = max(minListWidth, totalWidth - minDetailWidth)
+        return min(max(listWidth, minListWidth), maxWidth)
+    }
 
     private var orderedRecords: [KnowledgeRecord] {
         let q = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -415,8 +470,18 @@ struct NativeFavoritesView: View {
                         favoritesList(expanded: false)
                             .padding(24)
                     }
-                    .frame(width: max(420, min(geometry.size.width * 0.43, 560)))
+                    .frame(width: clampedListWidth(for: geometry.size.width))
                     .background(.white.opacity(0.03))
+
+                    SplitHandle(
+                        width: Binding(
+                            get: { clampedListWidth(for: geometry.size.width) },
+                            set: { listWidth = $0 }
+                        ),
+                        availableWidth: geometry.size.width,
+                        minPrimaryWidth: minListWidth,
+                        minSecondaryWidth: minDetailWidth
+                    )
 
                     if let record = selectedRecord {
                         FavoriteDetailView(record: record) {
@@ -427,6 +492,9 @@ struct NativeFavoritesView: View {
                         .id(record.id)
                         .frame(maxWidth: .infinity)
                     }
+                }
+                .onChange(of: geometry.size.width) { _, width in
+                    listWidth = clampedListWidth(for: width)
                 }
             }
         }
@@ -1081,7 +1149,7 @@ struct RootView: View {
 
 enum AppInfo {
     static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.09"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.10"
     }
 }
 
@@ -1220,10 +1288,17 @@ struct TimelineWorkspace: View {
     @EnvironmentObject private var state: AppState
     @AppStorage("timelineListWidth") private var storedListWidth: Double = 560
     @State private var detailHidden = false
+    private let minTimelineListWidth: CGFloat = 420
+    private let minTimelineDetailWidth: CGFloat = 420
 
     private var listWidth: CGFloat {
         get { CGFloat(storedListWidth) }
         nonmutating set { storedListWidth = Double(newValue) }
+    }
+
+    private func clampedListWidth(for totalWidth: CGFloat) -> CGFloat {
+        let maxWidth = max(minTimelineListWidth, totalWidth - minTimelineDetailWidth)
+        return min(max(listWidth, minTimelineListWidth), maxWidth)
     }
 
     var filteredFiles: [FileTimelineItem] {
@@ -1310,12 +1385,16 @@ struct TimelineWorkspace: View {
                         } else {
                             HStack(spacing: 0) {
                                 TimelineColumn(groups: dayGroups, expanded: false) {}
-                                    .frame(width: min(max(listWidth, 420), max(geometry.size.width - 420, 480)))
+                                    .frame(width: clampedListWidth(for: geometry.size.width))
 
                                 SplitHandle(
-                                    onDrag: { delta in
-                                        listWidth = min(max(listWidth + delta, 420), max(geometry.size.width - 420, 480))
-                                    }
+                                    width: Binding(
+                                        get: { clampedListWidth(for: geometry.size.width) },
+                                        set: { listWidth = $0 }
+                                    ),
+                                    availableWidth: geometry.size.width,
+                                    minPrimaryWidth: minTimelineListWidth,
+                                    minSecondaryWidth: minTimelineDetailWidth
                                 )
 
                                 if let file = selectedFile {
@@ -1331,7 +1410,7 @@ struct TimelineWorkspace: View {
                                 }
                             }
                             .onChange(of: geometry.size.width) { _, width in
-                                listWidth = min(max(listWidth, 420), max(width - 420, 480))
+                                listWidth = clampedListWidth(for: width)
                             }
                         }
                     }
@@ -1351,31 +1430,75 @@ struct TimelineWorkspace: View {
 }
 
 struct SplitHandle: View {
-    let onDrag: (CGFloat) -> Void
-    @State private var dragStartWidthDelta: CGFloat = 0
+    @Binding var width: CGFloat
+    let availableWidth: CGFloat
+    let minPrimaryWidth: CGFloat
+    let minSecondaryWidth: CGFloat
+    @State private var dragStartWidth: CGFloat?
+    @State private var hovering = false
+    @State private var dragging = false
+
+    private var maxPrimaryWidth: CGFloat {
+        max(minPrimaryWidth, availableWidth - minSecondaryWidth)
+    }
+
+    private func clamp(_ value: CGFloat) -> CGFloat {
+        min(max(value, minPrimaryWidth), maxPrimaryWidth)
+    }
 
     var body: some View {
         ZStack {
             Rectangle()
-                .fill(.white.opacity(0.045))
-                .frame(width: 12)
-            Capsule()
-                .fill(.white.opacity(0.38))
-                .frame(width: 4, height: 72)
+                .fill((hovering || dragging) ? Color.accentColor.opacity(0.10) : .white.opacity(0.035))
+                .frame(width: hovering || dragging ? 22 : 14)
+            RoundedRectangle(cornerRadius: 3)
+                .fill((hovering || dragging) ? Color.accentColor.opacity(0.92) : .white.opacity(0.42))
+                .frame(width: hovering || dragging ? 6 : 4, height: hovering || dragging ? 108 : 78)
+                .shadow(color: (hovering || dragging) ? Color.accentColor.opacity(0.45) : .clear, radius: 16, y: 0)
+            VStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                Image(systemName: "chevron.right")
+            }
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle((hovering || dragging) ? .white : .secondary)
         }
-        .frame(width: 14)
+        .frame(width: hovering || dragging ? 22 : 16)
+        .frame(maxHeight: .infinity)
         .contentShape(Rectangle())
         .cursorHover(.resizeLeftRight)
         .gesture(
-            DragGesture(minimumDistance: 1)
+            DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    onDrag(value.translation.width - dragStartWidthDelta)
-                    dragStartWidthDelta = value.translation.width
+                    dragging = true
+                    let baseWidth = dragStartWidth ?? clamp(width)
+                    if dragStartWidth == nil {
+                        dragStartWidth = baseWidth
+                    }
+                    width = clamp(baseWidth + value.translation.width)
+                    NSCursor.resizeLeftRight.set()
                 }
                 .onEnded { _ in
-                    dragStartWidthDelta = 0
+                    width = clamp(width)
+                    dragStartWidth = nil
+                    dragging = false
+                    NSCursor.arrow.set()
                 }
         )
+        .onContinuousHover { phase in
+            switch phase {
+            case .active:
+                hovering = true
+                NSCursor.resizeLeftRight.set()
+            case .ended:
+                hovering = false
+                if !dragging {
+                    NSCursor.arrow.set()
+                }
+            }
+        }
+        .animation(.spring(response: 0.20, dampingFraction: 0.86), value: hovering)
+        .animation(.spring(response: 0.20, dampingFraction: 0.86), value: dragging)
+        .zIndex(20)
     }
 }
 
@@ -2910,13 +3033,21 @@ struct InteractiveHoverModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scaleEffect(enabled && hovering ? 1.015 : 1.0)
-            .shadow(color: enabled && hovering ? .black.opacity(0.24) : .clear, radius: enabled && hovering ? 16 : 0, y: enabled && hovering ? 8 : 0)
+            .offset(y: enabled && hovering ? -1 : 0)
+            .shadow(color: enabled && hovering ? .black.opacity(0.42) : .clear, radius: enabled && hovering ? 24 : 0, y: enabled && hovering ? 14 : 0)
+            .shadow(color: enabled && hovering ? Color.accentColor.opacity(0.18) : .clear, radius: enabled && hovering ? 10 : 0, y: enabled && hovering ? 3 : 0)
             .animation(.spring(response: 0.22, dampingFraction: 0.82), value: hovering)
             .contentShape(RoundedRectangle(cornerRadius: radius))
-            .background(CursorTrackingOverlay(cursor: .pointingHand, enabled: enabled))
-            .onHover { inside in
+            .onContinuousHover { phase in
                 guard enabled else { return }
-                hovering = inside
+                switch phase {
+                case .active:
+                    hovering = true
+                    NSCursor.pointingHand.set()
+                case .ended:
+                    hovering = false
+                    NSCursor.arrow.set()
+                }
             }
     }
 }
@@ -2930,11 +3061,18 @@ struct DestructiveHoverModifier: ViewModifier {
             .foregroundStyle(hovering ? .white : .secondary)
             .background(hovering ? Color.red.opacity(0.92) : Color.clear, in: RoundedRectangle(cornerRadius: radius))
             .scaleEffect(hovering ? 1.04 : 1)
+            .shadow(color: hovering ? .black.opacity(0.36) : .clear, radius: hovering ? 18 : 0, y: hovering ? 10 : 0)
             .contentShape(RoundedRectangle(cornerRadius: radius))
-            .background(CursorTrackingOverlay(cursor: .pointingHand, enabled: true))
             .animation(.spring(response: 0.2, dampingFraction: 0.84), value: hovering)
-            .onHover { inside in
-                hovering = inside
+            .onContinuousHover { phase in
+                switch phase {
+                case .active:
+                    hovering = true
+                    NSCursor.pointingHand.set()
+                case .ended:
+                    hovering = false
+                    NSCursor.arrow.set()
+                }
             }
     }
 }
@@ -2945,7 +3083,15 @@ struct CursorHoverModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(CursorTrackingOverlay(cursor: cursor, enabled: enabled))
+            .onContinuousHover { phase in
+                guard enabled else { return }
+                switch phase {
+                case .active:
+                    cursor.set()
+                case .ended:
+                    NSCursor.arrow.set()
+                }
+            }
     }
 }
 

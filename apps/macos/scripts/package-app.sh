@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$ROOT/../.." && pwd)"
 DIST="$ROOT/dist"
 APP_NAME="AI 信迹"
 
-APP_VERSION="${APP_VERSION:-0.09}"
+APP_VERSION="${APP_VERSION:-0.10}"
 APP="$DIST/$APP_NAME $APP_VERSION.app"
 DMG="$DIST/$APP_NAME-$APP_VERSION.dmg"
 README="$DIST/README-Mac-$APP_VERSION.txt"
@@ -44,7 +44,7 @@ swift build -c release
 BINARY="$(swift build -c release --show-bin-path)/AIXinjiMac"
 
 if [[ -e "$APP" || -e "$DMG" ]]; then
-  echo "版本 $APP_VERSION 已存在: $APP 或 ${DMG}。请设置新的 APP_VERSION，例如 APP_VERSION=0.09 ./scripts/package-app.sh" >&2
+  echo "版本 $APP_VERSION 已存在: $APP 或 ${DMG}。请设置新的 APP_VERSION，例如 APP_VERSION=0.11 ./scripts/package-app.sh" >&2
   exit 1
 fi
 
@@ -98,7 +98,7 @@ AI 信迹 Mac $APP_VERSION
 说明：
 - 这是原生 SwiftUI Mac App，不是网页套壳。
 - Supabase 公共配置已写入 App 包，双击即可使用。
-- 0.09 已补齐项目菜单、录入项目选择、收藏置顶、待办滴答同步和设置入口。
+- 0.10 已强化小手悬浮光标、按钮/卡片阴影动效、顺滑分栏拖拽，并将项目改为列表工作台。
 - 若 macOS 提示无法验证开发者，请在系统设置 > 隐私与安全性中允许打开。
 TXT
 
