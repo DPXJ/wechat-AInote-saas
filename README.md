@@ -149,15 +149,21 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=你的anon key
 
 ## Mac 桌面端（SwiftUI）
 
-Mac 端在 [apps/macos](apps/macos) 下，是真正的 SwiftUI 原生客户端，不是 Electron/WebView。0.1 版已接入：
+Mac 端在 [apps/macos](apps/macos) 下，是真正的 SwiftUI 原生客户端，不是 Electron/WebView。0.07 版已接入：
 
 - Supabase 邮箱密码登录
 - Bearer Token 调用云端 API
 - Keychain 保存登录 token
+- 可选记住密码
+- 与网页端对齐的“录入”：标题、标签、来源、备注、正文、附件、AI 摘要、AI 待办、OCR、Notion / flomo 开关
+- 支持在正文区直接粘贴文字、截图和文件
+- 剪贴板监听与待办线索自动识别
 - 文件时间线列表
 - 时间线搜索
 - 文件详情、AI 摘要、标签、OCR / 文档抽取内容
+- 图片缩略图预览与本地预览缓存
 - 原生下载附件并调用 macOS 打开
+- 详情面板可关闭，标题栏支持拖动与双击最大化
 - `.app` 和 `.dmg` 打包脚本
 
 后续剪贴板同步建议走原生 `NSPasteboard` 监听：记录最近一次 `changeCount`，检测到文本、图片或文件 URL 后先在本地排队，再调用云端 `/api/records` 上传，避免重复同步和网络不稳定导致丢数据。
@@ -179,7 +185,7 @@ cd apps/macos
 ./scripts/package-app.sh
 ```
 
-脚本会从仓库 `.env.local` 读取 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_ANON_KEY`，写入 App 的 `Info.plist`，所以生成后的 [apps/macos/dist/AI 信迹.app](apps/macos/dist/AI%20信迹.app) 可以直接双击打开。0.1 DMG 输出为 `apps/macos/dist/AI 信迹-0.1.0.dmg`。
+脚本会从仓库 `.env.local` 读取 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_ANON_KEY`，写入 App 的 `Info.plist`。默认会按版本号生成新包，不覆盖旧包，例如 [apps/macos/dist/AI 信迹 0.07.app](apps/macos/dist/AI%20信迹%200.07.app) 和 `apps/macos/dist/AI 信迹-0.07.dmg`。
 
 ## 可选配置
 

@@ -36,7 +36,7 @@ enum AppSection: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .capture: return "原生录入"
+        case .capture: return "录入"
         case .timeline: return "文件时间线"
         case .favorites: return "收藏"
         case .sources: return "信源"
@@ -61,6 +61,8 @@ struct CaptureAttachment: Identifiable, Hashable {
     let name: String
     let byteSize: Int64
     let mimeType: String
+    var tags = ""
+    var note = ""
 
     var byteSizeText: String {
         if byteSize < 1024 { return "\(byteSize) B" }
@@ -76,8 +78,14 @@ struct CaptureAttachment: Identifiable, Hashable {
             url: url,
             name: url.lastPathComponent,
             byteSize: Int64(values?.fileSize ?? 0),
-            mimeType: mimeType
+            mimeType: mimeType,
+            tags: "",
+            note: ""
         )
+    }
+
+    var isImage: Bool {
+        mimeType.hasPrefix("image/")
     }
 }
 

@@ -138,11 +138,11 @@ function PreviewPane({ file }: { file: FileTimelineItem }) {
 }
 
 function ImagePreview({ file }: { file: FileTimelineItem }) {
-  const [src, setSrc] = useState(buildAssetPreviewPath(file.id));
+  const [src, setSrc] = useState(buildAssetPreviewPath(file.id, true));
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setSrc(buildAssetPreviewPath(file.id));
+    setSrc(buildAssetPreviewPath(file.id, true));
     setFailed(false);
   }, [file.id]);
 
@@ -165,8 +165,8 @@ function ImagePreview({ file }: { file: FileTimelineItem }) {
           alt={file.originalName}
           className="max-h-[48vh] w-full object-contain"
           onError={() => {
-            if (!src.includes("thumb=1")) {
-              setSrc(buildAssetPreviewPath(file.id, true));
+            if (src.includes("thumb=1")) {
+              setSrc(buildAssetPreviewPath(file.id));
               return;
             }
             setFailed(true);
@@ -175,6 +175,29 @@ function ImagePreview({ file }: { file: FileTimelineItem }) {
       )}
     </div>
   );
+}
+
+function TimelineThumb({ file }: { file: FileTimelineItem }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [file.id]);
+
+  if (file.mimeType.startsWith("image/") && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={buildAssetPreviewPath(file.id, true)}
+        alt={file.originalName}
+        className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return <span>{fileBadge(file.mimeType)}</span>;
 }
 
 function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
@@ -373,10 +396,10 @@ export function FileTimelinePanel() {
                           <button
                             type="button"
                             onClick={() => setSelectedFile(file)}
-                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--card)] text-[10px] font-bold text-[var(--muted-strong)] transition group-hover:text-[var(--foreground)]"
+                            className="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--card)] text-[10px] font-bold text-[var(--muted-strong)] transition group-hover:border-[var(--line-strong)] group-hover:text-[var(--foreground)]"
                             title="查看详情"
                           >
-                            {fileBadge(file.mimeType)}
+                            <TimelineThumb file={file} />
                           </button>
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 flex-wrap items-center gap-2">

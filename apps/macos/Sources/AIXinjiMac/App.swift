@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 @main
 struct AIXinjiMacApp: App {
@@ -82,7 +83,7 @@ struct LoginView: View {
                 VStack(spacing: 4) {
                     Text("AI 信迹")
                         .font(.system(size: 32, weight: .bold))
-                    Text("原生 Mac 客户端 · 0.06")
+                    Text("原生 Mac 客户端 · 0.07")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -121,6 +122,12 @@ struct LoginView: View {
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)))
                 }
                 .frame(width: 360)
+
+                Toggle("记住密码", isOn: $state.rememberPassword)
+                    .toggleStyle(.checkbox)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 360, alignment: .leading)
 
                 Button {
                     Task { await state.signIn() }
@@ -235,18 +242,17 @@ struct TimelineWorkspace: View {
                                     .frame(width: min(max(listWidth, 420), max(geometry.size.width - 420, 480)))
 
                                 SplitHandle(
-                                    onToggle: {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                                            detailHidden = true
-                                        }
-                                    },
                                     onDrag: { delta in
                                         listWidth = min(max(listWidth + delta, 420), max(geometry.size.width - 420, 480))
                                     }
                                 )
 
                                 if let file = selectedFile {
-                                    FileDetailView(file: file)
+                                    FileDetailView(file: file) {
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                            detailHidden = true
+                                        }
+                                    }
                                         .id(file.id)
                                         .frame(maxWidth: .infinity)
                                 } else {
@@ -274,7 +280,6 @@ struct TimelineWorkspace: View {
 }
 
 struct SplitHandle: View {
-    let onToggle: () -> Void
     let onDrag: (CGFloat) -> Void
     @State private var dragStartWidthDelta: CGFloat = 0
 
@@ -286,17 +291,6 @@ struct SplitHandle: View {
             Capsule()
                 .fill(.white.opacity(0.38))
                 .frame(width: 4, height: 72)
-            Button(action: onToggle) {
-                Image(systemName: "sidebar.trailing")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 24, height: 24)
-                    .background(.black.opacity(0.22), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .interactiveHover(radius: 12)
-            .foregroundStyle(.secondary)
-            .offset(y: -54)
-            .help("收起详情")
         }
         .frame(width: 14)
         .contentShape(Rectangle())
@@ -315,178 +309,492 @@ struct SplitHandle: View {
 
 struct NativeCaptureView: View {
     @EnvironmentObject private var state: AppState
+    @State private var isDragging = false
+
+    var canSubmit: Bool {
+        !state.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !state.captureFiles.isEmpty
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("原生录入")
-                            .font(.title2.bold())
-                        Text("文字、文件、剪贴板内容统一进入文件时间线")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("监听剪贴板", isOn: Binding(
-                        get: { state.autoClipboardEnabled },
-                        set: { state.setClipboardMonitoring($0) }
-                    ))
-                    .toggleStyle(.switch)
-                }
-                .padding(20)
-                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+            VStack(alignment: .leading, spacing: 22) {
+                CaptureHero()
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("来源")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    TextField("例如：微信剪贴板 / 飞书会议 / Mac 原生录入", text: $state.captureSource)
-                        .textFieldStyle(.plain)
-                        .padding(.horizontal, 14)
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("记录信息")
+                        .font(.headline)
+
+                    HStack(spacing: 12) {
+                        CaptureField(title: "标题", placeholder: "标题（选填）", text: $state.captureTitle)
+                        CaptureField(title: "标签", placeholder: "标签（空格分隔）", text: $state.captureTags)
+                    }
+
+                    HStack(spacing: 12) {
+                        CaptureField(title: "来源", placeholder: "微信剪贴板 / 飞书会议 / Mac 录入", text: $state.captureSource)
+                        CaptureField(title: "备注", placeholder: "补充上下文（选填）", text: $state.captureContextNote)
+                    }
+
+                    CaptureEditorBox(isDragging: $isDragging, onDrop: handleDrop(providers:))
+
+                    if !state.captureFiles.isEmpty {
+                        CaptureAttachmentGrid()
+                    }
+
+                    HStack(alignment: .center, spacing: 14) {
+                        CaptureToggle(title: "AI 识别摘要", isOn: $state.enableAiSummary)
+                        CaptureToggle(title: "AI 识别待办", isOn: $state.autoCreateTodo)
+                        CaptureToggle(title: "启用 OCR 识别", isOn: $state.enableOcr)
+                        CaptureToggle(title: "同步到 Notion", isOn: $state.syncToNotion)
+                        CaptureToggle(title: "同步到 flomo", isOn: $state.syncToFlomo)
+                        CaptureToggle(title: "强制关联待办", isOn: $state.forceLinkToTodo)
+
+                        Spacer(minLength: 10)
+
+                        Button {
+                            Task { await state.submitCapture() }
+                        } label: {
+                            if state.isLoading {
+                                ProgressView().controlSize(.small)
+                                    .frame(width: 92)
+                            } else {
+                                Text("提交记录")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .frame(width: 92)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .keyboardShortcut(.return, modifiers: .command)
+                        .padding(.horizontal, 18)
                         .frame(height: 42)
-                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
-                }
+                        .background(canSubmit ? .white : .white.opacity(0.14), in: RoundedRectangle(cornerRadius: 13))
+                        .foregroundStyle(canSubmit ? .black : .secondary)
+                        .interactiveHover(radius: 13, enabled: canSubmit && !state.isLoading)
+                        .disabled(state.isLoading || !canSubmit)
+                    }
+                    .padding(.top, 2)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("内容")
-                            .font(.caption.weight(.semibold))
+                    if !state.message.isEmpty {
+                        Text(state.message)
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
-                        Spacer()
-                        if state.looksLikeTodo(state.captureText) {
-                            Label("疑似待办", systemImage: "checkmark.square")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.pink)
-                        }
-                    }
-                    TextEditor(text: $state.captureText)
-                        .font(.body)
-                        .scrollContentBackground(.hidden)
-                        .padding(12)
-                        .frame(minHeight: 260)
-                        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.08)))
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("文件")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            state.chooseCaptureFiles()
-                        } label: {
-                            Label("选择文件", systemImage: "paperclip")
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                        .interactiveHover(radius: 10)
-                    }
-
-                    if state.captureFiles.isEmpty {
-                        Button {
-                            state.chooseCaptureFiles()
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "tray.and.arrow.up")
-                                    .font(.title3)
-                                Text("添加图片、PDF、文档或表格")
-                                    .font(.callout.weight(.semibold))
-                                Spacer()
-                            }
-                            .padding(18)
-                            .frame(maxWidth: .infinity)
-                            .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.08)))
-                        }
-                        .buttonStyle(.plain)
-                        .interactiveHover(radius: 14)
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], alignment: .leading, spacing: 10) {
-                            ForEach(state.captureFiles) { attachment in
-                                HStack(spacing: 10) {
-                                    Image(systemName: "doc")
-                                        .frame(width: 28, height: 28)
-                                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(attachment.name)
-                                            .font(.caption.weight(.semibold))
-                                            .lineLimit(1)
-                                        Text(attachment.byteSizeText)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Button {
-                                        state.removeCaptureFile(attachment)
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                    }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(.secondary)
-                                    .interactiveHover(radius: 8)
-                                }
-                                .padding(10)
-                                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
-                            }
-                        }
                     }
                 }
+                .padding(24)
+                .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(.white.opacity(0.08)))
+            }
+            .padding(28)
+            .frame(maxWidth: 1320, alignment: .leading)
+        }
+        .background(.white.opacity(0.025))
+    }
 
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        var handled = false
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                handled = true
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    guard let data = item as? Data,
+                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    DispatchQueue.main.async { state.addCaptureFiles([url]) }
+                }
+            } else if provider.canLoadObject(ofClass: NSImage.self) {
+                handled = true
+                _ = provider.loadObject(ofClass: NSImage.self) { image, _ in
+                    guard let image = image as? NSImage else { return }
+                    DispatchQueue.main.async { state.addCaptureImage(image) }
+                }
+            }
+        }
+        return handled
+    }
+}
+
+struct CaptureHero: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("录入")
+                    .font(.system(size: 24, weight: .bold))
+                Text("文字、截图、文件、剪贴板内容统一进入文件时间线")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("监听剪贴板", isOn: Binding(
+                get: { state.autoClipboardEnabled },
+                set: { state.setClipboardMonitoring($0) }
+            ))
+            .toggleStyle(.switch)
+        }
+        .padding(20)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+    }
+}
+
+struct CaptureField: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 14)
+                .frame(height: 42)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+        }
+    }
+}
+
+struct CaptureEditorBox: View {
+    @EnvironmentObject private var state: AppState
+    @Binding var isDragging: Bool
+    let onDrop: ([NSItemProvider]) -> Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CaptureToolbar()
+            PasteAwareTextView(
+                text: $state.captureText,
+                placeholder: "输入文本或 Markdown，支持直接粘贴截图...",
+                onPasteImage: { image in state.addCaptureImage(image) },
+                onPasteFiles: { urls in state.addCaptureFiles(urls) },
+                onSubmit: { Task { await state.submitCapture() } }
+            )
+            .frame(minHeight: 340)
+
+            VStack(spacing: 0) {
                 HStack(spacing: 12) {
-                    Toggle("自动识别并创建待办", isOn: $state.autoCreateTodo)
-                        .toggleStyle(.checkbox)
-                    Spacer()
                     Button {
                         state.captureClipboardNow()
                     } label: {
                         Label("读取剪贴板", systemImage: "doc.on.clipboard")
                     }
                     .buttonStyle(.plain)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                    .interactiveHover(radius: 10)
+                    .controlButton()
 
                     Button {
-                        Task { await state.submitCapture() }
+                        state.chooseCaptureFiles()
                     } label: {
-                        if state.isLoading {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("录入时间线", systemImage: "tray.and.arrow.down")
-                        }
+                        Label("添加附件", systemImage: "paperclip")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .interactiveHover(radius: 10)
-                    .disabled(state.isLoading || (state.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state.captureFiles.isEmpty))
-                }
+                    .buttonStyle(.plain)
+                    .controlButton()
 
-                if !state.message.isEmpty {
-                    Text(state.message)
-                        .font(.footnote)
+                    Spacer()
+
+                    if state.looksLikeTodo(state.captureText) {
+                        Label("疑似待办", systemImage: "checkmark.square")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.pink)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                AttachmentDropZone(isDragging: isDragging)
+                    .onTapGesture { state.chooseCaptureFiles() }
+                    .onDrop(
+                        of: [UTType.fileURL.identifier, UTType.image.identifier, UTType.tiff.identifier, UTType.png.identifier],
+                        isTargeted: $isDragging,
+                        perform: onDrop
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 14)
+            }
+        }
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(isDragging ? Color.accentColor.opacity(0.65) : .white.opacity(0.08)))
+    }
+}
+
+struct CaptureToolbar: View {
+    private let items = ["H1", "H2", "H3", "B", "I", "S", "<>", "列表", "待办", "引用", "分割"]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(items, id: \.self) { item in
+                Text(item)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: item.count > 2 ? 34 : 24, minHeight: 24)
+                    .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+            }
+            Spacer()
+            Text("Markdown")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
+        }
+    }
+}
+
+struct AttachmentDropZone: View {
+    let isDragging: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "paperclip")
+                .font(.title3)
+                .foregroundStyle(isDragging ? Color.accentColor : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("拖拽或点击添加附件（图片、视频、音频、文档等）")
+                    .font(.callout.weight(.semibold))
+                Text("支持 JPG、PNG、PDF、Word、Excel、MP4、MP3 等")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(18)
+        .background(isDragging ? Color.accentColor.opacity(0.12) : .white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                .foregroundStyle(isDragging ? Color.accentColor.opacity(0.7) : .white.opacity(0.12))
+        )
+        .interactiveHover(radius: 14)
+    }
+}
+
+struct CaptureAttachmentGrid: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 12)], alignment: .leading, spacing: 12) {
+            ForEach(state.captureFiles) { attachment in
+                CaptureAttachmentCard(attachment: attachment)
+            }
+        }
+    }
+}
+
+struct CaptureAttachmentCard: View {
+    @EnvironmentObject private var state: AppState
+    let attachment: CaptureAttachment
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                CaptureAttachmentPreview(attachment: attachment)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(attachment.name)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text(attachment.byteSizeText)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+                Spacer()
+                Button {
+                    state.removeCaptureFile(attachment)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .interactiveHover(radius: 8)
             }
-            .padding(28)
-            .frame(maxWidth: 1040, alignment: .leading)
+
+            TextField("附件标签（空格分隔）", text: Binding(
+                get: { attachment.tags },
+                set: { state.updateCaptureFile(attachment, tags: $0) }
+            ))
+            .textFieldStyle(.plain)
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
+
+            TextField("附件描述（选填）", text: Binding(
+                get: { attachment.note },
+                set: { state.updateCaptureFile(attachment, note: $0) }
+            ))
+            .textFieldStyle(.plain)
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
         }
-        .background(.white.opacity(0.025))
+        .padding(12)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.08)))
+    }
+}
+
+struct CaptureAttachmentPreview: View {
+    let attachment: CaptureAttachment
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.white.opacity(0.08))
+            if attachment.isImage, let image = NSImage(contentsOf: attachment.url) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                Text(FileBadge(mimeType: attachment.mimeType).label)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 46, height: 46)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.10)))
+    }
+}
+
+struct CaptureToggle: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(title, isOn: $isOn)
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+    }
+}
+
+struct PasteAwareTextView: NSViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let onPasteImage: (NSImage) -> Void
+    let onPasteFiles: ([URL]) -> Void
+    let onSubmit: () -> Void
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .noBorder
+
+        let textView = PasteAwareNSTextView()
+        textView.delegate = context.coordinator
+        textView.onPasteImage = onPasteImage
+        textView.onPasteFiles = onPasteFiles
+        textView.onSubmit = onSubmit
+        textView.string = text
+        textView.font = .systemFont(ofSize: 15)
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .labelColor
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.textContainerInset = NSSize(width: 18, height: 18)
+        textView.textContainer?.widthTracksTextView = true
+        textView.autoresizingMask = [.width]
+        scrollView.documentView = textView
+        context.coordinator.textView = textView
+        context.coordinator.placeholder = placeholder
+        context.coordinator.updatePlaceholder()
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? PasteAwareNSTextView else { return }
+        textView.onPasteImage = onPasteImage
+        textView.onPasteFiles = onPasteFiles
+        textView.onSubmit = onSubmit
+        if textView.string != text {
+            textView.string = text
+        }
+        context.coordinator.updatePlaceholder()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding var text: String
+        weak var textView: PasteAwareNSTextView?
+        var placeholder = ""
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text = textView.string
+            updatePlaceholder()
+        }
+
+        func updatePlaceholder() {
+            guard let textView else { return }
+            textView.placeholderText = textView.string.isEmpty ? placeholder : nil
+            textView.needsDisplay = true
+        }
+    }
+}
+
+final class PasteAwareNSTextView: NSTextView {
+    var onPasteImage: ((NSImage) -> Void)?
+    var onPasteFiles: (([URL]) -> Void)?
+    var onSubmit: (() -> Void)?
+    var placeholderText: String?
+
+    override func paste(_ sender: Any?) {
+        let pasteboard = NSPasteboard.general
+        if let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL], !urls.isEmpty {
+            onPasteFiles?(urls)
+        }
+        if let image = NSImage(pasteboard: pasteboard) {
+            onPasteImage?(image)
+        }
+        if let string = pasteboard.string(forType: .string), !string.isEmpty {
+            insertText(string, replacementRange: selectedRange())
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36, event.modifierFlags.contains(.command) {
+            onSubmit?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let placeholderText, string.isEmpty else { return }
+        let rect = NSRect(x: textContainerInset.width + 4, y: textContainerInset.height, width: bounds.width - 32, height: 24)
+        placeholderText.draw(in: rect, withAttributes: [
+            .foregroundColor: NSColor.placeholderTextColor,
+            .font: font ?? NSFont.systemFont(ofSize: 15)
+        ])
     }
 }
 
 struct DragStrip: View {
     var body: some View {
         WindowDragView()
-            .frame(height: 28)
+            .frame(height: 52)
+            .ignoresSafeArea(edges: .top)
+            .allowsHitTesting(true)
     }
 }
 
@@ -499,6 +807,10 @@ struct WindowDragView: NSViewRepresentable {
 }
 
 final class DraggingNSView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        self
+    }
+
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 2 {
             window?.zoom(nil)
@@ -601,8 +913,12 @@ struct SidebarButton: View {
                 Spacer()
                 if badge > 0 {
                     Text("\(badge)")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.pink)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .frame(minWidth: 24, minHeight: 22)
+                        .background(.pink, in: Capsule())
+                        .shadow(color: .pink.opacity(0.28), radius: 10, y: 4)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -742,7 +1058,7 @@ struct TimelineFileCard: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
-                        FileBadge(mimeType: file.mimeType)
+                        TimelineThumbnail(file: file)
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 8) {
                                 Text(file.originalName)
@@ -791,6 +1107,9 @@ struct TimelineFileCard: View {
         }
         .buttonStyle(.plain)
         .interactiveHover(radius: 16)
+        .task(id: file.id) {
+            await state.loadPreview(for: file)
+        }
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
                 state.selectedFileId = file.id
@@ -801,101 +1120,147 @@ struct TimelineFileCard: View {
     }
 }
 
+struct TimelineThumbnail: View {
+    @EnvironmentObject private var state: AppState
+    let file: FileTimelineItem
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.white.opacity(0.08))
+            if file.mimeType.hasPrefix("image/"), let image = state.previewImages[file.id] {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else if file.mimeType.hasPrefix("image/"), state.previewLoadingIds.contains(file.id) {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                FileBadge(mimeType: file.mimeType)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)))
+        .clipped()
+    }
+}
+
 struct FileDetailView: View {
     @EnvironmentObject private var state: AppState
     let file: FileTimelineItem
+    let onClose: () -> Void
 
     var isFavorite: Bool { state.favoriteRecordIds.contains(file.recordId) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(file.kindLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(file.originalName)
-                            .font(.title2.bold())
-                            .lineLimit(2)
-                        if isFavorite {
-                            Image(systemName: "star.fill")
-                                .foregroundStyle(.yellow)
-                        }
-                    }
-                    Text("\(file.byteSizeText) · \(file.createdAt.shortDateTime)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                PreviewCard(file: file)
-
-                HStack(spacing: 10) {
-                    Button {
-                        Task { await state.toggleFavorite(file) }
-                    } label: {
-                        Label(isFavorite ? "已收藏" : "收藏", systemImage: isFavorite ? "star.fill" : "star")
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        Task { await state.openAsset(file) }
-                    } label: {
-                        Label("打开文件", systemImage: "arrow.up.right.square")
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Button {
-                        Task { await state.downloadAsset(file) }
-                    } label: {
-                        Label("下载到本地", systemImage: "arrow.down.circle")
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        state.copyShareLink(file)
-                    } label: {
-                        Label("复制链接", systemImage: "square.and.arrow.up")
-                    }
-                    .buttonStyle(.bordered)
-
-                    if !state.message.isEmpty {
-                        Text(state.message)
+        ZStack(alignment: .topTrailing) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(file.kindLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(file.originalName)
+                                .font(.title2.bold())
+                                .lineLimit(2)
+                            if isFavorite {
+                                Image(systemName: "star.fill")
+                                    .foregroundStyle(.yellow)
+                            }
+                        }
+                        Text("\(file.byteSizeText) · \(file.createdAt.shortDateTime)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    PreviewCard(file: file)
+
+                    HStack(spacing: 10) {
+                        Button {
+                            Task { await state.toggleFavorite(file) }
+                        } label: {
+                            Label(isFavorite ? "已收藏" : "收藏", systemImage: isFavorite ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.bordered)
+                        .interactiveHover(radius: 10)
+
+                        Button {
+                            Task { await state.openAsset(file) }
+                        } label: {
+                            Label("打开文件", systemImage: "arrow.up.right.square")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .interactiveHover(radius: 10)
+
+                        Button {
+                            Task { await state.downloadAsset(file) }
+                        } label: {
+                            Label("下载到本地", systemImage: "arrow.down.circle")
+                        }
+                        .buttonStyle(.bordered)
+                        .interactiveHover(radius: 10)
+
+                        Button {
+                            state.copyShareLink(file)
+                        } label: {
+                            Label("复制链接", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.bordered)
+                        .interactiveHover(radius: 10)
+
+                        if !state.message.isEmpty {
+                            Text(state.message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    DetailCard(title: "AI 摘要") {
+                        Text(file.recordSummary.isEmpty ? file.bestDescription : file.recordSummary)
+                    }
+
+                    DetailCard(title: "来源与描述") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            LabeledContent("来源", value: file.recordSourceLabel.isEmpty ? "手动收件箱" : file.recordSourceLabel)
+                            LabeledContent("记录", value: file.recordTitle)
+                            Text(file.bestDescription)
+                        }
+                    }
+
+                    if !file.allTags.isEmpty {
+                        DetailCard(title: "自动标签") {
+                            FlowTags(tags: file.allTags)
+                        }
+                    }
+
+                    if !file.analysisText.isEmpty {
+                        DetailCard(title: file.mimeType.hasPrefix("image/") ? "OCR 识别" : "文档抽取 / 解析") {
+                            Text(file.analysisText)
+                                .font(.system(.footnote, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
                     }
                 }
-
-                DetailCard(title: "AI 摘要") {
-                    Text(file.recordSummary.isEmpty ? file.bestDescription : file.recordSummary)
-                }
-
-                DetailCard(title: "来源与描述") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        LabeledContent("来源", value: file.recordSourceLabel.isEmpty ? "手动收件箱" : file.recordSourceLabel)
-                        LabeledContent("记录", value: file.recordTitle)
-                        Text(file.bestDescription)
-                    }
-                }
-
-                if !file.allTags.isEmpty {
-                    DetailCard(title: "自动标签") {
-                        FlowTags(tags: file.allTags)
-                    }
-                }
-
-                if !file.analysisText.isEmpty {
-                    DetailCard(title: file.mimeType.hasPrefix("image/") ? "OCR 识别" : "文档抽取 / 解析") {
-                        Text(file.analysisText)
-                            .font(.system(.footnote, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                }
+                .padding(28)
             }
-            .padding(28)
+            .background(.white.opacity(0.02))
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(width: 34, height: 34)
+            }
+            .buttonStyle(.plain)
+            .background(.black.opacity(0.42), in: Circle())
+            .overlay(Circle().stroke(.white.opacity(0.14)))
+            .interactiveHover(radius: 17)
+            .help("关闭详情")
+            .padding(.top, 18)
+            .padding(.trailing, 18)
         }
-        .background(.white.opacity(0.02))
         .task(id: file.id) {
             await state.loadPreview(for: file)
         }
@@ -969,7 +1334,7 @@ struct EmptyTimelineView: View {
                 .foregroundStyle(.secondary)
             Text(searching ? "没有匹配结果" : "暂无资料")
                 .font(.headline)
-            Text(searching ? "换个关键词再试试。" : "在网页端录入后会自动同步到这里。")
+            Text(searching ? "换个关键词再试试。" : "在录入里保存后会自动同步到这里。")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -986,7 +1351,7 @@ struct EmptyListHint: View {
                 .foregroundStyle(.secondary)
             Text(searching ? "没有找到资料" : "还没有资料")
                 .font(.headline)
-            Text(searching ? "搜索范围包含文件名、标签、OCR 和摘要。" : "点击左侧打开网页版，新增后刷新即可同步。")
+            Text(searching ? "搜索范围包含文件名、标签、OCR 和摘要。" : "点击左侧录入，保存后会进入文件时间线。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1060,9 +1425,9 @@ struct InteractiveHoverModifier: ViewModifier {
                 guard enabled else { return }
                 hovering = inside
                 if inside {
-                    NSCursor.pointingHand.push()
+                    NSCursor.pointingHand.set()
                 } else {
-                    NSCursor.pop()
+                    NSCursor.arrow.set()
                 }
             }
     }
@@ -1071,5 +1436,14 @@ struct InteractiveHoverModifier: ViewModifier {
 extension View {
     func interactiveHover(radius: CGFloat = 12, enabled: Bool = true) -> some View {
         modifier(InteractiveHoverModifier(radius: radius, enabled: enabled))
+    }
+
+    func controlButton() -> some View {
+        self
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            .interactiveHover(radius: 10)
     }
 }
