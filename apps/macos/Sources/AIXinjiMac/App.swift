@@ -82,7 +82,7 @@ struct LoginView: View {
                 VStack(spacing: 4) {
                     Text("AI 信迹")
                         .font(.system(size: 32, weight: .bold))
-                    Text("原生 Mac 客户端 · 0.03")
+                    Text("原生 Mac 客户端 · 0.05")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -155,11 +155,15 @@ struct LoginView: View {
 
 struct TimelineWorkspace: View {
     @EnvironmentObject private var state: AppState
+    @State private var listWidth: CGFloat = 520
+    @State private var detailHidden = false
 
     var filteredFiles: [FileTimelineItem] {
         let q = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let scoped = state.files.filter { file in
             switch state.currentSection {
+            case .capture:
+                return true
             case .timeline:
                 return true
             case .favorites:
@@ -196,18 +200,37 @@ struct TimelineWorkspace: View {
             VStack(spacing: 0) {
                 HeaderView(total: state.files.count, filtered: filteredFiles.count)
 
-                HStack(spacing: 0) {
-                    TimelineColumn(groups: dayGroups)
-                        .frame(minWidth: 420, idealWidth: 460)
+                if state.currentSection == .capture {
+                    NativeCaptureView()
+                } else {
+                    GeometryReader { geometry in
+                        HStack(spacing: 0) {
+                            TimelineColumn(groups: dayGroups)
+                                .frame(width: min(max(listWidth, 380), max(geometry.size.width - 360, 420)))
 
-                    Divider().overlay(.white.opacity(0.08))
+                            SplitHandle(
+                                detailHidden: detailHidden,
+                                onToggle: { detailHidden.toggle() },
+                                onDrag: { delta in
+                                    listWidth = min(max(listWidth + delta, 380), max(geometry.size.width - 360, 420))
+                                }
+                            )
 
-                    if let file = selectedFile {
-                        FileDetailView(file: file)
-                            .id(file.id)
-                    } else {
-                        EmptyTimelineView(searching: !state.searchText.isEmpty)
+                            if detailHidden {
+                                CollapsedDetailRail { detailHidden = false }
+                            } else if let file = selectedFile {
+                                FileDetailView(file: file)
+                                    .id(file.id)
+                                    .frame(maxWidth: .infinity)
+                            } else {
+                                EmptyTimelineView(searching: !state.searchText.isEmpty)
+                            }
+                        }
+                        .onChange(of: geometry.size.width) { _, width in
+                            listWidth = min(max(listWidth, 380), max(width - 360, 420))
+                        }
                     }
+                    .background(.white.opacity(0.02))
                 }
             }
         }
@@ -215,9 +238,168 @@ struct TimelineWorkspace: View {
             DragStrip()
         }
         .onChange(of: filteredFiles.map(\.id)) { _, ids in
+            if state.currentSection == .capture { return }
             if let current = state.selectedFileId, ids.contains(current) { return }
             state.selectedFileId = ids.first
         }
+    }
+}
+
+struct SplitHandle: View {
+    let detailHidden: Bool
+    let onToggle: () -> Void
+    let onDrag: (CGFloat) -> Void
+    @State private var dragStartWidthDelta: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.white.opacity(0.045))
+                .frame(width: 12)
+            Capsule()
+                .fill(.white.opacity(0.38))
+                .frame(width: 4, height: 72)
+            Button(action: onToggle) {
+                Image(systemName: detailHidden ? "sidebar.right" : "sidebar.trailing")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 24, height: 24)
+                    .background(.black.opacity(0.22), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .offset(y: -54)
+            .help(detailHidden ? "展开详情" : "收起详情")
+        }
+        .frame(width: 14)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    onDrag(value.translation.width - dragStartWidthDelta)
+                    dragStartWidthDelta = value.translation.width
+                }
+                .onEnded { _ in
+                    dragStartWidthDelta = 0
+                }
+        )
+    }
+}
+
+struct CollapsedDetailRail: View {
+    let onExpand: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Button(action: onExpand) {
+                Image(systemName: "sidebar.right")
+                    .font(.title3)
+                    .frame(width: 40, height: 40)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .help("展开详情")
+            Text("详情已收起")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(90))
+                .fixedSize()
+            Spacer()
+        }
+        .padding(.top, 72)
+        .frame(width: 70)
+        .background(.white.opacity(0.025))
+    }
+}
+
+struct NativeCaptureView: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("把微信、飞书、网页里复制来的内容直接收进时间线。")
+                            .font(.headline)
+                        Text("开启剪贴板监听后，新复制的文本会自动填入这里；识别到待办语义时会默认勾选待办。")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("监听剪贴板", isOn: Binding(
+                        get: { state.autoClipboardEnabled },
+                        set: { state.setClipboardMonitoring($0) }
+                    ))
+                    .toggleStyle(.switch)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("来源")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    TextField("例如：微信剪贴板 / 飞书会议 / Mac 原生录入", text: $state.captureSource)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 14)
+                        .frame(height: 42)
+                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("内容")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if state.looksLikeTodo(state.captureText) {
+                            Label("疑似待办", systemImage: "checkmark.square")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.pink)
+                        }
+                    }
+                    TextEditor(text: $state.captureText)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .padding(12)
+                        .frame(minHeight: 260)
+                        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.08)))
+                }
+
+                HStack(spacing: 12) {
+                    Toggle("自动识别并创建待办", isOn: $state.autoCreateTodo)
+                        .toggleStyle(.checkbox)
+                    Spacer()
+                    Button {
+                        state.captureClipboardNow()
+                    } label: {
+                        Label("读取剪贴板", systemImage: "doc.on.clipboard")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        Task { await state.submitCapture() }
+                    } label: {
+                        if state.isLoading {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("录入时间线", systemImage: "tray.and.arrow.down")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(state.isLoading || state.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                if !state.message.isEmpty {
+                    Text(state.message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 960, alignment: .leading)
+        }
+        .background(.white.opacity(0.025))
     }
 }
 
@@ -264,6 +446,9 @@ struct SidebarView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
+                SidebarButton(title: AppSection.capture.title, systemImage: AppSection.capture.systemImage, active: state.currentSection == .capture) {
+                    state.currentSection = .capture
+                }
                 SidebarButton(title: AppSection.timeline.title, systemImage: AppSection.timeline.systemImage, active: state.currentSection == .timeline) {
                     state.currentSection = .timeline
                 }

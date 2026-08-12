@@ -9,6 +9,11 @@ final class AppState: ObservableObject {
     @Published var files: [FileTimelineItem] = []
     @Published var selectedFileId: String?
     @Published var searchText = ""
+    @Published var captureText = ""
+    @Published var captureSource = "Mac 原生录入"
+    @Published var autoClipboardEnabled = false
+    @Published var autoCreateTodo = true
+    @Published var lastClipboardText = ""
     @Published var message = ""
     @Published var isLoading = false
     @Published var currentSection: AppSection = .timeline
@@ -30,6 +35,7 @@ final class AppState: ObservableObject {
     private let supabaseAnonKey: String
     private let tokenAccount = "supabase-access-token"
     private let emailAccount = "last-email"
+    private var clipboardTimer: Timer?
 
     init() {
         let bundle = Bundle.main
@@ -54,6 +60,54 @@ final class AppState: ObservableObject {
     func bootstrap() async {
         if isSignedIn {
             await loadTimeline()
+        }
+    }
+
+    func setClipboardMonitoring(_ enabled: Bool) {
+        autoClipboardEnabled = enabled
+        clipboardTimer?.invalidate()
+        clipboardTimer = nil
+        if enabled {
+            lastClipboardText = NSPasteboard.general.string(forType: .string) ?? ""
+            clipboardTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    self?.captureClipboardIfNeeded()
+                }
+            }
+            message = "已开启剪贴板监听"
+        } else {
+            message = "已关闭剪贴板监听"
+        }
+    }
+
+    func captureClipboardNow() {
+        let text = NSPasteboard.general.string(forType: .string) ?? ""
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            message = "剪贴板没有可录入文本"
+            return
+        }
+        captureText = text
+        lastClipboardText = text
+        if looksLikeTodo(text) {
+            autoCreateTodo = true
+            message = "已读取剪贴板，疑似待办"
+        } else {
+            message = "已读取剪贴板"
+        }
+    }
+
+    private func captureClipboardIfNeeded() {
+        guard autoClipboardEnabled else { return }
+        let text = NSPasteboard.general.string(forType: .string) ?? ""
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, text != lastClipboardText else { return }
+        lastClipboardText = text
+        captureText = text
+        if looksLikeTodo(text) {
+            autoCreateTodo = true
+            message = "剪贴板已捕获，识别为待办线索"
+        } else {
+            message = "剪贴板已捕获"
         }
     }
 
@@ -108,6 +162,56 @@ final class AppState: ObservableObject {
         previewImages = [:]
         previewLoadingIds = []
         KeychainStore.delete(account: tokenAccount)
+        setClipboardMonitoring(false)
+    }
+
+    func submitCapture() async {
+        let text = captureText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            message = "请先输入或读取一段内容"
+            return
+        }
+        guard !accessToken.isEmpty else { return }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let boundary = "AIXinjiBoundary\(UUID().uuidString)"
+            var body = Data()
+            func appendField(_ name: String, _ value: String) {
+                body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+                body.append("\(value)\r\n".data(using: .utf8)!)
+            }
+            appendField("title", captureTitle(from: text))
+            appendField("sourceLabel", captureSource.isEmpty ? "Mac 原生录入" : captureSource)
+            appendField("contentText", text)
+            appendField("recordTypeHint", "text")
+            appendField("enableAiSummary", "true")
+            appendField("enableAiTodo", "true")
+            appendField("linkToTodo", autoCreateTodo ? "true" : "false")
+            appendField("syncToNotion", "false")
+            appendField("syncToFlomo", "false")
+            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+            var request = authorizedRequest(path: "/api/records")
+            request.httpMethod = "POST"
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                message = readableError(data) ?? "录入失败"
+                return
+            }
+            _ = try? JSONDecoder.aixinji.decode(CreateRecordResponse.self, from: data)
+            captureText = ""
+            message = "已录入并同步"
+            await loadTimeline()
+            currentSection = .timeline
+        } catch {
+            message = "录入失败：\(error.localizedDescription)"
+        }
     }
 
     func loadTimeline() async {
@@ -232,6 +336,20 @@ final class AppState: ObservableObject {
 
     func openWebCapture() {
         NSWorkspace.shared.open(apiBaseURL)
+    }
+
+    private func captureTitle(from text: String) -> String {
+        let oneLine = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(oneLine.prefix(32))
+    }
+
+    func looksLikeTodo(_ text: String) -> Bool {
+        let keywords = ["待办", "提醒", "明天", "今天", "今晚", "本周", "下周", "确认", "跟进", "回复", "提交", "安排", "处理", "完成", "联系", "开会", "前"]
+        return keywords.contains { text.localizedCaseInsensitiveContains($0) }
+    }
+
+    private func looksUrgent(_ text: String) -> Bool {
+        ["今天", "今晚", "马上", "紧急", "尽快", "明早"].contains { text.localizedCaseInsensitiveContains($0) }
     }
 
     func openAsset(_ file: FileTimelineItem) async {

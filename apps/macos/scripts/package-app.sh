@@ -7,7 +7,7 @@ DIST="$ROOT/dist"
 APP_NAME="AI 信迹"
 BINARY="$ROOT/.build/release/AIXinjiMac"
 
-APP_VERSION="${APP_VERSION:-0.03}"
+APP_VERSION="${APP_VERSION:-0.05}"
 APP="$DIST/$APP_NAME $APP_VERSION.app"
 DMG="$DIST/$APP_NAME-$APP_VERSION.dmg"
 README="$DIST/README-Mac-$APP_VERSION.txt"
@@ -44,7 +44,7 @@ cd "$ROOT"
 swift build -c release
 
 if [[ -e "$APP" || -e "$DMG" ]]; then
-  echo "版本 $APP_VERSION 已存在：$APP 或 $DMG。请设置新的 APP_VERSION，例如 APP_VERSION=0.03 ./scripts/package-app.sh" >&2
+  echo "版本 $APP_VERSION 已存在：$APP 或 $DMG。请设置新的 APP_VERSION，例如 APP_VERSION=0.06 ./scripts/package-app.sh" >&2
   exit 1
 fi
 

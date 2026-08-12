@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createKnowledgeRecord, listKnowledgeRecords } from "@/lib/records";
 import { getIntegrationSettings } from "@/lib/settings";
 import { syncRecord } from "@/lib/sync";
-import { requireUserId } from "@/lib/supabase/server";
+import { requireUserIdFromRequest } from "@/lib/supabase/server";
 import type { RecordType, StoredUpload, SyncTarget } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -94,7 +94,7 @@ async function runBackgroundTickTick(
 
 export async function GET(request: Request) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const url = new URL(request.url);
     const forTaskLink = url.searchParams.get("forTaskLink") === "1";
     const defaultLimit = forTaskLink ? 500 : 20;
@@ -125,7 +125,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const formData = await request.formData();
     const title = String(formData.get("title") || "");
     const sourceLabel = String(formData.get("sourceLabel") || "");

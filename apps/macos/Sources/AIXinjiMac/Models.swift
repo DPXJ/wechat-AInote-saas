@@ -27,6 +27,7 @@ struct FavoriteRecord: Decodable {
 }
 
 enum AppSection: String, CaseIterable {
+    case capture
     case timeline
     case favorites
     case sources
@@ -34,6 +35,7 @@ enum AppSection: String, CaseIterable {
 
     var title: String {
         switch self {
+        case .capture: return "原生录入"
         case .timeline: return "文件时间线"
         case .favorites: return "收藏"
         case .sources: return "信源"
@@ -43,12 +45,29 @@ enum AppSection: String, CaseIterable {
 
     var systemImage: String {
         switch self {
+        case .capture: return "plus.circle"
         case .timeline: return "doc.text"
         case .favorites: return "star"
         case .sources: return "clock"
         case .todos: return "checkmark.square"
         }
     }
+}
+
+struct CreateRecordResponse: Decodable {
+    let record: CreatedRecord?
+}
+
+struct CreatedRecord: Decodable {
+    let id: String
+}
+
+struct TodoResponse: Decodable {
+    let todo: TodoItem?
+}
+
+struct TodoItem: Decodable {
+    let id: String
 }
 
 struct FileTimelineItem: Identifiable, Decodable, Hashable {

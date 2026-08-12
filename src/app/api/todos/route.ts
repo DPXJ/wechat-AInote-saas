@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUserId } from "@/lib/supabase/server";
+import { requireUserIdFromRequest } from "@/lib/supabase/server";
 import { createTodo, listTodos } from "@/lib/todos";
 import type { TodoPriority, TodoStatus } from "@/lib/types";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const url = new URL(request.url);
     const status = (url.searchParams.get("status") || undefined) as TodoStatus | undefined;
     const priority = (url.searchParams.get("priority") || undefined) as TodoPriority | undefined;
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireUserId();
+    const userId = await requireUserIdFromRequest(request);
     const body = (await request.json()) as {
       content?: string;
       priority?: TodoPriority;
