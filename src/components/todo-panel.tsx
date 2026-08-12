@@ -132,8 +132,12 @@ export function TodoPanel({
   }, []);
 
   const fetchInFlightRef = useRef(false);
+  const pendingFetchRef = useRef(false);
   const fetchTodos = useCallback(async () => {
-    if (fetchInFlightRef.current) return;
+    if (fetchInFlightRef.current) {
+      pendingFetchRef.current = true;
+      return;
+    }
     fetchInFlightRef.current = true;
     try {
       const controller = new AbortController();
@@ -163,6 +167,10 @@ export function TodoPanel({
       setTotal(0);
     } finally {
       fetchInFlightRef.current = false;
+      if (pendingFetchRef.current) {
+        pendingFetchRef.current = false;
+        void fetchTodos();
+      }
     }
   }, []);
 

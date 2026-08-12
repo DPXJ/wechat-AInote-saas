@@ -22,9 +22,9 @@ import {
   nowIso,
 } from "@/lib/utils";
 
-type RecordRow = Database["public"]["Tables"]["records"]["Row"];
-type AssetRow = Database["public"]["Tables"]["assets"]["Row"];
-type SyncRow = Database["public"]["Tables"]["sync_runs"]["Row"];
+export type RecordRow = Database["public"]["Tables"]["records"]["Row"];
+export type AssetRow = Database["public"]["Tables"]["assets"]["Row"];
+export type SyncRow = Database["public"]["Tables"]["sync_runs"]["Row"];
 type FileTimelineAssetRow = AssetRow & {
   records?: {
     id: string;
@@ -85,7 +85,7 @@ function mapSync(row: SyncRow): SyncRun {
   };
 }
 
-function mapRecord(row: RecordRow, assets: AssetRow[], syncRows: SyncRow[]): KnowledgeRecord {
+export function mapRecord(row: RecordRow, assets: AssetRow[], syncRows: SyncRow[]): KnowledgeRecord {
   return {
     id: row.id,
     title: row.title,

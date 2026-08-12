@@ -1,4 +1,4 @@
-import { getKnowledgeRecord } from "@/lib/records";
+import { mapRecord, type AssetRow, type RecordRow, type SyncRow } from "@/lib/records";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { KnowledgeRecord } from "@/lib/types";
 import { createId, nowIso } from "@/lib/utils";
@@ -44,18 +44,61 @@ export async function isFavorite(userId: string, recordId: string): Promise<bool
 }
 
 export async function listFavorites(userId: string): Promise<KnowledgeRecord[]> {
-  const { data: rows } = await getSupabaseAdmin()
+  const supabase = getSupabaseAdmin();
+  const { data: rows } = await supabase
     .from("favorites")
-    .select("record_id")
+    .select("record_id, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  const records: KnowledgeRecord[] = [];
-  for (const row of rows || []) {
-    const rec = await getKnowledgeRecord(userId, row.record_id);
-    if (rec) records.push(rec);
+  const favorites = rows || [];
+  const ids = favorites.map((row) => row.record_id).filter(Boolean);
+  if (ids.length === 0) return [];
+
+  const [{ data: recordRows }, { data: assetRows }, { data: syncRows }] = await Promise.all([
+    supabase
+      .from("records")
+      .select("*")
+      .eq("user_id", userId)
+      .is("deleted_at", null)
+      .in("id", ids),
+    supabase
+      .from("assets")
+      .select("*")
+      .eq("user_id", userId)
+      .in("record_id", ids)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("sync_runs")
+      .select("*")
+      .eq("user_id", userId)
+      .in("record_id", ids)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const assetsByRecord = new Map<string, AssetRow[]>();
+  for (const asset of (assetRows || []) as AssetRow[]) {
+    const arr = assetsByRecord.get(asset.record_id) || [];
+    arr.push(asset);
+    assetsByRecord.set(asset.record_id, arr);
   }
-  return records;
+
+  const syncByRecord = new Map<string, SyncRow[]>();
+  for (const sync of (syncRows || []) as SyncRow[]) {
+    const arr = syncByRecord.get(sync.record_id) || [];
+    arr.push(sync);
+    syncByRecord.set(sync.record_id, arr);
+  }
+
+  const recordsById = new Map<string, KnowledgeRecord>();
+  for (const record of (recordRows || []) as RecordRow[]) {
+    recordsById.set(
+      record.id,
+      mapRecord(record, assetsByRecord.get(record.id) || [], syncByRecord.get(record.id) || []),
+    );
+  }
+
+  return ids.map((id) => recordsById.get(id)).filter((record): record is KnowledgeRecord => Boolean(record));
 }
 
 export async function getFavoriteRecordIds(userId: string): Promise<Set<string>> {

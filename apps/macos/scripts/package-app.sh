@@ -5,9 +5,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$ROOT/../.." && pwd)"
 DIST="$ROOT/dist"
 APP_NAME="AI 信迹"
-BINARY="$ROOT/.build/release/AIXinjiMac"
 
-APP_VERSION="${APP_VERSION:-0.08}"
+APP_VERSION="${APP_VERSION:-0.09}"
 APP="$DIST/$APP_NAME $APP_VERSION.app"
 DMG="$DIST/$APP_NAME-$APP_VERSION.dmg"
 README="$DIST/README-Mac-$APP_VERSION.txt"
@@ -42,6 +41,7 @@ SUPABASE_ANON_ESCAPED="$(plist_escape "$SUPABASE_ANON_KEY")"
 
 cd "$ROOT"
 swift build -c release
+BINARY="$(swift build -c release --show-bin-path)/AIXinjiMac"
 
 if [[ -e "$APP" || -e "$DMG" ]]; then
   echo "版本 $APP_VERSION 已存在: $APP 或 ${DMG}。请设置新的 APP_VERSION，例如 APP_VERSION=0.09 ./scripts/package-app.sh" >&2
@@ -93,11 +93,12 @@ AI 信迹 Mac $APP_VERSION
 打开方式：
 1. 双击“AI 信迹 $APP_VERSION.app”。
 2. 用网页端同一个邮箱和密码登录。
-3. 登录后会自动同步文件时间线，可搜索、查看详情、打开或下载附件。
+3. 登录后会自动同步时间线、收藏、项目、待办和设置，可搜索、查看详情、打开或下载附件。
 
 说明：
 - 这是原生 SwiftUI Mac App，不是网页套壳。
 - Supabase 公共配置已写入 App 包，双击即可使用。
+- 0.09 已补齐项目菜单、录入项目选择、收藏置顶、待办滴答同步和设置入口。
 - 若 macOS 提示无法验证开发者，请在系统设置 > 隐私与安全性中允许打开。
 TXT
 

@@ -22,6 +22,7 @@ import {
   syncPendingRecordsToCloud,
   type PendingRecordPayload,
 } from "@/lib/local-record-store";
+import type { Project } from "@/lib/projects";
 
 type StatusTone = "info" | "success" | "error";
 
@@ -49,6 +50,10 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   const [contentText, setContentText] = useState("");
   const [contextNote, setContextNote] = useState("");
   const [userTags, setUserTags] = useState("");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectQuery, setProjectQuery] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState<StatusTone>("info");
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +88,13 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
   }, []);
 
   useEffect(() => {
+    fetch("/api/projects", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d: { projects?: Project[] }) => setProjects(Array.isArray(d.projects) ? d.projects : []))
+      .catch(() => setProjects([]));
+  }, []);
+
+  useEffect(() => {
     if (defaultTag && !userTags) {
       setUserTags(defaultTag);
     }
@@ -102,6 +114,37 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
     const current = userTags.split(/\s+/).filter(Boolean);
     if (current.includes(tag)) return;
     setUserTags([...current, tag].join(" "));
+  }
+
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
+  const projectMatches = projects
+    .filter((p) => {
+      const q = projectQuery.trim().toLowerCase();
+      if (!q) return true;
+      return [p.name, p.description].join(" ").toLowerCase().includes(q);
+    })
+    .slice(0, 8);
+  const hasExactProject = Boolean(projectQuery.trim()) && projects.some((p) => p.name.localeCompare(projectQuery.trim(), "zh-CN", { sensitivity: "accent" }) === 0);
+
+  async function createProjectFromQuery() {
+    const name = projectQuery.trim();
+    if (!name) return;
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = (await res.json()) as { project?: Project; error?: string };
+      if (!res.ok || !data.project) throw new Error(data.error || "创建项目失败");
+      setProjects((prev) => [data.project!, ...prev.filter((p) => p.id !== data.project!.id)]);
+      setSelectedProjectId(data.project.id);
+      setProjectQuery(data.project.name);
+      setProjectPickerOpen(false);
+      updateStatus("项目已创建并关联。", "success");
+    } catch (e) {
+      updateStatus(e instanceof Error ? e.message : "创建项目失败", "error");
+    }
   }
 
   useEffect(() => {
@@ -232,11 +275,17 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
           content: await f.arrayBuffer(),
         })),
       );
+      const projectContext = selectedProject
+        ? `关联项目：${selectedProject.name}`
+        : projectQuery.trim()
+          ? `关联项目：${projectQuery.trim()}`
+          : "";
+      const mergedContextNote = [projectContext, contextNote.trim()].filter(Boolean).join("\n");
       const payload: PendingRecordPayload = {
         title,
         sourceLabel,
         contentText,
-        contextNote,
+        contextNote: mergedContextNote,
         userTags,
         recordTypeHint: files.length === 0 ? "text" : "",
         files: filePayloads,
@@ -373,6 +422,85 @@ export function InboxForm({ onCreated, onSwitchToSearch }: { onCreated?: (record
             placeholder="标签（空格分隔）"
             className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
           />
+        </div>
+        <div className="relative input-focus-bar min-w-0 w-full sm:min-w-[240px] sm:flex-[2]">
+          <input
+            value={projectQuery}
+            onChange={(e) => {
+              const value = e.target.value;
+              setProjectQuery(value);
+              if (selectedProject?.name !== value) setSelectedProjectId("");
+              setProjectPickerOpen(true);
+            }}
+            onFocus={() => setProjectPickerOpen(true)}
+            onBlur={() => window.setTimeout(() => setProjectPickerOpen(false), 120)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && projectPickerOpen && projectMatches[0]) {
+                e.preventDefault();
+                setSelectedProjectId(projectMatches[0].id);
+                setProjectQuery(projectMatches[0].name);
+                setProjectPickerOpen(false);
+              }
+              if (e.key === "Escape") setProjectPickerOpen(false);
+            }}
+            placeholder="关联项目（可搜索）"
+            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 pr-9 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] placeholder:text-[var(--muted)]"
+          />
+          {selectedProject ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedProjectId("");
+                setProjectQuery("");
+                setProjectPickerOpen(false);
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-1 text-xs text-[var(--muted)] transition hover:bg-[var(--surface-strong)] hover:text-[var(--foreground)]"
+              title="取消关联项目"
+            >
+              ×
+            </button>
+          ) : (
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--muted)]">⌘</span>
+          )}
+          {projectPickerOpen && (
+            <div
+              className="absolute left-0 top-[calc(100%+6px)] z-30 w-full overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--card)] p-1 shadow-2xl"
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {projectMatches.length > 0 ? (
+                projectMatches.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedProjectId(project.id);
+                      setProjectQuery(project.name);
+                      setProjectPickerOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[var(--surface-strong)]"
+                  >
+                    <span className="text-[var(--muted)]">{selectedProjectId === project.id ? "✓" : "□"}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-[var(--foreground)]">{project.name}</span>
+                      {project.description ? <span className="block truncate text-xs text-[var(--muted)]">{project.description}</span> : null}
+                    </span>
+                    <span className="text-xs text-[var(--muted)]">{project.totalTasks ? `${project.doneCount || 0}/${project.totalTasks}` : "项目"}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="px-3 py-2 text-xs text-[var(--muted)]">没有匹配项目</p>
+              )}
+              {projectQuery.trim() && !hasExactProject && (
+                <button
+                  type="button"
+                  onClick={() => void createProjectFromQuery()}
+                  className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-[var(--accent)] transition hover:bg-[var(--surface-strong)]"
+                >
+                  + 新建项目：{projectQuery.trim()}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:justify-start">
           {defaultTag && (

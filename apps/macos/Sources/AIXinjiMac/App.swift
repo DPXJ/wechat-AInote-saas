@@ -20,8 +20,1050 @@ struct AIXinjiMacApp: App {
     }
 }
 
+struct CaptureProjectPicker: View {
+    @EnvironmentObject private var state: AppState
+    @FocusState private var focused: Bool
+
+    private var query: String {
+        state.captureProjectQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredProjects: [Project] {
+        let list = state.projects.filter { !$0.archived }
+        guard !query.isEmpty else { return Array(list.prefix(8)) }
+        return Array(list.filter { $0.searchHaystack.localizedCaseInsensitiveContains(query) }.prefix(8))
+    }
+
+    private var hasExactProject: Bool {
+        state.projects.contains { $0.name.caseInsensitiveCompare(query) == .orderedSame }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("项目")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let selected = state.selectedCaptureProject {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder.fill")
+                        Text(selected.name)
+                            .lineLimit(1)
+                        Button {
+                            state.captureProjectId = ""
+                            state.captureProjectQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .interactiveHover(radius: 7)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.white.opacity(0.08), in: Capsule())
+                }
+            }
+
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("检索或输入项目名称", text: Binding(
+                    get: { state.captureProjectQuery },
+                    set: { value in
+                        state.captureProjectQuery = value
+                        if state.selectedCaptureProject?.name != value {
+                            state.captureProjectId = ""
+                        }
+                    }
+                ))
+                .textFieldStyle(.plain)
+                .focused($focused)
+                .onSubmit {
+                    if let first = filteredProjects.first {
+                        select(first)
+                    }
+                }
+                Spacer()
+                Button {
+                    Task { await state.loadProjects() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .interactiveHover(radius: 9)
+                .help("刷新项目")
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 42)
+            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+
+            if focused || !query.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    if filteredProjects.isEmpty {
+                        Text("没有匹配项目")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(filteredProjects) { project in
+                            CaptureProjectOption(
+                                project: project,
+                                selected: state.captureProjectId == project.id
+                            ) {
+                                select(project)
+                            }
+                        }
+                    }
+
+                    if !query.isEmpty && !hasExactProject {
+                        Button {
+                            Task { await state.createProject(name: query) }
+                        } label: {
+                            Label("新建项目：\(query)", systemImage: "plus.circle")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .interactiveHover(radius: 10)
+                    }
+                }
+                .padding(6)
+                .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .task {
+            if state.projects.isEmpty {
+                await state.loadProjects()
+            }
+        }
+    }
+
+    private func select(_ project: Project) {
+        state.captureProjectId = project.id
+        state.captureProjectQuery = project.name
+        focused = false
+    }
+}
+
+struct CaptureProjectOption: View {
+    let project: Project
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "folder")
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(project.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    if !project.description.isEmpty {
+                        Text(project.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+                Text(project.progressText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .interactiveHover(radius: 10)
+    }
+}
+
+struct NativeProjectsView: View {
+    @EnvironmentObject private var state: AppState
+    @State private var newName = ""
+    @State private var newDescription = ""
+    @State private var localSearch = ""
+
+    private var filteredProjects: [Project] {
+        let q = [state.searchText, localSearch]
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return state.projects }
+        return state.projects.filter { $0.searchHaystack.localizedCaseInsensitiveContains(q) }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("项目")
+                                .font(.title2.bold())
+                            Text("录入资料时可关联项目，项目里的任务编排可继续在网页版处理。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button {
+                            Task { await state.loadProjects() }
+                        } label: {
+                            Label("刷新项目", systemImage: "arrow.clockwise")
+                                .controlButton()
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    HStack(spacing: 10) {
+                        TextField("搜索项目", text: $localSearch)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 14)
+                            .frame(height: 40)
+                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+                    }
+                }
+                .padding(20)
+                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("新建项目")
+                        .font(.headline)
+                    HStack(spacing: 10) {
+                        TextField("项目名称", text: $newName)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 14)
+                            .frame(height: 42)
+                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                        TextField("描述（选填）", text: $newDescription)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 14)
+                            .frame(height: 42)
+                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                        Button {
+                            let name = newName
+                            let desc = newDescription
+                            newName = ""
+                            newDescription = ""
+                            Task { await state.createProject(name: name, description: desc) }
+                        } label: {
+                            Label("创建", systemImage: "plus")
+                                .frame(width: 72, height: 42)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(.black)
+                        .interactiveHover(radius: 12, enabled: !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+                .padding(20)
+                .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+
+                if filteredProjects.isEmpty {
+                    EmptyListHint(searching: !localSearch.isEmpty || !state.searchText.isEmpty)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 80)
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 310), spacing: 14)], spacing: 14) {
+                        ForEach(filteredProjects) { project in
+                            ProjectCard(project: project)
+                        }
+                    }
+                }
+            }
+            .padding(28)
+        }
+        .task { await state.loadProjects() }
+    }
+}
+
+struct ProjectCard: View {
+    @EnvironmentObject private var state: AppState
+    let project: Project
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "folder.fill")
+                    .font(.title2)
+                    .foregroundStyle(.cyan)
+                    .frame(width: 40, height: 40)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(project.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(project.progressText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            Text(project.description.isEmpty ? "暂无描述" : project.description)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            HStack {
+                Text(project.createdAt.shortDateTime)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    state.captureProjectId = project.id
+                    state.captureProjectQuery = project.name
+                    state.currentSection = .capture
+                } label: {
+                    Label("用于录入", systemImage: "plus.circle")
+                }
+                .buttonStyle(.plain)
+                .controlButton()
+
+                Button {
+                    state.openProjectInWeb(project)
+                } label: {
+                    Label("网页版", systemImage: "arrow.up.right.square")
+                }
+                .buttonStyle(.plain)
+                .controlButton()
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+        .interactiveHover(radius: 18)
+    }
+}
+
+struct NativeFavoritesView: View {
+    @EnvironmentObject private var state: AppState
+    @State private var selectedRecordId: String?
+    @State private var detailHidden = false
+
+    private var orderedRecords: [KnowledgeRecord] {
+        let q = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = q.isEmpty
+            ? state.favoriteRecords
+            : state.favoriteRecords.filter { $0.searchHaystack.localizedCaseInsensitiveContains(q) }
+        let pinOrder = Dictionary(uniqueKeysWithValues: state.pinnedFavoriteIds.enumerated().map { ($0.element, $0.offset) })
+        return filtered.sorted { lhs, rhs in
+            let lp = pinOrder[lhs.id]
+            let rp = pinOrder[rhs.id]
+            if let lp, let rp { return lp < rp }
+            if lp != nil { return true }
+            if rp != nil { return false }
+            return lhs.createdAt > rhs.createdAt
+        }
+    }
+
+    private var selectedRecord: KnowledgeRecord? {
+        if let selectedRecordId, let selected = orderedRecords.first(where: { $0.id == selectedRecordId }) {
+            return selected
+        }
+        return orderedRecords.first
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            if orderedRecords.isEmpty {
+                EmptyListHint(searching: !state.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .task { await state.loadFavorites() }
+            } else if detailHidden {
+                ScrollView {
+                    favoritesList(expanded: true)
+                        .padding(28)
+                        .frame(maxWidth: 980)
+                        .frame(maxWidth: .infinity)
+                }
+                .overlay(alignment: .topTrailing) {
+                    Button {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                            detailHidden = false
+                        }
+                    } label: {
+                        Label("展开详情", systemImage: "sidebar.right")
+                            .labelStyle(.iconOnly)
+                            .frame(width: 42, height: 42)
+                    }
+                    .buttonStyle(.plain)
+                    .interactiveHover(radius: 14)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                    .padding(20)
+                }
+            } else {
+                HStack(spacing: 0) {
+                    ScrollView {
+                        favoritesList(expanded: false)
+                            .padding(24)
+                    }
+                    .frame(width: max(420, min(geometry.size.width * 0.43, 560)))
+                    .background(.white.opacity(0.03))
+
+                    if let record = selectedRecord {
+                        FavoriteDetailView(record: record) {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                                detailHidden = true
+                            }
+                        }
+                        .id(record.id)
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+        .task { await state.loadFavorites() }
+        .onChange(of: orderedRecords.map(\.id)) { _, ids in
+            if let selectedRecordId, ids.contains(selectedRecordId) { return }
+            selectedRecordId = ids.first
+        }
+    }
+
+    private func favoritesList(expanded: Bool) -> some View {
+        LazyVStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label("我的收藏", systemImage: "star")
+                    .font(.headline)
+                    .foregroundStyle(.yellow)
+                Spacer()
+                Button {
+                    Task { await state.loadFavorites() }
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                        .controlButton()
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 8)
+
+            ForEach(orderedRecords) { record in
+                FavoriteRecordCard(
+                    record: record,
+                    selected: selectedRecord?.id == record.id,
+                    expanded: expanded
+                ) {
+                    selectedRecordId = record.id
+                    if expanded {
+                        detailHidden = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct FavoriteRecordCard: View {
+    @EnvironmentObject private var state: AppState
+    let record: KnowledgeRecord
+    let selected: Bool
+    let expanded: Bool
+    let action: () -> Void
+
+    private var pinned: Bool { state.pinnedFavoriteIds.contains(record.id) }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 14) {
+                RecordSmallPreview(record: record)
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 8) {
+                        Text(record.typeLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(record.createdAt.shortDateTime)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            state.togglePinnedFavorite(record)
+                        } label: {
+                            Image(systemName: pinned ? "pin.fill" : "pin")
+                                .foregroundStyle(pinned ? .yellow : .secondary)
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.plain)
+                        .interactiveHover(radius: 8)
+                        .help(pinned ? "取消置顶" : "置顶")
+                    }
+                    Text(record.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(record.bestSummary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(expanded ? 3 : 2)
+                    HStack(spacing: 8) {
+                        Text(record.sourceLabel.isEmpty ? "手动收件箱" : record.sourceLabel)
+                            .lineLimit(1)
+                        Spacer()
+                        ForEach(Array(record.keywords.prefix(expanded ? 4 : 2)), id: \.self) { tag in
+                            Text("#\(tag)")
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: expanded ? 920 : .infinity, alignment: .leading)
+            .background(selected ? .white.opacity(0.11) : .white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? Color.accentColor.opacity(0.45) : .white.opacity(0.07)))
+            .shadow(color: selected ? Color.accentColor.opacity(0.12) : .clear, radius: 18, y: 8)
+        }
+        .buttonStyle(.plain)
+        .interactiveHover(radius: 16)
+    }
+}
+
+struct RecordSmallPreview: View {
+    @EnvironmentObject private var state: AppState
+    let record: KnowledgeRecord
+
+    private var asset: RecordAsset? {
+        record.assets.first(where: { $0.mimeType.hasPrefix("image/") }) ?? record.assets.first
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.white.opacity(0.08))
+            if let asset, asset.mimeType.hasPrefix("image/"), let image = state.previewImages[asset.id] {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else if let asset, state.previewLoadingIds.contains(asset.id) {
+                ProgressView().controlSize(.small)
+            } else if let asset {
+                FileBadge(mimeType: asset.mimeType)
+            } else {
+                FileBadge(mimeType: "text/plain")
+            }
+        }
+        .frame(width: 48, height: 48)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.10)))
+        .clipped()
+        .task(id: asset?.id) {
+            if let asset { await state.loadPreview(for: asset) }
+        }
+    }
+}
+
+struct FavoriteDetailView: View {
+    @EnvironmentObject private var state: AppState
+    let record: KnowledgeRecord
+    let onClose: () -> Void
+
+    private var primaryAsset: RecordAsset? {
+        record.assets.first(where: { $0.mimeType.hasPrefix("image/") }) ?? record.assets.first
+    }
+
+    private var pinned: Bool { state.pinnedFavoriteIds.contains(record.id) }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(record.typeLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(record.title)
+                                .font(.title2.bold())
+                                .lineLimit(2)
+                            Image(systemName: "star.fill")
+                                .foregroundStyle(.yellow)
+                        }
+                        Text(record.createdAt.shortDateTime)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let primaryAsset {
+                        RecordAssetPreview(asset: primaryAsset)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button {
+                            state.togglePinnedFavorite(record)
+                        } label: {
+                            Label(pinned ? "取消置顶" : "置顶", systemImage: pinned ? "pin.fill" : "pin")
+                        }
+                        .buttonStyle(.bordered)
+                        .interactiveHover(radius: 10)
+
+                        Button {
+                            Task { await state.removeFavoriteRecord(record) }
+                        } label: {
+                            Label("取消收藏", systemImage: "star.slash")
+                        }
+                        .buttonStyle(.bordered)
+                        .destructiveHover(radius: 10)
+
+                        Button {
+                            state.openRecordInWeb(record)
+                        } label: {
+                            Label("新窗口打开", systemImage: "arrow.up.right.square")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .interactiveHover(radius: 10)
+
+                        if let primaryAsset {
+                            Button {
+                                Task { await state.openAsset(primaryAsset) }
+                            } label: {
+                                Label("打开文件", systemImage: "doc")
+                            }
+                            .buttonStyle(.bordered)
+                            .interactiveHover(radius: 10)
+
+                            Button {
+                                Task { await state.downloadAsset(primaryAsset) }
+                            } label: {
+                                Label("下载", systemImage: "arrow.down.circle")
+                            }
+                            .buttonStyle(.bordered)
+                            .interactiveHover(radius: 10)
+
+                            Button {
+                                state.copyShareLink(primaryAsset)
+                            } label: {
+                                Label("复制链接", systemImage: "square.and.arrow.up")
+                            }
+                            .buttonStyle(.bordered)
+                            .interactiveHover(radius: 10)
+                        }
+                    }
+
+                    DetailCard(title: "AI 摘要") {
+                        Text(record.bestSummary)
+                    }
+
+                    DetailCard(title: "来源与描述") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            LabeledContent("来源", value: record.sourceLabel.isEmpty ? "手动收件箱" : record.sourceLabel)
+                            if !record.contextNote.isEmpty {
+                                Text(record.contextNote)
+                            }
+                            if !record.contentText.isEmpty {
+                                Text(record.contentText)
+                            }
+                        }
+                    }
+
+                    if !record.keywords.isEmpty {
+                        DetailCard(title: "标签") {
+                            FlowTags(tags: record.keywords)
+                        }
+                    }
+
+                    if !record.actionItems.isEmpty {
+                        DetailCard(title: "待办线索") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(record.actionItems, id: \.self) { item in
+                                    Label(item, systemImage: "checkmark.square")
+                                }
+                            }
+                        }
+                    }
+
+                    if !record.assets.isEmpty {
+                        DetailCard(title: "附件") {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], alignment: .leading, spacing: 10) {
+                                ForEach(record.assets) { asset in
+                                    FavoriteAssetRow(asset: asset)
+                                }
+                            }
+                        }
+                    }
+
+                    if !record.extractedText.isEmpty || !record.assets.flatMap({ [$0.ocrText] }).joined().isEmpty {
+                        DetailCard(title: "OCR / 文档抽取") {
+                            Text(([record.extractedText] + record.assets.map(\.ocrText)).filter { !$0.isEmpty }.joined(separator: "\n\n"))
+                                .font(.system(.footnote, design: .monospaced))
+                        }
+                    }
+                }
+                .padding(28)
+            }
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(width: 34, height: 34)
+            }
+            .buttonStyle(.plain)
+            .background(.black.opacity(0.42), in: Circle())
+            .overlay(Circle().stroke(.white.opacity(0.14)))
+            .destructiveHover(radius: 17)
+            .help("关闭详情")
+            .padding(.top, 18)
+            .padding(.trailing, 18)
+        }
+        .background(.white.opacity(0.02))
+    }
+}
+
+struct RecordAssetPreview: View {
+    @EnvironmentObject private var state: AppState
+    let asset: RecordAsset
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18)
+                .fill(.white.opacity(0.045))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+            if asset.mimeType.hasPrefix("image/"), let image = state.previewImages[asset.id] {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(12)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            } else if state.previewLoadingIds.contains(asset.id) {
+                ProgressView()
+            } else {
+                VStack(spacing: 10) {
+                    FileBadge(mimeType: asset.mimeType, size: 56)
+                    Text(asset.mimeType.hasPrefix("image/") ? "未能加载图片预览，可直接打开文件" : "当前文件可打开或下载查看")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(minHeight: 300)
+        .task(id: asset.id) {
+            await state.loadPreview(for: asset)
+        }
+    }
+}
+
+struct FavoriteAssetRow: View {
+    @EnvironmentObject private var state: AppState
+    let asset: RecordAsset
+
+    var body: some View {
+        HStack(spacing: 10) {
+            RecordAssetThumb(asset: asset)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(asset.originalName)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text("\(asset.kindLabel) · \(asset.byteSizeText)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                Task { await state.openAsset(asset) }
+            } label: {
+                Image(systemName: "arrow.up.right.square")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .interactiveHover(radius: 8)
+        }
+        .padding(10)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.06)))
+    }
+}
+
+struct RecordAssetThumb: View {
+    @EnvironmentObject private var state: AppState
+    let asset: RecordAsset
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.white.opacity(0.08))
+            if asset.mimeType.hasPrefix("image/"), let image = state.previewImages[asset.id] {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                FileBadge(mimeType: asset.mimeType, size: 32)
+            }
+        }
+        .frame(width: 38, height: 38)
+        .clipped()
+        .task(id: asset.id) {
+            await state.loadPreview(for: asset)
+        }
+    }
+}
+
+enum SettingsTab: String, CaseIterable {
+    case ai = "AI 摘要"
+    case notion = "Notion"
+    case ticktick = "滴答清单"
+    case flomo = "flomo"
+    case ocr = "OCR 识别"
+    case mail = "邮件收录"
+    case storage = "数据备份"
+}
+
+struct NativeSettingsView: View {
+    @EnvironmentObject private var state: AppState
+    @State private var tab: SettingsTab = .ai
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 0) {
+                    ForEach(SettingsTab.allCases, id: \.self) { item in
+                        Button {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+                                tab = item
+                            }
+                        } label: {
+                            Text(item.rawValue)
+                                .font(.system(size: 14, weight: tab == item ? .semibold : .regular))
+                                .padding(.horizontal, 18)
+                                .frame(height: 44)
+                                .foregroundStyle(tab == item ? .primary : .secondary)
+                                .background(tab == item ? .white.opacity(0.08) : .clear)
+                        }
+                        .buttonStyle(.plain)
+                        .interactiveHover(radius: 0)
+                    }
+                    Spacer()
+                    Text("v\(AppInfo.version)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 14)
+                }
+                .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+
+                VStack(alignment: .leading, spacing: 18) {
+                    switch tab {
+                    case .ai:
+                        SettingsSectionTitle(status: state.settings.aiConfigured ? "已配置" : "未配置", title: "AI 摘要与标题生成")
+                        SettingsField(title: "模型供应商", placeholder: "DeepSeek / OpenAI / Doubao", text: $state.settings.aiProvider)
+                        SettingsField(title: "API 密钥", placeholder: "sk-...", text: $state.settings.aiApiKey, secure: true)
+                        SettingsTextArea(title: "摘要与分析要求", text: $state.settings.aiSummaryPrompt)
+                        SettingsTextArea(title: "待办识别要求", text: $state.settings.aiTodoPrompt)
+                    case .notion:
+                        SettingsSectionTitle(status: state.settings.notionToken.isEmpty ? "未配置" : "已配置", title: "Notion 同步")
+                        SettingsField(title: "Notion Token", placeholder: "secret_...", text: $state.settings.notionToken, secure: true)
+                        SettingsField(title: "父页面 ID", placeholder: "Notion Parent Page ID", text: $state.settings.notionParentPageId)
+                        TestIntegrationButton(target: "notion", title: "测试 Notion")
+                    case .ticktick:
+                        SettingsSectionTitle(status: state.settings.tickTickConfigured ? "已配置" : "未配置", title: "滴答清单邮箱同步")
+                        HStack(spacing: 12) {
+                            SettingsField(title: "SMTP Host", placeholder: "smtp.example.com", text: $state.settings.smtpHost)
+                            SettingsField(title: "SMTP Port", placeholder: "587", text: $state.settings.smtpPort)
+                        }
+                        HStack(spacing: 12) {
+                            SettingsField(title: "SMTP User", placeholder: "邮箱账号", text: $state.settings.smtpUser)
+                            SettingsField(title: "SMTP Pass", placeholder: "授权码", text: $state.settings.smtpPass, secure: true)
+                        }
+                        HStack(spacing: 12) {
+                            SettingsField(title: "发件人", placeholder: "name@example.com", text: $state.settings.smtpFrom)
+                            SettingsField(title: "滴答收件邮箱", placeholder: "todo@mail.dida365.com", text: $state.settings.tickTickInboxEmail)
+                        }
+                        Toggle("SMTP 使用安全连接", isOn: $state.settings.smtpSecure)
+                            .toggleStyle(.checkbox)
+                        TestIntegrationButton(target: "ticktick-email", title: "测试滴答清单")
+                    case .flomo:
+                        SettingsSectionTitle(status: state.settings.flomoWebhookUrl.isEmpty ? "未配置" : "已配置", title: "flomo 同步")
+                        SettingsField(title: "Webhook URL", placeholder: "https://flomoapp.com/iwh/...", text: $state.settings.flomoWebhookUrl, secure: true)
+                        TestIntegrationButton(target: "flomo", title: "测试 flomo")
+                    case .ocr:
+                        SettingsSectionTitle(status: state.settings.ocrEnabled ? "已启用" : "未启用", title: "图片 OCR 识别")
+                        Toggle("启用 OCR", isOn: $state.settings.ocrEnabled)
+                            .toggleStyle(.checkbox)
+                        SettingsField(title: "视觉模型 Base URL", placeholder: "https://api.openai.com/v1", text: $state.settings.visionModelBaseUrl)
+                        SettingsField(title: "视觉模型 API Key", placeholder: "sk-...", text: $state.settings.visionModelApiKey, secure: true)
+                        SettingsField(title: "视觉模型名称", placeholder: "gpt-4o-mini / doubao-vision", text: $state.settings.visionModelName)
+                    case .mail:
+                        SettingsSectionTitle(status: state.settings.imapUser.isEmpty ? "未配置" : "已配置", title: "邮件收录")
+                        HStack(spacing: 12) {
+                            SettingsField(title: "IMAP Host", placeholder: "imap.example.com", text: $state.settings.imapHost)
+                            SettingsField(title: "IMAP Port", placeholder: "993", text: $state.settings.imapPort)
+                        }
+                        HStack(spacing: 12) {
+                            SettingsField(title: "IMAP User", placeholder: "邮箱账号", text: $state.settings.imapUser)
+                            SettingsField(title: "IMAP Pass", placeholder: "授权码", text: $state.settings.imapPass, secure: true)
+                        }
+                        Toggle("IMAP 使用安全连接", isOn: $state.settings.imapSecure)
+                            .toggleStyle(.checkbox)
+                    case .storage:
+                        SettingsSectionTitle(status: state.settings.storageMode, title: "OSS 与数据备份")
+                        HStack(spacing: 12) {
+                            SettingsField(title: "OSS Region", placeholder: "cn-hangzhou", text: $state.settings.ossRegion)
+                            SettingsField(title: "OSS Bucket", placeholder: "bucket-name", text: $state.settings.ossBucket)
+                        }
+                        SettingsField(title: "OSS Endpoint", placeholder: "oss-cn-hangzhou.aliyuncs.com", text: $state.settings.ossEndpoint)
+                        HStack(spacing: 12) {
+                            SettingsField(title: "Access Key ID", placeholder: "LTAI...", text: $state.settings.ossAccessKeyId, secure: true)
+                            SettingsField(title: "Access Key Secret", placeholder: "secret", text: $state.settings.ossAccessKeySecret, secure: true)
+                        }
+                        SettingsField(title: "Public Base URL", placeholder: "https://...", text: $state.settings.ossPublicBaseUrl)
+                        SettingsField(title: "Flash Memo Ingest Token", placeholder: "用于快捷入口", text: $state.settings.flashMemoIngestToken, secure: true)
+                    }
+
+                    HStack(spacing: 12) {
+                        Button {
+                            Task { await state.saveSettings() }
+                        } label: {
+                            Label("保存配置", systemImage: "checkmark")
+                                .frame(width: 118, height: 42)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(.black)
+                        .interactiveHover(radius: 12)
+
+                        Button {
+                            Task { await state.loadSettings() }
+                        } label: {
+                            Label("重新加载", systemImage: "arrow.clockwise")
+                                .controlButton()
+                        }
+                        .buttonStyle(.plain)
+
+                        if !state.message.isEmpty {
+                            Text(state.message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .padding(22)
+                .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+            }
+            .padding(28)
+            .frame(maxWidth: 1180, alignment: .leading)
+        }
+        .task { await state.loadSettings() }
+    }
+}
+
+struct SettingsSectionTitle: View {
+    let status: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(status.contains("未") ? .orange : .green)
+                .frame(width: 9, height: 9)
+            Text(title)
+                .font(.headline)
+            Text(status)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.white.opacity(0.07), in: Capsule())
+        }
+    }
+}
+
+struct SettingsField: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+    var secure = false
+    @State private var reveal = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Group {
+                    if secure && !reveal {
+                        SecureField(placeholder, text: $text)
+                    } else {
+                        TextField(placeholder, text: $text)
+                    }
+                }
+                .textFieldStyle(.plain)
+                if secure {
+                    Button {
+                        reveal.toggle()
+                    } label: {
+                        Image(systemName: reveal ? "eye.slash" : "eye")
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .interactiveHover(radius: 8)
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 42)
+            .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+        }
+    }
+}
+
+struct SettingsTextArea: View {
+    let title: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextEditor(text: $text)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(10)
+                .frame(minHeight: 92)
+                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+        }
+    }
+}
+
+struct TestIntegrationButton: View {
+    @EnvironmentObject private var state: AppState
+    let target: String
+    let title: String
+
+    var body: some View {
+        Button {
+            Task { await state.testIntegration(target) }
+        } label: {
+            Label(title, systemImage: "bolt")
+                .controlButton()
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct RootView: View {
     @EnvironmentObject private var state: AppState
+    @AppStorage("aixinjiTheme") private var theme = "dark"
 
     var body: some View {
         ZStack {
@@ -32,8 +1074,14 @@ struct RootView: View {
                 LoginView()
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(theme == "light" ? .light : .dark)
         .background(WindowConfigurator())
+    }
+}
+
+enum AppInfo {
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.09"
     }
 }
 
@@ -53,14 +1101,22 @@ struct WindowConfigurator: NSViewRepresentable {
 }
 
 struct AppBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [
-                    Color(red: 0.03, green: 0.03, blue: 0.06),
-                    Color(red: 0.08, green: 0.06, blue: 0.12),
-                    Color(red: 0.03, green: 0.05, blue: 0.07)
-                ],
+                colors: colorScheme == .dark
+                    ? [
+                        Color(red: 0.03, green: 0.03, blue: 0.06),
+                        Color(red: 0.08, green: 0.06, blue: 0.12),
+                        Color(red: 0.03, green: 0.05, blue: 0.07)
+                    ]
+                    : [
+                        Color(red: 0.96, green: 0.96, blue: 0.99),
+                        Color(red: 0.93, green: 0.90, blue: 0.98),
+                        Color(red: 0.90, green: 0.96, blue: 0.98)
+                    ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -83,7 +1139,7 @@ struct LoginView: View {
                 VStack(spacing: 4) {
                     Text("AI 信迹")
                         .font(.system(size: 32, weight: .bold))
-                    Text("原生 Mac 客户端 · 0.08")
+                    Text("Mac 客户端 · v\(AppInfo.version)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -178,9 +1234,13 @@ struct TimelineWorkspace: View {
                 return true
             case .timeline:
                 return true
+            case .projects:
+                return true
             case .favorites:
-                return state.favoriteRecordIds.contains(file.recordId)
+                return true
             case .todos:
+                return true
+            case .settings:
                 return true
             }
         }
@@ -212,8 +1272,14 @@ struct TimelineWorkspace: View {
 
                 if state.currentSection == .capture {
                     NativeCaptureView()
+                } else if state.currentSection == .projects {
+                    NativeProjectsView()
                 } else if state.currentSection == .todos {
                     NativeTodoView()
+                } else if state.currentSection == .settings {
+                    NativeSettingsView()
+                } else if state.currentSection == .favorites {
+                    NativeFavoritesView()
                 } else {
                     GeometryReader { geometry in
                         if detailHidden {
@@ -277,7 +1343,7 @@ struct TimelineWorkspace: View {
             DragStrip()
         }
         .onChange(of: filteredFiles.map(\.id)) { _, ids in
-            if state.currentSection == .capture { return }
+            if state.currentSection == .capture || state.currentSection == .projects || state.currentSection == .todos || state.currentSection == .settings || state.currentSection == .favorites { return }
             if let current = state.selectedFileId, ids.contains(current) { return }
             state.selectedFileId = ids.first
         }
@@ -299,9 +1365,7 @@ struct SplitHandle: View {
         }
         .frame(width: 14)
         .contentShape(Rectangle())
-        .onHover { hovering in
-            if hovering { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
-        }
+        .cursorHover(.resizeLeftRight)
         .gesture(
             DragGesture(minimumDistance: 1)
                 .onChanged { value in
@@ -330,42 +1394,14 @@ struct NativeCaptureView: View {
                 CaptureHero()
 
                 VStack(alignment: .leading, spacing: 18) {
-                    Button {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
-                            recordInfoExpanded.toggle()
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("记录信息")
+                            .font(.headline)
+                        HStack(spacing: 12) {
+                            CaptureField(title: "标题", placeholder: "标题（选填）", text: $state.captureTitle)
+                            CaptureField(title: "标签", placeholder: "标签（空格分隔）", text: $state.captureTags)
                         }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("记录信息").font(.headline)
-                                Text("标题、标签、来源与备注（选填）")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.down")
-                                .rotationEffect(.degrees(recordInfoExpanded ? 180 : 0))
-                        }
-                        .padding(14)
-                        .contentShape(Rectangle())
-                        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
-                    }
-                    .buttonStyle(.plain)
-                    .interactiveHover(radius: 14)
-
-                    if recordInfoExpanded {
-                        VStack(spacing: 12) {
-                            HStack(spacing: 12) {
-                                CaptureField(title: "标题", placeholder: "标题（选填）", text: $state.captureTitle)
-                                CaptureField(title: "标签", placeholder: "标签（空格分隔）", text: $state.captureTags)
-                            }
-
-                            HStack(spacing: 12) {
-                                CaptureField(title: "来源", placeholder: "微信剪贴板 / 飞书会议 / Mac 录入", text: $state.captureSource)
-                                CaptureField(title: "备注", placeholder: "补充上下文（选填）", text: $state.captureContextNote)
-                            }
-                        }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        CaptureProjectPicker()
                     }
 
                     CaptureEditorBox(isDragging: $isDragging, onDrop: handleDrop(providers:))
@@ -406,6 +1442,37 @@ struct NativeCaptureView: View {
                         .disabled(state.isLoading || !canSubmit)
                     }
                     .padding(.top, 2)
+
+                    Button {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                            recordInfoExpanded.toggle()
+                        }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("更多信息").font(.headline)
+                                Text("来源与补充上下文（选填）")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .rotationEffect(.degrees(recordInfoExpanded ? 180 : 0))
+                        }
+                        .padding(14)
+                        .contentShape(Rectangle())
+                        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .interactiveHover(radius: 14)
+
+                    if recordInfoExpanded {
+                        HStack(spacing: 12) {
+                            CaptureField(title: "来源", placeholder: "微信剪贴板 / 飞书会议 / Mac 录入", text: $state.captureSource)
+                            CaptureField(title: "备注", placeholder: "补充上下文（选填）", text: $state.captureContextNote)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
 
                     if !state.message.isEmpty {
                         Text(state.message)
@@ -449,10 +1516,43 @@ struct NativeTodoView: View {
     @EnvironmentObject private var state: AppState
     @State private var newContent = ""
     @State private var priority = "medium"
-    @State private var filter = "pending"
+    @State private var statusFilter = "pending"
+    @State private var dateFilter = "all"
+    @State private var priorityFilter = "all"
+
+    private let priorityOptions = [
+        ("urgent", "紧急"),
+        ("high", "高"),
+        ("medium", "中"),
+        ("low", "低")
+    ]
 
     private var filteredTodos: [TodoItem] {
-        filter == "all" ? state.todos : state.todos.filter { $0.status == filter }
+        let query = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date.distantPast
+        return state.todos.filter { todo in
+            if statusFilter != "all", todo.status != statusFilter { return false }
+            if priorityFilter != "all", todo.priority != priorityFilter { return false }
+            if dateFilter == "today", !(todo.createdDate.map { Calendar.current.isDateInToday($0) } ?? false) { return false }
+            if dateFilter == "last7", !(todo.createdDate.map { $0 >= sevenDaysAgo } ?? false) { return false }
+            if !query.isEmpty, !todo.content.localizedCaseInsensitiveContains(query) { return false }
+            return true
+        }
+        .sorted { lhs, rhs in
+            (lhs.createdDate ?? .distantPast) > (rhs.createdDate ?? .distantPast)
+        }
+    }
+
+    private var groups: [TodoDayGroup] {
+        Dictionary(grouping: filteredTodos, by: \.dayKey)
+            .map { TodoDayGroup(key: $0.key, title: $0.value.first?.dayTitle ?? "未知日期", todos: $0.value) }
+            .sorted { lhs, rhs in
+                (lhs.todos.first?.createdDate ?? .distantPast) > (rhs.todos.first?.createdDate ?? .distantPast)
+            }
+    }
+
+    private var todosNeedingSync: [TodoItem] {
+        state.todos.filter(\.needsTickTickSync)
     }
 
     var body: some View {
@@ -461,11 +1561,27 @@ struct NativeTodoView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("待办事项").font(.title2.bold())
-                        Text("与网页端实时同步，可新增、完成和删除")
+                        Text("与网页端一致的待办筛选、优先级和滴答清单同步")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    if !todosNeedingSync.isEmpty {
+                        Button {
+                            Task { await state.syncTodosBatchToTickTick(todosNeedingSync.map(\.id)) }
+                        } label: {
+                            if state.todoBatchSyncing {
+                                ProgressView().controlSize(.small)
+                                    .frame(width: 18, height: 18)
+                            } else {
+                                Label("批量同步滴答（\(todosNeedingSync.count)）", systemImage: "arrow.triangle.2.circlepath")
+                                    .controlButton()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .interactiveHover(radius: 10, enabled: !state.todoBatchSyncing)
+                        .disabled(state.todoBatchSyncing)
+                    }
                     Button {
                         Task { await state.loadTodos() }
                     } label: {
@@ -500,9 +1616,19 @@ struct NativeTodoView: View {
                 }
 
                 HStack(spacing: 8) {
-                    TodoFilterButton(title: "待处理", value: "pending", selected: $filter)
-                    TodoFilterButton(title: "已完成", value: "done", selected: $filter)
-                    TodoFilterButton(title: "全部", value: "all", selected: $filter)
+                    TodoFilterButton(title: "全部", value: "all", selected: $statusFilter)
+                    TodoFilterButton(title: "待处理", value: "pending", selected: $statusFilter)
+                    TodoFilterButton(title: "已完成", value: "done", selected: $statusFilter)
+                    Divider().frame(height: 20)
+                    TodoFilterButton(title: "今日", value: "today", selected: $dateFilter)
+                    TodoFilterButton(title: "近七日", value: "last7", selected: $dateFilter)
+                    TodoFilterButton(title: "全部日期", value: "all", selected: $dateFilter)
+                    Divider().frame(height: 20)
+                    TodoFilterButton(title: "紧急", value: "urgent", selected: $priorityFilter)
+                    TodoFilterButton(title: "高", value: "high", selected: $priorityFilter)
+                    TodoFilterButton(title: "中", value: "medium", selected: $priorityFilter)
+                    TodoFilterButton(title: "低", value: "low", selected: $priorityFilter)
+                    TodoFilterButton(title: "全部优先级", value: "all", selected: $priorityFilter)
                     Spacer()
                     Text("\(filteredTodos.count) 条")
                         .font(.caption)
@@ -519,17 +1645,32 @@ struct NativeTodoView: View {
                             Image(systemName: "checkmark.circle")
                                 .font(.system(size: 38))
                                 .foregroundStyle(.secondary)
-                            Text(filter == "pending" ? "待办已清空" : "暂无待办")
+                            Text(statusFilter == "pending" ? "待办已清空" : "暂无待办")
                                 .font(.headline)
                             Text("在上方输入内容即可新建，网页端也会同步显示。")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 110)
+                            .padding(.top, 110)
                     } else {
-                        ForEach(filteredTodos) { todo in
-                            TodoRow(todo: todo)
+                        ForEach(groups) { group in
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(spacing: 10) {
+                                    Text(group.title)
+                                        .font(.headline)
+                                    Text("\(group.todos.count) 条")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(.white.opacity(0.06), in: Capsule())
+                                }
+                                ForEach(group.todos) { todo in
+                                    TodoRow(todo: todo)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }
@@ -542,9 +1683,17 @@ struct NativeTodoView: View {
     private func submit() {
         let content = newContent
         newContent = ""
-        filter = "pending"
+        statusFilter = "pending"
         Task { await state.createTodo(content: content, priority: priority) }
     }
+}
+
+struct TodoDayGroup: Identifiable {
+    let key: String
+    let title: String
+    let todos: [TodoItem]
+
+    var id: String { key }
 }
 
 struct TodoFilterButton: View {
@@ -565,6 +1714,13 @@ struct TodoFilterButton: View {
 struct TodoRow: View {
     @EnvironmentObject private var state: AppState
     let todo: TodoItem
+
+    private let priorityOptions = [
+        ("urgent", "紧急"),
+        ("high", "高"),
+        ("medium", "中"),
+        ("low", "低")
+    ]
 
     var body: some View {
         HStack(spacing: 14) {
@@ -593,6 +1749,49 @@ struct TodoRow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
+            VStack(alignment: .trailing, spacing: 8) {
+                Menu {
+                    ForEach(priorityOptions, id: \.0) { value, label in
+                        Button(label) {
+                            Task { await state.updateTodoPriority(todo, priority: value) }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(priorityColor)
+                            .frame(width: 7, height: 7)
+                        Text(todo.priorityLabel)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.07), in: Capsule())
+                }
+                .menuStyle(.button)
+                .fixedSize()
+                .interactiveHover(radius: 12)
+
+                if !todo.isDone {
+                    Button {
+                        Task { await state.syncTodoToTickTick(todo) }
+                    } label: {
+                        if state.todoSyncingIds.contains(todo.id) {
+                            ProgressView().controlSize(.small)
+                                .frame(width: 58, height: 22)
+                        } else {
+                            Label(todo.syncedAt == nil ? "同步" : "重同步", systemImage: "arrow.triangle.2.circlepath")
+                                .font(.caption.weight(.semibold))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(todo.needsTickTickSync ? .purple : .secondary)
+                    .interactiveHover(radius: 8, enabled: !state.todoSyncingIds.contains(todo.id))
+                    .disabled(state.todoSyncingIds.contains(todo.id))
+                }
+            }
             Button {
                 Task { await state.deleteTodo(todo) }
             } label: {
@@ -608,6 +1807,15 @@ struct TodoRow: View {
         .contentShape(Rectangle())
         .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.075)))
+    }
+
+    private var priorityColor: Color {
+        switch todo.priority {
+        case "urgent": return .red
+        case "high": return .orange
+        case "low": return .gray
+        default: return .blue
+        }
     }
 }
 
@@ -1030,44 +2238,82 @@ struct TimelineDayGroup: Identifiable {
 
 struct SidebarView: View {
     @EnvironmentObject private var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("aixinjiTheme") private var theme = "dark"
+    @AppStorage("aixinjiSidebarCollapsed") private var collapsed = false
+
+    private var sidebarWidth: CGFloat { collapsed ? 86 : 230 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("AI 信迹")
-                    .font(.system(size: 26, weight: .bold))
-                Text("知识收件箱")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                if collapsed {
+                    AppMark(size: 42)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("AI 信迹")
+                            .font(.system(size: 26, weight: .bold))
+                        Text("知识收件箱")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
+            .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
 
             VStack(alignment: .leading, spacing: 8) {
-                SidebarButton(title: AppSection.capture.title, systemImage: AppSection.capture.systemImage, active: state.currentSection == .capture) {
+                SidebarButton(title: AppSection.capture.title, systemImage: AppSection.capture.systemImage, collapsed: collapsed, active: state.currentSection == .capture) {
                     state.currentSection = .capture
                 }
-                SidebarButton(title: AppSection.timeline.title, systemImage: AppSection.timeline.systemImage, active: state.currentSection == .timeline) {
+                SidebarButton(title: AppSection.timeline.title, systemImage: AppSection.timeline.systemImage, collapsed: collapsed, active: state.currentSection == .timeline) {
                     state.currentSection = .timeline
                 }
-                SidebarButton(title: AppSection.favorites.title, systemImage: AppSection.favorites.systemImage, badge: state.favoriteRecordIds.count, active: state.currentSection == .favorites) {
-                    state.currentSection = .favorites
+                SidebarButton(title: AppSection.projects.title, systemImage: AppSection.projects.systemImage, badge: state.projects.count, collapsed: collapsed, active: state.currentSection == .projects) {
+                    state.currentSection = .projects
+                    Task { await state.loadProjects() }
                 }
-                SidebarButton(title: AppSection.todos.title, systemImage: AppSection.todos.systemImage, badge: state.todos.filter { !$0.isDone }.count, active: state.currentSection == .todos) {
+                SidebarButton(title: AppSection.favorites.title, systemImage: AppSection.favorites.systemImage, badge: state.favoriteRecordIds.count, collapsed: collapsed, active: state.currentSection == .favorites) {
+                    state.currentSection = .favorites
+                    Task { await state.loadFavorites() }
+                }
+                SidebarButton(title: AppSection.todos.title, systemImage: AppSection.todos.systemImage, badge: state.todos.filter { !$0.isDone }.count, collapsed: collapsed, active: state.currentSection == .todos) {
                     state.currentSection = .todos
                     Task { await state.loadTodos() }
+                }
+                SidebarButton(title: AppSection.settings.title, systemImage: AppSection.settings.systemImage, collapsed: collapsed, active: state.currentSection == .settings) {
+                    state.currentSection = .settings
+                    Task { await state.loadSettings() }
                 }
             }
 
             Spacer()
 
             VStack(alignment: .leading, spacing: 10) {
-                SidebarButton(title: "打开网页版", systemImage: "safari", active: false) {
+                SidebarButton(title: "打开网页版", systemImage: "safari", collapsed: collapsed, active: false) {
                     state.openWebCapture()
                 }
-                SidebarButton(title: "刷新同步", systemImage: "arrow.clockwise", active: false) {
-                    Task { await state.loadTimeline() }
+                SidebarButton(title: "刷新同步", systemImage: "arrow.clockwise", collapsed: collapsed, active: false) {
+                    Task {
+                        async let timeline: Void = state.loadTimeline()
+                        async let todoList: Void = state.loadTodos()
+                        async let favorites: Void = state.loadFavorites()
+                        async let projects: Void = state.loadProjects()
+                        async let settings: Void = state.loadSettings()
+                        _ = await (timeline, todoList, favorites, projects, settings)
+                    }
+                }
+                SidebarButton(title: theme == "light" ? "切换暗色" : "切换亮色", systemImage: theme == "light" ? "moon" : "sun.max", collapsed: collapsed, active: false) {
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+                        theme = theme == "light" ? "dark" : "light"
+                    }
+                }
+                SidebarButton(title: collapsed ? "展开菜单" : "收起菜单", systemImage: collapsed ? "sidebar.left" : "sidebar.leading", collapsed: collapsed, active: false) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        collapsed.toggle()
+                    }
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: collapsed ? .center : .leading, spacing: 10) {
                     Button { state.chooseAvatar() } label: {
                         Group {
                             if let avatar = state.avatarImage {
@@ -1085,24 +2331,42 @@ struct SidebarView: View {
                     .buttonStyle(.plain)
                     .interactiveHover(radius: 23)
                     .help("点击更换头像")
-                    Text(state.email)
-                        .font(.footnote.weight(.semibold))
-                        .lineLimit(1)
-                    Button("退出登录") { state.signOut() }
-                        .buttonStyle(.plain)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .destructiveHover(radius: 8)
+                    if !collapsed {
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(state.email)
+                                    .font(.footnote.weight(.semibold))
+                                    .lineLimit(1)
+                                Button("退出登录") { state.signOut() }
+                                    .buttonStyle(.plain)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .destructiveHover(radius: 8)
+                            }
+                            Spacer(minLength: 4)
+                            Text("v\(AppInfo.version)")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(.white.opacity(0.08), in: Capsule())
+                        }
+                    } else {
+                        Text("v\(AppInfo.version)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
                 .padding(14)
                 .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08)))
             }
         }
         .padding(22)
-        .frame(width: 230)
-        .background(.black.opacity(0.34))
+        .frame(width: sidebarWidth)
+        .background(colorScheme == .dark ? .black.opacity(0.34) : .white.opacity(0.60))
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: collapsed)
     }
 }
 
@@ -1110,33 +2374,41 @@ struct SidebarButton: View {
     let title: String
     let systemImage: String
     var badge: Int = 0
+    var collapsed: Bool = false
     let active: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Label(title, systemImage: systemImage)
-                    .font(.system(size: 15, weight: active ? .semibold : .regular))
-                Spacer()
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: active ? .semibold : .regular))
+                    .frame(width: 22)
+                if !collapsed {
+                    Text(title)
+                        .font(.system(size: 15, weight: active ? .semibold : .regular))
+                        .lineLimit(1)
+                    Spacer()
+                }
                 if badge > 0 {
                     Text("\(badge)")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: collapsed ? 11 : 13, weight: .bold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 7)
-                        .frame(minWidth: 24, minHeight: 22)
+                        .padding(.horizontal, collapsed ? 5 : 7)
+                        .frame(minWidth: collapsed ? 18 : 24, minHeight: collapsed ? 18 : 22)
                         .background(.pink, in: Capsule())
                         .shadow(color: .pink.opacity(0.28), radius: 10, y: 4)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
+            .padding(.horizontal, collapsed ? 10 : 14)
             .padding(.vertical, 12)
             .background(active ? .white.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
-        .interactiveHover(radius: 14, enabled: !active)
+        .interactiveHover(radius: 14)
         .foregroundStyle(active ? .primary : .secondary)
+        .help(title)
     }
 }
 
@@ -1150,7 +2422,7 @@ struct HeaderView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(state.currentSection.title)
                     .font(.title2.bold())
-                Text(state.searchText.isEmpty ? "\(total) 个文件" : "\(filtered) / \(total) 个文件")
+                Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1183,6 +2455,24 @@ struct HeaderView: View {
         .padding(.vertical, 18)
         .background(.black.opacity(0.20))
         .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.08)).frame(height: 1) }
+    }
+
+    private var subtitle: String {
+        switch state.currentSection {
+        case .capture:
+            return "\(state.files.count) 个文件"
+        case .timeline:
+            return state.searchText.isEmpty ? "\(total) 个文件" : "\(filtered) / \(total) 个文件"
+        case .projects:
+            return "\(state.projects.count) 个项目"
+        case .favorites:
+            return "\(state.favoriteRecordIds.count) 条收藏"
+        case .todos:
+            let pending = state.todos.filter { !$0.isDone }.count
+            return "\(pending) 条待办"
+        case .settings:
+            return state.settingsLoaded ? "配置已同步" : "配置未加载"
+        }
     }
 }
 
@@ -1623,14 +2913,10 @@ struct InteractiveHoverModifier: ViewModifier {
             .shadow(color: enabled && hovering ? .black.opacity(0.24) : .clear, radius: enabled && hovering ? 16 : 0, y: enabled && hovering ? 8 : 0)
             .animation(.spring(response: 0.22, dampingFraction: 0.82), value: hovering)
             .contentShape(RoundedRectangle(cornerRadius: radius))
+            .background(CursorTrackingOverlay(cursor: .pointingHand, enabled: enabled))
             .onHover { inside in
                 guard enabled else { return }
                 hovering = inside
-                if inside {
-                    NSCursor.pointingHand.set()
-                } else {
-                    NSCursor.arrow.set()
-                }
             }
     }
 }
@@ -1645,11 +2931,58 @@ struct DestructiveHoverModifier: ViewModifier {
             .background(hovering ? Color.red.opacity(0.92) : Color.clear, in: RoundedRectangle(cornerRadius: radius))
             .scaleEffect(hovering ? 1.04 : 1)
             .contentShape(RoundedRectangle(cornerRadius: radius))
+            .background(CursorTrackingOverlay(cursor: .pointingHand, enabled: true))
             .animation(.spring(response: 0.2, dampingFraction: 0.84), value: hovering)
             .onHover { inside in
                 hovering = inside
-                if inside { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
             }
+    }
+}
+
+struct CursorHoverModifier: ViewModifier {
+    let cursor: NSCursor
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .background(CursorTrackingOverlay(cursor: cursor, enabled: enabled))
+    }
+}
+
+struct CursorTrackingOverlay: NSViewRepresentable {
+    let cursor: NSCursor
+    let enabled: Bool
+
+    func makeNSView(context: Context) -> CursorTrackingView {
+        let view = CursorTrackingView()
+        view.cursor = cursor
+        view.enabled = enabled
+        return view
+    }
+
+    func updateNSView(_ nsView: CursorTrackingView, context: Context) {
+        nsView.cursor = cursor
+        nsView.enabled = enabled
+        nsView.resetCursorRects()
+    }
+}
+
+final class CursorTrackingView: NSView {
+    var cursor: NSCursor = .pointingHand
+    var enabled = true {
+        didSet { resetCursorRects() }
+    }
+
+    override var acceptsFirstResponder: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard enabled else { return }
+        addCursorRect(bounds, cursor: cursor)
     }
 }
 
@@ -1660,6 +2993,10 @@ extension View {
 
     func destructiveHover(radius: CGFloat = 10) -> some View {
         modifier(DestructiveHoverModifier(radius: radius))
+    }
+
+    func cursorHover(_ cursor: NSCursor = .pointingHand, enabled: Bool = true) -> some View {
+        modifier(CursorHoverModifier(cursor: cursor, enabled: enabled))
     }
 
     func controlButton() -> some View {
