@@ -1223,7 +1223,7 @@ struct WindowConfigurator: NSViewRepresentable {
         let view = NSView()
         DispatchQueue.main.async {
             guard let window = view.window else { return }
-            window.isMovableByWindowBackground = true
+            window.isMovableByWindowBackground = false
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
         }
@@ -3359,7 +3359,6 @@ final class SplitDragSurfaceView: NSView {
     var onTranslation: ((CGFloat) -> Void)?
     private var trackingArea: NSTrackingArea?
     private var dragStartLocation: NSPoint?
-    private var previousMovableByWindowBackground: Bool?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -3405,7 +3404,6 @@ final class SplitDragSurfaceView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        previousMovableByWindowBackground = window?.isMovableByWindowBackground
         window?.isMovableByWindowBackground = false
         dragStartLocation = window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow
         cursor.set()
@@ -3424,10 +3422,7 @@ final class SplitDragSurfaceView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         dragStartLocation = nil
-        if let previousMovableByWindowBackground {
-            window?.isMovableByWindowBackground = previousMovableByWindowBackground
-        }
-        previousMovableByWindowBackground = nil
+        window?.isMovableByWindowBackground = false
         let point = convert(event.locationInWindow, from: nil)
         let inside = bounds.contains(point)
         onDraggingChanged?(false)
