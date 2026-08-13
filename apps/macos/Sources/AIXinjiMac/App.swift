@@ -1468,6 +1468,7 @@ struct SplitHandle: View {
     let minSecondaryWidth: CGFloat
     @State private var hovering = false
     @State private var dragging = false
+    @State private var dragStartWidth: CGFloat = 0
 
     private var maxPrimaryWidth: CGFloat {
         max(minPrimaryWidth, availableWidth - minSecondaryWidth)
@@ -1480,20 +1481,17 @@ struct SplitHandle: View {
     var body: some View {
         ZStack {
             Rectangle()
-                .fill((hovering || dragging) ? Color.accentColor.opacity(0.10) : .white.opacity(0.035))
-                .frame(width: hovering || dragging ? 44 : 34)
+                .fill(.clear)
+                .frame(width: 16)
+            Rectangle()
+                .fill((hovering || dragging) ? Color.accentColor.opacity(0.72) : .white.opacity(0.16))
+                .frame(width: hovering || dragging ? 1.5 : 1)
             RoundedRectangle(cornerRadius: 3)
-                .fill((hovering || dragging) ? Color.accentColor.opacity(0.92) : .white.opacity(0.42))
-                .frame(width: hovering || dragging ? 6 : 4, height: hovering || dragging ? 108 : 78)
-                .shadow(color: (hovering || dragging) ? Color.accentColor.opacity(0.45) : .clear, radius: 16, y: 0)
-            VStack(spacing: 4) {
-                Image(systemName: "chevron.left")
-                Image(systemName: "chevron.right")
-            }
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle((hovering || dragging) ? .white : .secondary)
+                .fill((hovering || dragging) ? Color.accentColor : .white.opacity(0.34))
+                .frame(width: hovering || dragging ? 4 : 3, height: hovering || dragging ? 64 : 44)
+                .shadow(color: (hovering || dragging) ? Color.accentColor.opacity(0.36) : .clear, radius: 10, y: 0)
         }
-        .frame(width: hovering || dragging ? 44 : 34)
+        .frame(width: 16)
         .frame(maxHeight: .infinity)
         .contentShape(Rectangle())
         .overlay(
@@ -1505,16 +1503,20 @@ struct SplitHandle: View {
                 },
                 onDraggingChanged: { active in
                     dragging = active
+                    if active {
+                        dragStartWidth = width
+                        hovering = true
+                    }
                     active ? NSCursor.resizeLeftRight.set() : NSCursor.arrow.set()
                 },
-                onDelta: { delta in
-                    width = clamp(width + delta)
+                onTranslation: { translation in
+                    width = clamp(dragStartWidth + translation)
                 }
             )
         )
-        .animation(.spring(response: 0.20, dampingFraction: 0.86), value: hovering)
-        .animation(.spring(response: 0.20, dampingFraction: 0.86), value: dragging)
-        .zIndex(20)
+        .animation(.easeOut(duration: 0.10), value: hovering)
+        .animation(.easeOut(duration: 0.10), value: dragging)
+        .zIndex(80)
     }
 }
 
@@ -2340,7 +2342,7 @@ final class PasteAwareNSTextView: NSTextView {
             onPasteFiles?(urls)
             handledAttachment = true
         }
-        if let image = NSImage(pasteboard: pasteboard) {
+        if !handledAttachment, let image = NSImage(pasteboard: pasteboard) {
             onPasteImage?(image)
             handledAttachment = true
         }
@@ -2375,7 +2377,7 @@ final class PasteAwareNSTextView: NSTextView {
 struct DragStrip: View {
     var body: some View {
         WindowDragView()
-            .frame(height: 52)
+            .frame(height: 30)
             .ignoresSafeArea(edges: .top)
             .allowsHitTesting(true)
     }
@@ -2391,7 +2393,7 @@ struct WindowDragView: NSViewRepresentable {
 
 final class DraggingNSView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
-        self
+        point.y >= bounds.height - 24 ? self : nil
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -3296,14 +3298,14 @@ struct SplitDragSurface: NSViewRepresentable {
     let cursor: NSCursor
     let onHover: (Bool) -> Void
     let onDraggingChanged: (Bool) -> Void
-    let onDelta: (CGFloat) -> Void
+    let onTranslation: (CGFloat) -> Void
 
     func makeNSView(context: Context) -> SplitDragSurfaceView {
         let view = SplitDragSurfaceView()
         view.cursor = cursor
         view.onHover = onHover
         view.onDraggingChanged = onDraggingChanged
-        view.onDelta = onDelta
+        view.onTranslation = onTranslation
         return view
     }
 
@@ -3311,7 +3313,7 @@ struct SplitDragSurface: NSViewRepresentable {
         nsView.cursor = cursor
         nsView.onHover = onHover
         nsView.onDraggingChanged = onDraggingChanged
-        nsView.onDelta = onDelta
+        nsView.onTranslation = onTranslation
         nsView.updateTrackingAreas()
         nsView.resetCursorRects()
     }
@@ -3321,11 +3323,16 @@ final class SplitDragSurfaceView: NSView {
     var cursor: NSCursor = .resizeLeftRight
     var onHover: ((Bool) -> Void)?
     var onDraggingChanged: ((Bool) -> Void)?
-    var onDelta: ((CGFloat) -> Void)?
+    var onTranslation: ((CGFloat) -> Void)?
     private var trackingArea: NSTrackingArea?
-    private var lastDragLocation: NSPoint?
+    private var dragStartLocation: NSPoint?
+    private var previousMovableByWindowBackground: Bool?
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(point) ? self : nil
+    }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
@@ -3357,7 +3364,7 @@ final class SplitDragSurfaceView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
-        if lastDragLocation == nil {
+        if dragStartLocation == nil {
             NSCursor.arrow.set()
             onHover?(false)
         }
@@ -3365,25 +3372,29 @@ final class SplitDragSurfaceView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        lastDragLocation = window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow
+        previousMovableByWindowBackground = window?.isMovableByWindowBackground
+        window?.isMovableByWindowBackground = false
+        dragStartLocation = window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow
         cursor.set()
+        onHover?(true)
         onDraggingChanged?(true)
     }
 
     override func mouseDragged(with event: NSEvent) {
         let current = window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow
-        if let last = lastDragLocation {
-            let delta = current.x - last.x
-            if abs(delta) > 0.2 {
-                onDelta?(delta)
-            }
+        if let start = dragStartLocation {
+            let translation = current.x - start.x
+            onTranslation?(translation)
         }
-        lastDragLocation = current
         cursor.set()
     }
 
     override func mouseUp(with event: NSEvent) {
-        lastDragLocation = nil
+        dragStartLocation = nil
+        if let previousMovableByWindowBackground {
+            window?.isMovableByWindowBackground = previousMovableByWindowBackground
+        }
+        previousMovableByWindowBackground = nil
         let point = convert(event.locationInWindow, from: nil)
         let inside = bounds.contains(point)
         onDraggingChanged?(false)

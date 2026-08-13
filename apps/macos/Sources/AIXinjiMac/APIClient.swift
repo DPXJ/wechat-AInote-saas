@@ -128,7 +128,7 @@ final class AppState: ObservableObject {
             addCaptureFiles(urls)
             importedCount += urls.count
         }
-        if let image = NSImage(pasteboard: pasteboard), let attachment = makeCaptureAttachment(from: image) {
+        if importedCount == 0, let image = NSImage(pasteboard: pasteboard), let attachment = makeCaptureAttachment(from: image) {
             addCaptureAttachments([attachment])
             importedCount += 1
         }
