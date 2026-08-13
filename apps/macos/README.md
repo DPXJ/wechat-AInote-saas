@@ -17,6 +17,7 @@
 - `0.13`：重排录入页，剪贴板监听收为顶部小按钮；补齐 Markdown 工具栏、Enter 提交、Shift+Enter 换行、粘贴截图进附件、项目关联提交与更明显的 hover 阴影
 - `0.14`：在 0.13 基础上加入 Enter 空内容/重复提交保护，并作为本轮最终可打开版本
 - `0.15`：重做时间线/收藏分栏拖拽，改为细线短柄、拖动不再触发窗口移动，并修复粘贴截图重复添加附件
+- `0.16`：应用菜单加入“重启 AI 信迹”和快捷键 Control + Command + R，方便调试时快速重启
 
 后续每次打包都使用新的版本号输出独立 `.app` 和 `.dmg`，不会覆盖旧包。
 
@@ -50,16 +51,16 @@ cd apps/macos
 指定下一个版本：
 
 ```bash
-APP_VERSION=0.15 ./scripts/package-app.sh
+APP_VERSION=0.16 ./scripts/package-app.sh
 ```
 
 输出：
 
-- `apps/macos/dist/AI 信迹 0.15.app`
-- `apps/macos/dist/AI 信迹-0.15.dmg`
+- `apps/macos/dist/AI 信迹 0.16.app`
+- `apps/macos/dist/AI 信迹-0.16.dmg`
 
 ## 迭代方向
 
-- 0.16：菜单栏快速收藏
-- 0.17：PDF 内嵌预览
-- 0.18：剪贴板监听规则与本地缓存策略可视化
+- 0.17：菜单栏快速收藏
+- 0.18：PDF 内嵌预览
+- 0.19：剪贴板监听规则与本地缓存策略可视化

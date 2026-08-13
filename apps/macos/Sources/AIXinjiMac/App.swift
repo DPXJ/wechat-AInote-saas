@@ -16,6 +16,39 @@ struct AIXinjiMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(before: .appTermination) {
+                Button("重启 AI 信迹") {
+                    AppRestarter.restart()
+                }
+                .keyboardShortcut("r", modifiers: [.command, .control])
+
+                Divider()
+            }
+        }
+    }
+}
+
+enum AppRestarter {
+    static func restart() {
+        let bundleURL = Bundle.main.bundleURL
+        let executableURL = Bundle.main.executableURL
+
+        do {
+            let process = Process()
+            if bundleURL.pathExtension == "app" {
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                process.arguments = ["-n", bundleURL.path]
+            } else if let executableURL {
+                process.executableURL = executableURL
+                process.arguments = Array(ProcessInfo.processInfo.arguments.dropFirst())
+            } else {
+                NSApp.terminate(nil)
+                return
+            }
+            try process.run()
+            NSApp.terminate(nil)
+        } catch {
+            NSApp.presentError(error)
         }
     }
 }
