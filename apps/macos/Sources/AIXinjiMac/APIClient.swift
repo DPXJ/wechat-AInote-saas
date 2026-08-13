@@ -285,6 +285,7 @@ final class AppState: ObservableObject {
             appendField("linkToTodo", forceLinkToTodo ? "true" : "false")
             appendField("syncToNotion", syncToNotion ? "true" : "false")
             appendField("syncToFlomo", syncToFlomo ? "true" : "false")
+            appendField("projectId", captureProjectId)
             for (index, attachment) in captureFiles.enumerated() {
                 appendField("fileTags_\(index)", attachment.tags)
                 appendField("fileDesc_\(index)", attachment.note)
@@ -304,6 +305,8 @@ final class AppState: ObservableObject {
             _ = try? JSONDecoder.aixinji.decode(CreateRecordResponse.self, from: data)
             captureTitle = ""
             captureTags = ""
+            captureProjectId = ""
+            captureProjectQuery = ""
             captureContextNote = ""
             captureText = ""
             captureFiles = []
@@ -906,6 +909,41 @@ final class AppState: ObservableObject {
             captureText = text
         } else {
             captureText += "\n" + text
+        }
+    }
+
+    func applyMarkdown(_ action: MarkdownAction) {
+        let current = captureText
+        let needsLeadingBreak = !current.isEmpty && !current.hasSuffix("\n")
+        func appendBlock(_ value: String) {
+            captureText += (needsLeadingBreak ? "\n" : "") + value
+        }
+
+        switch action {
+        case .h1:
+            appendBlock("# 标题")
+        case .h2:
+            appendBlock("## 标题")
+        case .h3:
+            appendBlock("### 标题")
+        case .bold:
+            captureText += "**加粗内容**"
+        case .italic:
+            captureText += "*斜体内容*"
+        case .strike:
+            captureText += "~~删除线内容~~"
+        case .code:
+            let tick = String(UnicodeScalar(96)!)
+            captureText += tick + "代码" + tick
+        case .list:
+            appendBlock("- 列表项")
+        case .todo:
+            appendBlock("- [ ] 待办事项")
+            autoCreateTodo = true
+        case .quote:
+            appendBlock("> 引用内容")
+        case .divider:
+            appendBlock("---")
         }
     }
 

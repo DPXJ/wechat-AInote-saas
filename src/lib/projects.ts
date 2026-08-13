@@ -180,6 +180,90 @@ export async function deleteProject(userId: string, projectId: string): Promise<
   await getSupabaseAdmin().from("projects").delete().eq("id", projectId).eq("user_id", userId);
 }
 
+export async function linkRecordToProject(
+  userId: string,
+  projectId: string,
+  recordId: string,
+): Promise<void> {
+  const project = await getProject(userId, projectId);
+  if (!project) throw new Error("项目不存在。");
+
+  const supabase = getSupabaseAdmin();
+  const { data: recordRow, error: recordErr } = await supabase
+    .from("records")
+    .select("id, confirmed_at, deleted_at")
+    .eq("id", recordId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (recordErr) {
+    const missing = recordErr.code === "42703" || /confirmed_at/i.test(recordErr.message || "");
+    throw new Error(
+      missing
+        ? "数据库缺少 records.confirmed_at：请执行 scripts/migrate-project-records-sources.sql"
+        : recordErr.message,
+    );
+  }
+  if (!recordRow || (recordRow as Pick<RecordRow, "deleted_at">).deleted_at) {
+    throw new Error("记录不存在。");
+  }
+
+  if (!(recordRow as Pick<RecordRow, "confirmed_at">).confirmed_at) {
+    const { error: confirmErr } = await supabase
+      .from("records")
+      .update({ confirmed_at: nowIso(), updated_at: nowIso() })
+      .eq("id", recordId)
+      .eq("user_id", userId);
+    if (confirmErr) throw new Error(confirmErr.message);
+  }
+
+  const { data: existing, error: existingErr } = await supabase
+    .from("project_records")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .eq("record_id", recordId)
+    .maybeSingle();
+
+  if (existingErr) {
+    const missing = existingErr.code === "42P01" || /does not exist/i.test(existingErr.message || "");
+    throw new Error(
+      missing
+        ? "数据库缺少 project_records 表：请执行 scripts/migrate-project-records-sources.sql"
+        : existingErr.message,
+    );
+  }
+  if (existing) return;
+
+  const { data: maxRow } = await supabase
+    .from("project_records")
+    .select("sort_order")
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const sortOrder = (maxRow?.sort_order != null ? Number(maxRow.sort_order) : -1) + 1;
+  const { error: insertErr } = await supabase.from("project_records").insert({
+    id: createId("prec"),
+    user_id: userId,
+    project_id: projectId,
+    record_id: recordId,
+    sort_order: sortOrder,
+    created_at: nowIso(),
+  });
+
+  if (insertErr) {
+    const missing = insertErr.code === "42P01" || /does not exist/i.test(insertErr.message || "");
+    throw new Error(
+      missing
+        ? "数据库缺少 project_records 表：请执行 scripts/migrate-project-records-sources.sql"
+        : insertErr.message,
+    );
+  }
+}
+
 export async function listProjectTasks(userId: string, projectId: string): Promise<ProjectTask[]> {
   const supabase = getSupabaseAdmin();
   const { data: rows } = await supabase

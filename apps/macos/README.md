@@ -14,6 +14,8 @@
 - `0.10`：强化全局小手悬浮、按钮/卡片阴影动效、顺滑分栏拖拽，并将项目页改为高密度列表
 - `0.11`：小手悬浮改为整块区域命中，并用 AppKit 原生鼠标事件重做时间线/收藏分栏拖拽
 - `0.12`：加宽分栏命中区域，使用 AppKit deltaX 拖拽，并修复整块 hover 只在文字上触发的问题
+- `0.13`：重排录入页，剪贴板监听收为顶部小按钮；补齐 Markdown 工具栏、Enter 提交、Shift+Enter 换行、粘贴截图进附件、项目关联提交与更明显的 hover 阴影
+- `0.14`：在 0.13 基础上加入 Enter 空内容/重复提交保护，并作为本轮最终可打开版本
 
 后续每次打包都使用新的版本号输出独立 `.app` 和 `.dmg`，不会覆盖旧包。
 
@@ -47,16 +49,16 @@ cd apps/macos
 指定下一个版本：
 
 ```bash
-APP_VERSION=0.12 ./scripts/package-app.sh
+APP_VERSION=0.14 ./scripts/package-app.sh
 ```
 
 输出：
 
-- `apps/macos/dist/AI 信迹 0.12.app`
-- `apps/macos/dist/AI 信迹-0.12.dmg`
+- `apps/macos/dist/AI 信迹 0.14.app`
+- `apps/macos/dist/AI 信迹-0.14.dmg`
 
 ## 迭代方向
 
-- 0.13：菜单栏快速收藏
-- 0.14：PDF 内嵌预览
-- 0.15：剪贴板监听规则与本地缓存策略可视化
+- 0.15：菜单栏快速收藏
+- 0.16：PDF 内嵌预览
+- 0.17：剪贴板监听规则与本地缓存策略可视化

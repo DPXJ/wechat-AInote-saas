@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$ROOT/../.." && pwd)"
 DIST="$ROOT/dist"
 APP_NAME="AI 信迹"
 
-APP_VERSION="${APP_VERSION:-0.12}"
+APP_VERSION="${APP_VERSION:-0.14}"
 APP="$DIST/$APP_NAME $APP_VERSION.app"
 DMG="$DIST/$APP_NAME-$APP_VERSION.dmg"
 README="$DIST/README-Mac-$APP_VERSION.txt"
@@ -98,7 +98,7 @@ AI 信迹 Mac $APP_VERSION
 说明：
 - 这是原生 SwiftUI Mac App，不是网页套壳。
 - Supabase 公共配置已写入 App 包，双击即可使用。
-- 0.12 已加宽分栏命中区域，使用 AppKit deltaX 拖拽，并修复整块 hover 只在文字上触发的问题。
+- 0.14 优化录入页布局，支持 Markdown 快捷按钮、Enter 提交、Shift+Enter 换行、粘贴图片进附件、剪贴板小按钮、项目关联与回车提交保护。
 - 若 macOS 提示无法验证开发者，请在系统设置 > 隐私与安全性中允许打开。
 TXT
 

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createKnowledgeRecord, listKnowledgeRecords } from "@/lib/records";
+import { linkRecordToProject } from "@/lib/projects";
 import { getIntegrationSettings } from "@/lib/settings";
 import { syncRecord } from "@/lib/sync";
 import { requireUserIdFromRequest } from "@/lib/supabase/server";
-import type { RecordType, StoredUpload, SyncTarget } from "@/lib/types";
+import type { RecordType, StoredUpload } from "@/lib/types";
 
 export const runtime = "nodejs";
 /** 创建记录含 OCR + AI 分析，可能较慢，避免超时 */
@@ -138,6 +139,7 @@ export async function POST(request: Request) {
     const linkToTodo = String(formData.get("linkToTodo") || "false") === "true";
     const syncToNotion = String(formData.get("syncToNotion") ?? "true") !== "false";
     const syncToFlomo = String(formData.get("syncToFlomo") || "false") === "true";
+    const projectId = String(formData.get("projectId") || "").trim();
     const userTagsRaw = String(formData.get("userTags") || "");
     const userTags = userTagsRaw
       .split(/\s+/)
@@ -191,6 +193,13 @@ export async function POST(request: Request) {
     const syncWarnings: string[] = record
       ? await runPostCreateSync(userId, record, { syncToNotion, syncToFlomo })
       : [];
+    if (record && projectId) {
+      try {
+        await linkRecordToProject(userId, projectId, record.id);
+      } catch (err) {
+        syncWarnings.push(err instanceof Error ? err.message : "项目关联失败");
+      }
+    }
     if (record) runBackgroundTickTick(userId, record).catch(() => {});
 
     return NextResponse.json({ record, syncWarnings });

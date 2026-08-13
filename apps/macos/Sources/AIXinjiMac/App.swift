@@ -40,36 +40,13 @@ struct CaptureProjectPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("项目")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let selected = state.selectedCaptureProject {
-                    HStack(spacing: 6) {
-                        Image(systemName: "folder.fill")
-                        Text(selected.name)
-                            .lineLimit(1)
-                        Button {
-                            state.captureProjectId = ""
-                            state.captureProjectQuery = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .interactiveHover(radius: 7)
-                    }
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(.white.opacity(0.08), in: Capsule())
-                }
-            }
+            Text("项目")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                Image(systemName: state.selectedCaptureProject == nil ? "magnifyingglass" : "folder.fill")
+                    .foregroundStyle(state.selectedCaptureProject == nil ? .secondary : Color.accentColor)
                 TextField("检索或输入项目名称", text: Binding(
                     get: { state.captureProjectQuery },
                     set: { value in
@@ -87,16 +64,30 @@ struct CaptureProjectPicker: View {
                     }
                 }
                 Spacer()
-                Button {
-                    Task { await state.loadProjects() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .frame(width: 26, height: 26)
+                if state.selectedCaptureProject != nil || !state.captureProjectQuery.isEmpty {
+                    Button {
+                        state.captureProjectId = ""
+                        state.captureProjectQuery = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .interactiveHover(radius: 8)
+                    .help("清除项目")
+                } else {
+                    Button {
+                        Task { await state.loadProjects() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .interactiveHover(radius: 8)
+                    .help("刷新项目")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .interactiveHover(radius: 9)
-                .help("刷新项目")
             }
             .padding(.horizontal, 14)
             .frame(height: 42)
@@ -139,6 +130,7 @@ struct CaptureProjectPicker: View {
                 .padding(6)
                 .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+                .frame(maxHeight: 210)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -893,7 +885,24 @@ enum SettingsTab: String, CaseIterable {
 
 struct NativeSettingsView: View {
     @EnvironmentObject private var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @State private var tab: SettingsTab = .ai
+
+    private var panelFill: Color {
+        colorScheme == .dark ? .black.opacity(0.18) : .white.opacity(0.84)
+    }
+
+    private var tabFill: Color {
+        colorScheme == .dark ? .black.opacity(0.16) : .white.opacity(0.74)
+    }
+
+    private var selectedTabFill: Color {
+        colorScheme == .dark ? .white.opacity(0.08) : .black.opacity(0.055)
+    }
+
+    private var borderFill: Color {
+        colorScheme == .dark ? .white.opacity(0.08) : .black.opacity(0.08)
+    }
 
     var body: some View {
         ScrollView {
@@ -910,7 +919,7 @@ struct NativeSettingsView: View {
                                 .padding(.horizontal, 18)
                                 .frame(height: 44)
                                 .foregroundStyle(tab == item ? .primary : .secondary)
-                                .background(tab == item ? .white.opacity(0.08) : .clear)
+                                .background(tab == item ? selectedTabFill : .clear)
                         }
                         .buttonStyle(.plain)
                         .interactiveHover(radius: 0)
@@ -921,8 +930,8 @@ struct NativeSettingsView: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 14)
                 }
-                .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+                .background(tabFill, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(borderFill))
 
                 VStack(alignment: .leading, spacing: 18) {
                     switch tab {
@@ -1021,8 +1030,8 @@ struct NativeSettingsView: View {
                     }
                 }
                 .padding(22)
-                .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+                .background(panelFill, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(borderFill))
             }
             .padding(28)
             .frame(maxWidth: 1180, alignment: .leading)
@@ -1032,8 +1041,13 @@ struct NativeSettingsView: View {
 }
 
 struct SettingsSectionTitle: View {
+    @Environment(\.colorScheme) private var colorScheme
     let status: String
     let title: String
+
+    private var chipFill: Color {
+        colorScheme == .dark ? .white.opacity(0.07) : .black.opacity(0.055)
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -1047,17 +1061,26 @@ struct SettingsSectionTitle: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(.white.opacity(0.07), in: Capsule())
+                .background(chipFill, in: Capsule())
         }
     }
 }
 
 struct SettingsField: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     let placeholder: String
     @Binding var text: String
     var secure = false
     @State private var reveal = false
+
+    private var fieldFill: Color {
+        colorScheme == .dark ? .white.opacity(0.055) : .white.opacity(0.92)
+    }
+
+    private var fieldStroke: Color {
+        colorScheme == .dark ? .white.opacity(0.08) : .black.opacity(0.10)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1087,15 +1110,24 @@ struct SettingsField: View {
             }
             .padding(.horizontal, 14)
             .frame(height: 42)
-            .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+            .background(fieldFill, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(fieldStroke))
         }
     }
 }
 
 struct SettingsTextArea: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     @Binding var text: String
+
+    private var fieldFill: Color {
+        colorScheme == .dark ? .white.opacity(0.055) : .white.opacity(0.92)
+    }
+
+    private var fieldStroke: Color {
+        colorScheme == .dark ? .white.opacity(0.08) : .black.opacity(0.10)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1107,8 +1139,8 @@ struct SettingsTextArea: View {
                 .scrollContentBackground(.hidden)
                 .padding(10)
                 .frame(minHeight: 92)
-                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.08)))
+                .background(fieldFill, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(fieldStroke))
         }
     }
 }
@@ -1497,17 +1529,23 @@ struct NativeCaptureView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                CaptureHero()
-
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .center, spacing: 12) {
                         Text("记录信息")
                             .font(.headline)
-                        HStack(spacing: 12) {
-                            CaptureField(title: "标题", placeholder: "标题（选填）", text: $state.captureTitle)
-                            CaptureField(title: "标签", placeholder: "标签（空格分隔）", text: $state.captureTags)
+                        Spacer()
+                        if !state.message.isEmpty {
+                            Text(state.message)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
+                    }
+
+                    HStack(alignment: .top, spacing: 12) {
+                        CaptureField(title: "标题", placeholder: "标题（选填）", text: $state.captureTitle)
+                        CaptureField(title: "标签", placeholder: "标签（空格分隔）", text: $state.captureTags)
                         CaptureProjectPicker()
                     }
 
@@ -1524,29 +1562,7 @@ struct NativeCaptureView: View {
                         CaptureToggle(title: "同步到 Notion", isOn: $state.syncToNotion)
                         CaptureToggle(title: "同步到 flomo", isOn: $state.syncToFlomo)
                         CaptureToggle(title: "强制关联待办", isOn: $state.forceLinkToTodo)
-
-                        Spacer(minLength: 10)
-
-                        Button {
-                            Task { await state.submitCapture() }
-                        } label: {
-                            if state.isLoading {
-                                ProgressView().controlSize(.small)
-                                    .frame(width: 92)
-                            } else {
-                                Text("提交记录")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .frame(width: 92)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .padding(.horizontal, 18)
-                        .frame(height: 42)
-                        .background(canSubmit ? .white : .white.opacity(0.14), in: RoundedRectangle(cornerRadius: 13))
-                        .foregroundStyle(canSubmit ? .black : .secondary)
-                        .interactiveHover(radius: 13, enabled: canSubmit && !state.isLoading)
-                        .disabled(state.isLoading || !canSubmit)
+                        Spacer(minLength: 0)
                     }
                     .padding(.top, 2)
 
@@ -1580,18 +1596,12 @@ struct NativeCaptureView: View {
                         }
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
-
-                    if !state.message.isEmpty {
-                        Text(state.message)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
                 }
-                .padding(24)
+                .padding(20)
                 .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 22))
                 .overlay(RoundedRectangle(cornerRadius: 22).stroke(.white.opacity(0.08)))
             }
-            .padding(28)
+            .padding(24)
             .frame(maxWidth: 1320, alignment: .leading)
         }
         .background(.white.opacity(0.025))
@@ -1926,31 +1936,6 @@ struct TodoRow: View {
     }
 }
 
-struct CaptureHero: View {
-    @EnvironmentObject private var state: AppState
-
-    var body: some View {
-        HStack(spacing: 18) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("录入")
-                    .font(.system(size: 24, weight: .bold))
-                Text("文字、截图、文件、剪贴板内容统一进入信源 · 时间线")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("监听剪贴板", isOn: Binding(
-                get: { state.autoClipboardEnabled },
-                set: { state.setClipboardMonitoring($0) }
-            ))
-            .toggleStyle(.switch)
-        }
-        .padding(20)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
-    }
-}
-
 struct CaptureField: View {
     let title: String
     let placeholder: String
@@ -1976,17 +1961,48 @@ struct CaptureEditorBox: View {
     @Binding var isDragging: Bool
     let onDrop: ([NSItemProvider]) -> Bool
 
+    var canSubmit: Bool {
+        !state.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !state.captureFiles.isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CaptureToolbar()
+            CaptureToolbar { action in
+                state.applyMarkdown(action)
+            } trailing: {
+                Button {
+                    Task { await state.submitCapture() }
+                } label: {
+                    if state.isLoading {
+                        ProgressView().controlSize(.small)
+                            .frame(width: 76)
+                    } else {
+                        Text("提交记录")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 76)
+                    }
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.return, modifiers: .command)
+                .padding(.horizontal, 14)
+                .frame(height: 32)
+                .background(canSubmit ? .white : .white.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                .foregroundStyle(canSubmit ? .black : .secondary)
+                .interactiveHover(radius: 10, enabled: canSubmit && !state.isLoading)
+                .disabled(state.isLoading || !canSubmit)
+                .help("提交记录（Enter）")
+            }
             PasteAwareTextView(
                 text: $state.captureText,
                 placeholder: "输入文本或 Markdown，支持直接粘贴截图...",
                 onPasteImage: { image in state.addCaptureImage(image) },
                 onPasteFiles: { urls in state.addCaptureFiles(urls) },
-                onSubmit: { Task { await state.submitCapture() } }
+                onSubmit: {
+                    guard canSubmit && !state.isLoading else { return }
+                    Task { await state.submitCapture() }
+                }
             )
-            .frame(minHeight: 340)
+            .frame(minHeight: 300, maxHeight: 360)
 
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
@@ -2015,7 +2031,7 @@ struct CaptureEditorBox: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.vertical, 8)
 
                 AttachmentDropZone(isDragging: isDragging)
                     .onTapGesture { state.chooseCaptureFiles() }
@@ -2025,7 +2041,7 @@ struct CaptureEditorBox: View {
                         perform: onDrop
                     )
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 12)
             }
         }
         .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18))
@@ -2033,25 +2049,66 @@ struct CaptureEditorBox: View {
     }
 }
 
-struct CaptureToolbar: View {
-    private let items = ["H1", "H2", "H3", "B", "I", "S", "<>", "列表", "待办", "引用", "分割"]
+enum MarkdownAction: String, CaseIterable, Identifiable {
+    case h1 = "H1"
+    case h2 = "H2"
+    case h3 = "H3"
+    case bold = "B"
+    case italic = "I"
+    case strike = "S"
+    case code = "<>"
+    case list = "列表"
+    case todo = "待办"
+    case quote = "引用"
+    case divider = "分割"
+
+    var id: String { rawValue }
+
+    var help: String {
+        switch self {
+        case .h1: return "一级标题"
+        case .h2: return "二级标题"
+        case .h3: return "三级标题"
+        case .bold: return "加粗"
+        case .italic: return "斜体"
+        case .strike: return "删除线"
+        case .code: return "代码"
+        case .list: return "无序列表"
+        case .todo: return "待办项"
+        case .quote: return "引用"
+        case .divider: return "分割线"
+        }
+    }
+}
+
+struct CaptureToolbar<Trailing: View>: View {
+    let onAction: (MarkdownAction) -> Void
+    @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         HStack(spacing: 8) {
-            ForEach(items, id: \.self) { item in
-                Text(item)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: item.count > 2 ? 34 : 24, minHeight: 24)
-                    .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+            ForEach(MarkdownAction.allCases) { item in
+                Button {
+                    onAction(item)
+                } label: {
+                    Text(item.rawValue)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: item.rawValue.count > 2 ? 34 : 24, minHeight: 24)
+                        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .interactiveHover(radius: 7)
+                .help(item.help)
             }
             Spacer()
             Text("Markdown")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+            trailing()
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
         .overlay(alignment: .bottom) {
             Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
         }
@@ -2075,7 +2132,8 @@ struct AttachmentDropZone: View {
             }
             Spacer()
         }
-        .padding(18)
+        .padding(.horizontal, 18)
+        .frame(minHeight: 88)
         .background(isDragging ? Color.accentColor.opacity(0.12) : .white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -2198,6 +2256,8 @@ struct PasteAwareTextView: NSViewRepresentable {
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
         scrollView.borderType = .noBorder
 
         let textView = PasteAwareNSTextView()
@@ -2218,6 +2278,7 @@ struct PasteAwareTextView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 18, height: 18)
         textView.textContainer?.widthTracksTextView = true
         textView.autoresizingMask = [.width]
+        textView.allowsUndo = true
         scrollView.documentView = textView
         context.coordinator.textView = textView
         context.coordinator.placeholder = placeholder
@@ -2271,22 +2332,29 @@ final class PasteAwareNSTextView: NSTextView {
 
     override func paste(_ sender: Any?) {
         let pasteboard = NSPasteboard.general
+        var handledAttachment = false
         if let urls = pasteboard.readObjects(
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL], !urls.isEmpty {
             onPasteFiles?(urls)
+            handledAttachment = true
         }
         if let image = NSImage(pasteboard: pasteboard) {
             onPasteImage?(image)
+            handledAttachment = true
         }
         if let string = pasteboard.string(forType: .string), !string.isEmpty {
             insertText(string, replacementRange: selectedRange())
+        } else if handledAttachment {
+            needsDisplay = true
         }
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 36, event.modifierFlags.contains(.command) {
+        let enterKeys: Set<UInt16> = [36, 76]
+        let hasShift = event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.shift)
+        if enterKeys.contains(event.keyCode), !hasShift {
             onSubmit?()
             return
         }
@@ -2478,12 +2546,20 @@ struct SidebarView: View {
 }
 
 struct SidebarButton: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     let systemImage: String
     var badge: Int = 0
     var collapsed: Bool = false
     let active: Bool
     let action: () -> Void
+    @State private var hovering = false
+
+    private var fill: Color {
+        if active { return colorScheme == .dark ? .white.opacity(0.11) : .black.opacity(0.065) }
+        if hovering { return colorScheme == .dark ? .white.opacity(0.075) : .black.opacity(0.045) }
+        return .black.opacity(0.001)
+    }
 
     var body: some View {
         Button(action: action) {
@@ -2510,10 +2586,28 @@ struct SidebarButton: View {
             .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
             .padding(.horizontal, collapsed ? 10 : 14)
             .padding(.vertical, 12)
-            .background(active ? .white.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 14))
+            .background(fill, in: RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
-        .interactiveHover(radius: 14)
+        .shadow(color: hovering ? .black.opacity(colorScheme == .dark ? 0.28 : 0.12) : .clear, radius: hovering ? 16 : 0, y: hovering ? 8 : 0)
+        .overlay(
+            CursorSurface(cursor: .pointingHand, enabled: true) { inside in
+                hovering = inside
+                inside ? NSCursor.pointingHand.set() : NSCursor.arrow.set()
+            }
+        )
+        .onContinuousHover { phase in
+            switch phase {
+            case .active:
+                hovering = true
+                NSCursor.pointingHand.set()
+            case .ended:
+                hovering = false
+                NSCursor.arrow.set()
+            }
+        }
+        .animation(.easeOut(duration: 0.08), value: hovering)
         .foregroundStyle(active ? .primary : .secondary)
         .help(title)
     }
@@ -2521,8 +2615,21 @@ struct SidebarButton: View {
 
 struct HeaderView: View {
     @EnvironmentObject private var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     let total: Int
     let filtered: Int
+
+    private var headerFill: Color {
+        colorScheme == .dark ? .black.opacity(0.20) : .white.opacity(0.64)
+    }
+
+    private var searchFill: Color {
+        colorScheme == .dark ? .white.opacity(0.07) : .white.opacity(0.78)
+    }
+
+    private var borderFill: Color {
+        colorScheme == .dark ? .white.opacity(0.08) : .black.opacity(0.08)
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -2534,6 +2641,25 @@ struct HeaderView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if state.currentSection == .capture {
+                Button {
+                    state.setClipboardMonitoring(!state.autoClipboardEnabled)
+                } label: {
+                    Label(state.autoClipboardEnabled ? "监听中" : "监听剪贴板", systemImage: state.autoClipboardEnabled ? "dot.radiowaves.left.and.right" : "doc.on.clipboard")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .frame(height: 34)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(state.autoClipboardEnabled ? Color.accentColor : .secondary)
+                .background(
+                    state.autoClipboardEnabled ? Color.accentColor.opacity(0.13) : searchFill,
+                    in: RoundedRectangle(cornerRadius: 11)
+                )
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(state.autoClipboardEnabled ? Color.accentColor.opacity(0.35) : borderFill))
+                .interactiveHover(radius: 11)
+                .help(state.autoClipboardEnabled ? "关闭剪贴板监听" : "开启剪贴板监听")
+            }
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -2551,17 +2677,17 @@ struct HeaderView: View {
             }
             .padding(.horizontal, 12)
             .frame(width: 360, height: 40)
-            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 13))
-            .overlay(RoundedRectangle(cornerRadius: 13).stroke(.white.opacity(0.08)))
+            .background(searchFill, in: RoundedRectangle(cornerRadius: 13))
+            .overlay(RoundedRectangle(cornerRadius: 13).stroke(borderFill))
 
             if state.isLoading {
                 ProgressView().controlSize(.small)
             }
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 18)
-        .background(.black.opacity(0.20))
-        .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.08)).frame(height: 1) }
+        .padding(.vertical, 14)
+        .background(headerFill)
+        .overlay(alignment: .bottom) { Rectangle().fill(borderFill).frame(height: 1) }
     }
 
     private var subtitle: String {
@@ -3017,11 +3143,10 @@ struct InteractiveHoverModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(RoundedRectangle(cornerRadius: radius).fill(Color.black.opacity(enabled ? 0.001 : 0)))
-            .scaleEffect(enabled && hovering ? 1.015 : 1.0)
             .offset(y: enabled && hovering ? -1 : 0)
-            .shadow(color: enabled && hovering ? .black.opacity(0.42) : .clear, radius: enabled && hovering ? 22 : 0, y: enabled && hovering ? 12 : 0)
-            .shadow(color: enabled && hovering ? Color.accentColor.opacity(0.20) : .clear, radius: enabled && hovering ? 9 : 0, y: enabled && hovering ? 3 : 0)
-            .animation(.easeOut(duration: 0.11), value: hovering)
+            .shadow(color: enabled && hovering ? .black.opacity(0.34) : .clear, radius: enabled && hovering ? 24 : 0, y: enabled && hovering ? 12 : 0)
+            .shadow(color: enabled && hovering ? Color.accentColor.opacity(0.18) : .clear, radius: enabled && hovering ? 11 : 0, y: enabled && hovering ? 4 : 0)
+            .animation(.easeOut(duration: 0.08), value: hovering)
             .contentShape(RoundedRectangle(cornerRadius: radius))
             .overlay(
                 CursorSurface(cursor: .pointingHand, enabled: enabled) { inside in
@@ -3246,16 +3371,14 @@ final class SplitDragSurfaceView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        let delta = event.deltaX
-        if abs(delta) > 0 {
-            onDelta?(delta)
-        } else {
-            let current = window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow
-            if let last = lastDragLocation {
-                onDelta?(current.x - last.x)
+        let current = window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow
+        if let last = lastDragLocation {
+            let delta = current.x - last.x
+            if abs(delta) > 0.2 {
+                onDelta?(delta)
             }
-            lastDragLocation = current
         }
+        lastDragLocation = current
         cursor.set()
     }
 
